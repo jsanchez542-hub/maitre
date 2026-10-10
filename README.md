@@ -12,6 +12,7 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 
 - **A guest is never told a table is free unless it has been set aside for them.** What they hear stays true while they give their name.
 - **Two guests can never get the last table.** Checking for a table and taking it is one atomic step.
+- **Every booking has a real table, and no booking is lost to the order bookings came in.** Capacity is counted by table size, which is exact; the plan of real tables comes after it and rearranges bookings not yet seated when a new one only fits that way. A table the staff fixed by hand never moves.
 - **The model never works out a date.** It says how the guest put it ("vendredi", "le 11", "après-demain") and the code turns that into a day in the restaurant's time zone. Every answer reads the full date back.
 - **The phone number comes from the channel**: caller ID, WhatsApp, a keypad or a form, never from what speech recognition heard. The model never sees it.
 - **Allergen answers come from the kitchen's sheet,** as sentences to repeat word for word, and the code puts them in the reply when the model does not. When the sheet does not cover an allergen the answer is "we do not know", never "it is fine".
@@ -25,7 +26,8 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 | `src/calendar.ts`, `src/dates.ts` | Wall-clock dates and times in the business's time zone, and the dates guests say |
 | `src/config.ts`, `src/schedule.ts` | The business: services, weekly hours, closures, tables, how long each party stays. Validated at startup |
 | `src/availability.ts` | Which tables are free, from the length of every stay, not only its start |
-| `src/engine.ts` | Finding, holding, booking, changing, cancelling and confirming; the staff's view of the day; requests to call back |
+| `src/seating.ts` | The floor plan: which real table each booking sits at, and when a table fixed by hand leaves no room |
+| `src/engine.ts` | Finding, holding, booking, changing, cancelling and confirming; the staff's view of the day, arrivals, seating and departures; requests to call back |
 | `src/store.ts` | The storage interface, with all-or-nothing transactions, and an in-memory store |
 | `src/allergens.ts`, `src/menu.ts` | The fourteen allergens EU law requires restaurants to declare, and what the menu says about them |
 | `src/i18n/` | Everything the engine says, in French, English and Spanish |
@@ -78,7 +80,7 @@ npm run typecheck
 
 Beyond the usual unit tests:
 
-- **A randomised test** plays 40 seeded sequences of 300 steps by six guests at once (finding, booking, changing, cancelling, letting holds expire) and checks after every step, with code independent from the engine, that no group of tables is ever used more times than it exists. A failing sequence can be replayed exactly from its seed.
+- **A randomised test** plays 40 seeded sequences of 300 steps by six guests at once (finding, booking, changing, cancelling, letting holds expire) while the staff move bookings to tables of their choice, and checks after every step, with code independent from the engine, that no group of tables is ever used more times than it exists, that no two parties share a table at the same moment, and that a table fixed by hand never moves. A failing sequence can be replayed exactly from its seed.
 - **A typography check** fails if any sentence the engine can say contains a dash that reads as machine text, or French punctuation without its non-breaking space.
 - **The Worker is tested inside workerd**, the Workers runtime, with a real Durable Object and its SQLite database and the network cut off: two guests asking for the last table at the same moment, a transaction undone halfway, the alarm that clears expired holds and old data, and whole conversations with the model played by the test.
 - **Every recorded conversation of the demo is replayed** on the engine in the test suite. A change that would make the engine answer differently from the recording fails there, before a visitor could read a reply that is no longer true.
@@ -94,6 +96,7 @@ Each restaurant is one Durable Object, which handles one request at a time: that
 | `POST tools/:name` | Same: one tool call from the voice agent |
 | `GET day`, `GET conversations` | The restaurant's dashboard: the service of the day, and every turn with its latency and cost |
 | `POST staff/bookings`, `…/cancel`, `…/no-show`, `POST staff/callbacks/:id/done` | The dashboard: bookings taken by hand, parties on the spot, and requests dealt with |
+| `POST staff/bookings/:ref/arrived`, `…/seated`, `…/left`, `…/table` | The dashboard during service: a party at the door, at its table, gone (its table is free again at once), or moved to another table |
 
 Each group has its own bearer token. A route whose secret is not set answers 503 instead of running open, and so does every route if the deployment does not say where data may live.
 
@@ -105,7 +108,8 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 
 ## Known limits
 
-- Tables of the same size are interchangeable. The engine decides how many of each size are taken at any moment; the staff decide which one. It does not join tables: parties larger than the biggest table are passed to a person.
+- The engine does not join tables: parties larger than the biggest table are passed to a person.
+- A party that arrives late keeps the stay it was booked for: the plan does not lengthen it. A party that leaves early frees its table at once.
 - Phone numbers are read in French national format or in international format.
 - Opening hours that span the night the clocks change (between 2 and 3 am) are not supported.
 - The evaluation is nineteen written conversations, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors will be measured separately with the voice channel.

@@ -25,6 +25,8 @@ export async function readJson(request: Request): Promise<BodyResult> {
   if (declared > MAX_BODY_BYTES) return { ok: false, response: problem(413, 'body_too_large') };
   const text = await readBounded(request);
   if (text === undefined) return { ok: false, response: problem(413, 'body_too_large') };
+  // No body is an empty object: "seat them" needs no table when the plan already has one.
+  if (text.trim() === '') return { ok: true, value: {} };
   try {
     const value: unknown = JSON.parse(text);
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return { ok: false, response: problem(400, 'body_must_be_an_object') };

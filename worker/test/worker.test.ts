@@ -13,6 +13,7 @@ const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   await reset();
 });
 
@@ -45,6 +46,9 @@ function stub() {
 interface StaffDay {
   bookings: Record<string, unknown>[];
   callbacks: { open: number; list: Record<string, unknown>[] };
+  floor: Record<string, unknown>[];
+  sections: { service: string; waiterName: string; tables: string[] }[];
+  slots: { time: string; coversInRoom: number }[];
 }
 
 async function staffDay(date: string): Promise<StaffDay> {
@@ -338,6 +342,63 @@ describe('booking through the Durable Object', () => {
     expect((await SELF.fetch(`${BASE}/staff/bookings/${reference}/no-show`, { method: 'POST', headers: STAFF })).status).toBe(409);
     expect((await SELF.fetch(`${BASE}/staff/bookings/${reference}/cancel`, { method: 'POST', headers: STAFF })).status).toBe(200);
     expect((await SELF.fetch(`${BASE}/staff/bookings/NOPE42/cancel`, { method: 'POST', headers: STAFF })).status).toBe(404);
+  });
+});
+
+describe('the floor', () => {
+  const act = (reference: string, action: string, body?: object) =>
+    SELF.fetch(`${BASE}/staff/bookings/${reference}/${action}`, { method: 'POST', headers: STAFF, ...(body ? { body: JSON.stringify(body) } : {}) });
+
+  it('plans a table for every booking, shows the room and who serves it, and counts the covers in it', async () => {
+    const friday = nextWeek('friday');
+    for (const guestName of ['Martin', 'Bernard']) {
+      expect((await staffBook({ date: friday, time: '20:00', partySize: 2, guestName })).status).toBe(201);
+    }
+    const day = await staffDay(friday);
+    expect(day.bookings.map((booking) => booking['table'])).toEqual(['1', '2']);
+    expect(day.floor).toHaveLength(13);
+    expect(day.floor[11]).toMatchObject({ number: '12', group: 't6', shape: 'rect', x: 26, y: 87 });
+    expect(day.sections.map((section) => [section.service, section.waiterName])).toEqual([
+      ['dinner', 'Léa'],
+      ['dinner', 'Hugo'],
+    ]);
+    expect(day.slots.find((slot) => slot.time === '20:00')?.coversInRoom).toBe(4);
+  });
+
+  it('lets the staff move a booking and keeps it there, and says which tables would do when one is taken', async () => {
+    const friday = nextWeek('friday');
+    const first = (await (await staffBook({ date: friday, time: '20:00', partySize: 2, guestName: 'Martin' })).json()) as { booking: { reference: string } };
+    const second = (await (await staffBook({ date: friday, time: '20:00', partySize: 2, guestName: 'Petit' })).json()) as { booking: { reference: string } };
+
+    const moved = await act(first.booking.reference, 'table', { table: '3' });
+    expect(moved.status).toBe(200);
+    expect(await moved.json()).toMatchObject({ booking: { table: '3', tableFixed: true } });
+
+    const taken = await act(second.booking.reference, 'table', { table: '3' });
+    expect(taken.status).toBe(409);
+    expect(((await taken.json()) as { status: string; free: string[] }).free).toContain('1');
+    expect((await act(second.booking.reference, 'table', { table: '99' })).status).toBe(400);
+    expect((await act(second.booking.reference, 'table')).status).toBe(400);
+    // Arrivals and seating happen on the evening itself.
+    expect(await (await act(second.booking.reference, 'arrived')).json()).toEqual({ status: 'not_allowed', reason: 'not_today' });
+  });
+
+  it('follows a party from the door to its table and out, on the evening itself', async () => {
+    const friday = nextWeek('friday');
+    // 20:15 in Paris in summer time, 19:15 in winter time: inside the dinner service either way.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${friday}T18:15:00Z`));
+
+    const walkIn = await staffBook({ date: friday, partySize: 2, walkIn: true, table: '5' });
+    expect(await walkIn.json()).toMatchObject({ status: 'booked', booking: { table: '5', stage: 'seated', tableFixed: true } });
+
+    const later = (await (await staffBook({ date: friday, time: '21:00', partySize: 4, guestName: 'Durand' })).json()) as {
+      booking: { reference: string; table: string };
+    };
+    expect(later.booking.table).toBe('7');
+    expect(await (await act(later.booking.reference, 'arrived')).json()).toMatchObject({ booking: { stage: 'arrived' } });
+    expect(await (await act(later.booking.reference, 'seated')).json()).toMatchObject({ booking: { stage: 'seated', table: '7', tableFixed: true } });
+    expect(await (await act(later.booking.reference, 'left')).json()).toMatchObject({ booking: { stage: 'left' } });
   });
 });
 

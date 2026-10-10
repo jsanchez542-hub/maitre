@@ -10,6 +10,7 @@ import {
   type StaffActionResult,
   type StaffBookRequest,
   type StaffBookResult,
+  type TableActionResult,
 } from '../../src/engine.js';
 import { isLanguage, type Language } from '../../src/i18n/index.js';
 import { randomIds } from '../../src/ids.js';
@@ -189,6 +190,22 @@ export class Restaurant extends DurableObject<Env> {
 
   async markNoShow(reference: string): Promise<StaffActionResult> {
     return this.#engine.markNoShow(reference);
+  }
+
+  async markArrived(reference: string): Promise<StaffActionResult> {
+    return this.#engine.markArrived(reference);
+  }
+
+  async seat(reference: string, table?: string): Promise<TableActionResult> {
+    return this.#engine.seat(reference, table);
+  }
+
+  async markLeft(reference: string): Promise<StaffActionResult> {
+    return this.#engine.markLeft(reference);
+  }
+
+  async moveTable(reference: string, table: string): Promise<TableActionResult> {
+    return this.#engine.moveTable(reference, table);
   }
 
   async completeCallback(id: string): Promise<{ status: 'done' } | { status: 'not_found' }> {

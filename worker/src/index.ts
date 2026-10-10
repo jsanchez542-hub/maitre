@@ -12,9 +12,13 @@ export { Restaurant } from './restaurant.js';
  *   POST tools/:name                   agent  one tool call from the voice agent
  *   GET  day?date=&language=           staff  the service of the day
  *   GET  conversations?limit=          staff  the latest turns, with latency and cost
- *   POST staff/bookings                staff  a booking taken by hand or a party on the spot
+ *   POST staff/bookings                staff  a booking taken by hand or a party on the spot, at a table if given
  *   POST staff/bookings/:ref/cancel    staff
  *   POST staff/bookings/:ref/no-show   staff
+ *   POST staff/bookings/:ref/arrived   staff  the party is at the door
+ *   POST staff/bookings/:ref/seated    staff  { table? } at its planned table or another
+ *   POST staff/bookings/:ref/left      staff  the table is free again from now
+ *   POST staff/bookings/:ref/table     staff  { table } moved there, and kept there
  *   POST staff/callbacks/:id/done      staff
  *
  * "agent" routes need AGENT_TOKEN and "staff" routes STAFF_TOKEN, as a bearer
@@ -94,8 +98,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     is('GET', 'day') ||
     is('GET', 'conversations') ||
     is('POST', 'staff', 'bookings') ||
-    is('POST', 'staff', 'bookings', null, 'cancel') ||
-    is('POST', 'staff', 'bookings', null, 'no-show') ||
+    STAFF_ACTIONS.some((action) => is('POST', 'staff', 'bookings', null, action)) ||
     is('POST', 'staff', 'callbacks', null, 'done');
   if (!staffRoute) return problem(rest.length > 0 ? 405 : 404, rest.length > 0 ? 'method_or_route_not_allowed' : 'not_found');
   const denied = await authorized(request, env, 'staff');
@@ -121,15 +124,43 @@ async function route(request: Request, env: Env): Promise<Response> {
       ...(typeof input['notes'] === 'string' ? { notes: input['notes'] } : {}),
       ...(Array.isArray(input['allergies']) ? { allergies: input['allergies'].map(String) } : {}),
       ...(input['walkIn'] === true ? { walkIn: true } : {}),
+      ...(typeof input['table'] === 'string' ? { table: input['table'] } : {}),
     });
-    return json(result, result.status === 'invalid' ? 400 : result.status === 'unavailable' ? 409 : 201);
+    return json(result, result.status === 'invalid' ? 400 : result.status === 'unavailable' || result.status === 'table_taken' ? 409 : 201);
   }
   const target = rest[2] ?? '';
-  const action =
-    rest[1] === 'callbacks'
-      ? await restaurant.completeCallback(target)
-      : rest[3] === 'cancel'
-        ? await restaurant.staffCancel(target)
-        : await restaurant.markNoShow(target);
-  return json(action, action.status === 'not_found' ? 404 : action.status === 'not_allowed' ? 409 : 200);
+  if (rest[1] === 'callbacks') {
+    const done = await restaurant.completeCallback(target);
+    return json(done, done.status === 'not_found' ? 404 : 200);
+  }
+  const body = rest[3] === 'seated' || rest[3] === 'table' ? await readJson(request) : undefined;
+  if (body && !body.ok) return body.response;
+  const table = body?.ok && typeof body.value['table'] === 'string' ? body.value['table'] : undefined;
+  let action;
+  switch (rest[3] as StaffAction) {
+    case 'cancel':
+      action = await restaurant.staffCancel(target);
+      break;
+    case 'no-show':
+      action = await restaurant.markNoShow(target);
+      break;
+    case 'arrived':
+      action = await restaurant.markArrived(target);
+      break;
+    case 'left':
+      action = await restaurant.markLeft(target);
+      break;
+    case 'seated':
+      action = await restaurant.seat(target, table);
+      break;
+    case 'table':
+      if (table === undefined) return problem(400, 'table_required');
+      action = await restaurant.moveTable(target, table);
+      break;
+  }
+  const status = { done: 200, not_found: 404, unknown_table: 400, not_allowed: 409, table_taken: 409 }[action.status];
+  return json(action, status);
 }
+
+const STAFF_ACTIONS = ['cancel', 'no-show', 'arrived', 'seated', 'left', 'table'] as const;
+type StaffAction = (typeof STAFF_ACTIONS)[number];
