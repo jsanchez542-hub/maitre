@@ -1,0 +1,21 @@
+---
+import type { Language } from 'maitre';
+import { messagesFor } from '../i18n/messages';
+import { HOME } from '../i18n/routes';
+import Page from '../layouts/Page.astro';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const t = messagesFor(language).notFound;
+---
+
+<Page language={language} title={t.title} description={t.body}>
+  <div class="lost">
+    <h1 class="title">{t.heading}</h1>
+    <p>{t.body}</p>
+    <a href={HOME[language]}>{t.back}</a>
+  </div>
+</Page>

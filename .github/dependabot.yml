@@ -28,6 +28,25 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
 
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # @astrojs/check supports TypeScript 5 and 6, not 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+    groups:
+      # axe drives the same playwright-core as the test runner: two versions and their types no longer match.
+      playwright:
+        patterns: ["@playwright/test", "playwright-core"]
+      astro:
+        patterns: ["astro", "@astrojs/*"]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

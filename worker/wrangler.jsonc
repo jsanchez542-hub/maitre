@@ -8,6 +8,14 @@
     "bindings": [{ "name": "RESTAURANTS", "class_name": "Restaurant" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Restaurant"] }],
+  // The demo and dashboard pages, built by web/ (npm run build there) before a deploy.
+  "assets": {
+    "directory": "../web/dist",
+    // An unknown address gets the nearest 404.html: under /en/, the English one.
+    "not_found_handling": "404-page",
+    // The API and the health check always reach the Worker, whatever the pages hold.
+    "run_worker_first": ["/v1/*", "/health"]
+  },
   "vars": {
     // Every restaurant's data stays in the EU. workerd cannot pin data, so
     // local runs override this with "none" in .dev.vars and the test config.

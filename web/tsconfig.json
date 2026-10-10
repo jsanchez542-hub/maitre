@@ -1,0 +1,18 @@
+{
+  "extends": "astro/tsconfigs/strictest",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "maitre": ["../src/index.ts"],
+      "maitre/demo": ["../src/demo/index.ts"]
+    }
+  },
+  "include": [".astro/types.d.ts", "src", "tests", "*.config.ts"],
+  "exclude": ["dist"]
+}

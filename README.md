@@ -2,7 +2,7 @@
 
 A booking assistant for restaurants and other businesses that take appointments. Guests book by phone, web chat or WhatsApp; the rules (tables, opening hours, dates, allergens) are decided by code, and the language model only does the talking.
 
-> **Status: in development.** The booking engine, the conversation layer, its evaluation against real models and the Cloudflare Worker are built and tested. The web chat and the dashboard, the voice channel and WhatsApp come next.
+> **Status: in development.** The booking engine, the conversation layer, its evaluation against real models and the Cloudflare Worker are built and tested, and so is the dashboard's first screen, the service of the day. The web chat, the rest of the dashboard, the voice channel and WhatsApp come next.
 
 ## Why it is built this way
 
@@ -36,6 +36,7 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 | `src/demo/` | The invented restaurant of the demo and the evaluation, and the replay of recorded conversations on the real engine |
 | `evals/` | The evaluation against real models: the conversations, their checks, scoring a recorded run again and exporting it for the demo |
 | `worker/` | The Cloudflare Worker: one Durable Object per restaurant, kept in the EU, with its HTTP API |
+| `web/` | The public demo and the dashboard: static pages in French, English and Spanish that run the engine in the visitor's browser |
 
 The engine has no dependency on Node or on a browser: the same code runs on a server, in a Cloudflare Worker and in a web page.
 
@@ -78,6 +79,14 @@ cd worker
 npm ci
 npm test
 npm run typecheck
+
+cd ../web
+npm ci
+npm run check
+npm test
+npm run build
+npx playwright install --only-shell chromium
+npm run test:pages
 ```
 
 Beyond the usual unit tests:
@@ -86,6 +95,7 @@ Beyond the usual unit tests:
 - **A typography check** fails if any sentence the engine can say contains a dash that reads as machine text, or French punctuation without its non-breaking space.
 - **The Worker is tested inside workerd**, the Workers runtime, with a real Durable Object and its SQLite database and the network cut off: two guests asking for the last table at the same moment, a transaction undone halfway, the alarm that clears expired holds and old data, and whole conversations with the model played by the test.
 - **Every recorded conversation of the demo is replayed** on the engine in the test suite. A change that would make the engine answer differently from the recording fails there, before a visitor could read a reply that is no longer true.
+- **Every page is checked in a browser**, on a phone screen and a desktop one. In each language, axe finds nothing to report in the plan or in the list, and the page's content security policy lets no script run but its own. On the French page, the staff seat a party and a walk-in through the engine, axe checks the open table, and no phone number is shown whole.
 
 ## The Worker
 
@@ -102,7 +112,7 @@ Each restaurant is one Durable Object, which handles one request at a time: that
 
 Each group has its own bearer token. A route whose secret is not set answers 503 instead of running open, and so does every route if the deployment does not say where data may live.
 
-To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`.
+To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.
 
 ## Languages
 

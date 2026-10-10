@@ -1,0 +1,56 @@
+---
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
+import '@fontsource/ibm-plex-sans-condensed/latin-400.css';
+import '@fontsource/ibm-plex-sans-condensed/latin-600.css';
+import '@fontsource/ibm-plex-sans-condensed/latin-700.css';
+import '../styles/global.css';
+import { LANGUAGES, type Language } from 'maitre';
+import { messagesFor } from '../i18n/messages';
+import { HOME, LANGUAGE_NAMES } from '../i18n/routes';
+
+interface Props {
+  language: Language;
+  title: string;
+  description: string;
+}
+
+const { language, title, description } = Astro.props;
+const t = messagesFor(language).page;
+---
+
+<!doctype html>
+<html lang={language}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0e1113" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <a class="skip" href="#main">{t.skip}</a>
+    <div class="page">
+      <header class="masthead">
+        <a class="brand" href={HOME[language]}>Maître</a>
+        <nav aria-label={t.languages}>
+          <ul class="languages">
+            {
+              LANGUAGES.map((code) => (
+                <li>
+                  <a href={HOME[code]} lang={code} hreflang={code} aria-current={code === language ? 'true' : undefined}>
+                    {LANGUAGE_NAMES[code]}
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+        </nav>
+      </header>
+      <main id="main">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>
