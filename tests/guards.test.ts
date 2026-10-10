@@ -5,7 +5,7 @@ import { scriptedModel } from '../src/agent/providers/scripted.js';
 import { guest, harness } from './fixtures.js';
 
 const SENTENCE =
-  'The allergen sheet for Chocolate mousse does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.';
+  'The allergen sheet for “Chocolate mousse” does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.';
 const checked = [{ name: 'check_dish', output: { status: 'ok', sayExactly: [SENTENCE] } }];
 
 describe('the allergen relay guard', () => {
@@ -14,12 +14,28 @@ describe('the allergen relay guard', () => {
     expect(enforceAllergenRelay(reply, checked)).toEqual({ reply, corrected: false });
   });
 
-  it('puts the exact sentences in front of a faithful paraphrase (seen in a real run)', () => {
+  it('puts the exact sentences in front of a paraphrase that adds a reason, and keeps it (seen in a real run)', () => {
     const paraphrase =
       'The allergen sheet does not say whether the chocolate mousse contains tree nuts, so I cannot confirm it is safe for you.';
     const result = enforceAllergenRelay(paraphrase, checked);
     expect(result.corrected).toBe(true);
     expect(result.reply).toBe(`${SENTENCE}\n\n${paraphrase}`);
+  });
+
+  it('does not say the same thing twice when the model only restated the sheet (seen in a real run)', () => {
+    const reply =
+      'The allergen sheet for the chocolate mousse does not say whether it contains tree nuts. I would rather pass your question on to the team than guess. ' +
+      'Your question has been passed to the team, who will get back to you. Please do not order the chocolate mousse until you have their answer.';
+    expect(enforceAllergenRelay(reply, checked)).toEqual({
+      reply: `${SENTENCE}\n\nYour question has been passed to the team, who will get back to you. Please do not order the chocolate mousse until you have their answer.`,
+      corrected: true,
+    });
+  });
+
+  it('keeps the model’s other paragraphs, and adds the sheet to a reply that left it out (seen in a real run)', () => {
+    expect(enforceAllergenRelay('The team will get back to you.', checked).reply).toBe(`${SENTENCE}\n\nThe team will get back to you.`);
+    const reply = 'The allergen sheet for the chocolate mousse does not say whether it contains tree nuts.\n\nCan I check another dessert for you?';
+    expect(enforceAllergenRelay(reply, checked).reply).toBe(`${SENTENCE}\n\nCan I check another dessert for you?`);
   });
 
   it('ignores turns without a successful allergen check', () => {

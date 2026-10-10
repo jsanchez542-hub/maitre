@@ -35,6 +35,10 @@ const ALLERGEN_NAMES: Record<Allergen, string> = {
   molluscs: 'molluscs',
 };
 
+// Without quotation marks, models "correct" a dish name into "the chocolate mousse",
+// and a sentence that must be repeated word for word no longer is.
+const quoted = (dish: string): string => `“${dish}”`;
+
 export const en: Messages = {
   date({ weekday, day, month, year }) {
     const base = `${WEEKDAYS[weekday - 1]} ${day} ${MONTHS[month - 1]}`;
@@ -56,22 +60,22 @@ export const en: Messages = {
     return ALLERGEN_NAMES[allergen];
   },
   dishContains(dish, allergen) {
-    return `${dish} contains ${ALLERGEN_NAMES[allergen]}.`;
+    return `${quoted(dish)} contains ${ALLERGEN_NAMES[allergen]}.`;
   },
   dishMayContain(dish, allergen) {
-    return `${dish} may contain traces of ${ALLERGEN_NAMES[allergen]}.`;
+    return `${quoted(dish)} may contain traces of ${ALLERGEN_NAMES[allergen]}.`;
   },
   dishFree(dish, allergen) {
-    return `According to the kitchen’s allergen sheet, ${dish} contains no ${ALLERGEN_NAMES[allergen]}.`;
+    return `According to the kitchen’s allergen sheet, ${quoted(dish)} contains no ${ALLERGEN_NAMES[allergen]}.`;
   },
   dishUnknown(dish, allergen) {
     return (
-      `The allergen sheet for ${dish} does not say whether it contains ${ALLERGEN_NAMES[allergen]}. ` +
+      `The allergen sheet for ${quoted(dish)} does not say whether it contains ${ALLERGEN_NAMES[allergen]}. ` +
       'I would rather pass your question on to the team than guess.'
     );
   },
   allergenQuestion(dish, allergens) {
-    return `Allergens the sheet for ${dish} does not cover: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
+    return `Allergens the sheet for ${quoted(dish)} does not cover: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
   },
   greeting(business, channel) {
     if (channel === 'voice') {

@@ -99,11 +99,11 @@ describe('running tools', () => {
     expect(mousse).toMatchObject({ status: 'ok', passedToTeam: true, findings: [{ allergen: 'nuts', answer: 'unknown' }] });
     expect(mousse).not.toHaveProperty('needsPhone');
     expect(mousse['sayExactly']).toEqual([
-      'The allergen sheet for Chocolate mousse does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.',
+      'The allergen sheet for “Chocolate mousse” does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.',
     ]);
     // Recorded by the code, not left to the model: a model that promises and forgets leaves an allergic guest waiting.
     expect(h.store.snapshot().callbacks).toMatchObject([
-      { sessionId: 'g1', reason: 'allergy_question', phone: '+447700900123', summary: 'Allergens the sheet for Chocolate mousse does not cover: tree nuts.' },
+      { sessionId: 'g1', reason: 'allergy_question', phone: '+447700900123', summary: 'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.' },
     ]);
     expect(runTool(h.engine, guest('g1'), 'check_dish', { dishId: 'tiramisu', allergens: ['eggs'] })).toMatchObject({
       status: 'unknown_dish',
