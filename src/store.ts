@@ -38,6 +38,7 @@ export interface Booking {
   /** Seated, or placed by the staff: the plan never moves it to another table. */
   tableFixed?: boolean;
   service: string;
+  /** Empty only for a party on the spot the staff seat without a name: the views name it in their own language. */
   guestName: string;
   /**
    * E.164, such as +33612345678. Every booking made by a guest has one; only a

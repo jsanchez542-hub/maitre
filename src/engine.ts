@@ -229,11 +229,15 @@ export interface ServiceDay {
   /** Who looks after which tables, for each service of the day. */
   sections: { service: string; waiter: string; waiterName: string; tables: string[] }[];
   sittings: { service: string; name: string; firstBooking: PlainTime; lastBooking: PlainTime; bookings: number; covers: number }[];
+  /** Every bookable time of the day: covers arriving in that slot and tables of each size in use at that moment. */
+  slots: { time: PlainTime; service: string; arrivals: number; inUse: Record<string, number> }[];
   /**
-   * Every bookable time of the day: covers arriving in that slot, tables of
-   * each size in use at that moment, and covers planned to be in the room then.
+   * Covers planned to be in the room through each service, on the slot grid,
+   * from the first seating until the last table is due to leave: the evening
+   * goes on after the last bookable time. In order; past midnight the clock
+   * starts again from 00:00.
    */
-  slots: { time: PlainTime; service: string; arrivals: number; inUse: Record<string, number>; coversInRoom: number }[];
+  room: { service: string; time: PlainTime; covers: number }[];
   /** In order of arrival, cancelled ones included. */
   bookings: StaffBookingView[];
   /** Tables set aside while a guest finishes booking, at the table the plan would give them. */
@@ -760,7 +764,16 @@ export class BookingEngine {
           .filter(isActive)
           .map((booking) => ({ booking, shift: -1440 })),
         ...active.map((booking) => ({ booking, shift: 0 })),
-      ].map(({ booking, shift }) => ({ covers: booking.partySize, start: toMinutes(booking.time) + shift, end: this.#stayEnd(booking) + shift }));
+      ].map(({ booking, shift }) => ({
+        // Only today's parties belong to one of today's services.
+        service: shift === 0 ? booking.service : undefined,
+        covers: booking.partySize,
+        start: toMinutes(booking.time) + shift,
+        end: this.#stayEnd(booking) + shift,
+      }));
+      const coversInRoom = (minute: number): number =>
+        present.filter((stay) => stay.start <= minute && minute < stay.end).reduce((sum, stay) => sum + stay.covers, 0);
+      const step = this.#config.slotMinutes;
 
       return {
         date,
@@ -794,12 +807,22 @@ export class BookingEngine {
             time,
             service: sittingAt(this.#config, date, time)?.service ?? '',
             // A party seated at 20:07 counts in the 20:00 slot.
-            arrivals: covers(
-              active.filter((booking) => toMinutes(booking.time) >= minute && toMinutes(booking.time) < minute + this.#config.slotMinutes),
-            ),
+            arrivals: covers(active.filter((booking) => toMinutes(booking.time) >= minute && toMinutes(booking.time) < minute + step)),
             inUse: Object.fromEntries(this.#config.tables.map((group) => [group.id, peakUse(occupations, group.id, minute, minute + 1)])),
-            coversInRoom: present.filter((stay) => stay.start <= minute && minute < stay.end).reduce((sum, stay) => sum + stay.covers, 0),
           };
+        }),
+        room: sittings.flatMap((sitting) => {
+          // The room empties when the service's last table is due to leave, and never before its last seating.
+          const empty = Math.max(
+            toMinutes(sitting.lastSeating),
+            ...present.filter((stay) => stay.service === sitting.service).map((stay) => stay.end),
+          );
+          const points: { service: string; time: PlainTime; covers: number }[] = [];
+          // Up to the first time on the grid with everyone gone, so the series comes back down.
+          for (let minute = toMinutes(sitting.firstSeating); minute < empty + step; minute += step) {
+            points.push({ service: sitting.service, time: fromMinutes(minute % 1440), covers: coversInRoom(minute) });
+          }
+          return points;
         }),
         bookings: all.map((booking) => this.#staffView(booking, language, clock, unplaced.get(booking.id))),
         holds: holds.map((hold) => {
@@ -855,8 +878,9 @@ export class BookingEngine {
       problems.push(`parties larger than ${this.#config.maxPartySize} need tables joined, which bookings do not handle`);
     }
 
-    const guestName = cleanText(request.guestName ?? '', NAME_MAX) ?? (walkIn ? messages(language).walkInGuest() : undefined);
-    if (!guestName) problems.push(`guestName must be 1 to ${NAME_MAX} characters of plain text`);
+    // A party on the spot may stay nameless: every view then calls it a walk-in, in the language it is read in.
+    const guestName = request.guestName?.trim() ? cleanText(request.guestName, NAME_MAX) : '';
+    if (guestName === undefined || (guestName === '' && !walkIn)) problems.push(`guestName must be 1 to ${NAME_MAX} characters of plain text`);
 
     let phone: string | undefined;
     if (request.phone !== undefined && request.phone.trim() !== '') {
@@ -879,7 +903,7 @@ export class BookingEngine {
     else if (chosen && Number.isInteger(partySize) && chosen.seats < partySize) {
       problems.push(`table ${chosen.number} seats ${chosen.seats}, not ${partySize}`);
     }
-    if (problems.length > 0 || time === undefined || !guestName) return { status: 'invalid', problems };
+    if (problems.length > 0 || time === undefined || guestName === undefined) return { status: 'invalid', problems };
 
     return this.#store.transaction((tx): StaffBookResult => {
       const exclusions: Exclusions = { sessionId: '' };
@@ -1406,7 +1430,7 @@ export class BookingEngine {
       ...(booking.seatedAt ? { seatedAt: booking.seatedAt } : {}),
       ...(booking.leftAt ? { leftAt: booking.leftAt } : {}),
       service: this.#serviceName(booking.service, language),
-      guestName: booking.guestName,
+      guestName: this.#guestName(booking, language),
       status: booking.status,
       ...(booking.phone ? { phone: formatPhone(booking.phone) } : {}),
       ...(booking.phoneSource ? { phoneSource: booking.phoneSource } : {}),
@@ -1438,13 +1462,18 @@ export class BookingEngine {
     };
   }
 
+  /** A party on the spot booked without a name is called a walk-in in the language of whoever reads it. */
+  #guestName(booking: Booking, language: Language): string {
+    return booking.guestName === '' ? messages(language).walkInGuest() : booking.guestName;
+  }
+
   #view(booking: Booking, language: Language, clock: Clock): BookingView {
     return {
       reference: booking.reference,
       date: booking.date,
       time: booking.time,
       partySize: booking.partySize,
-      guestName: booking.guestName,
+      guestName: this.#guestName(booking, language),
       status: booking.status,
       ...(booking.notes ? { notes: booking.notes } : {}),
       allergies: [...booking.allergies],

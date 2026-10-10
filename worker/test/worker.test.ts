@@ -48,7 +48,7 @@ interface StaffDay {
   callbacks: { open: number; list: Record<string, unknown>[] };
   floor: Record<string, unknown>[];
   sections: { service: string; waiterName: string; tables: string[] }[];
-  slots: { time: string; coversInRoom: number }[];
+  room: { service: string; time: string; covers: number }[];
 }
 
 async function staffDay(date: string): Promise<StaffDay> {
@@ -362,7 +362,7 @@ describe('the floor', () => {
       ['dinner', 'Léa'],
       ['dinner', 'Hugo'],
     ]);
-    expect(day.slots.find((slot) => slot.time === '20:00')?.coversInRoom).toBe(4);
+    expect(day.room.find((point) => point.service === 'dinner' && point.time === '20:00')?.covers).toBe(4);
   });
 
   it('lets the staff move a booking and keeps it there, and says which tables would do when one is taken', async () => {

@@ -34,7 +34,14 @@ describe('the demo evening', () => {
       ['large_group', 'voice'],
       ['allergy_question', 'whatsapp'],
     ]);
-    expect(day.slots.find((slot) => slot.time === '20:00')?.coversInRoom).toBeGreaterThan(0);
+    // The evening's curve goes on after the last bookable time, 21:30, until the last two tables
+    // leave at 23:00. The table held at 21:15 is nobody yet: it counts once the guest has booked.
+    const dinner = day.room.filter((point) => point.service === 'dinner');
+    expect(dinner.find((point) => point.time === '20:00')?.covers).toBeGreaterThan(0);
+    expect(dinner.slice(-2)).toEqual([
+      { service: 'dinner', time: '22:45', covers: 7 },
+      { service: 'dinner', time: '23:00', covers: 0 },
+    ]);
   });
 
   it('comes out the same on every load', () => {

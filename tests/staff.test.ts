@@ -16,6 +16,25 @@ describe('a party on the spot', () => {
     expect(result.status === 'booked' && result.booking).not.toHaveProperty('phone');
   });
 
+  it('has no name of its own: whoever reads the day sees a walk-in, in their language', () => {
+    const h = harness(FRIDAY_EVENING);
+    h.engine.staffBook({ date: '2026-10-16', partySize: 2, walkIn: true, language: 'fr' });
+    const names = (['fr', 'en', 'es'] as const).map((language) => h.engine.serviceDay('2026-10-16', language).bookings[0]?.guestName);
+    expect(names).toEqual(['Client sur place', 'Walk-in guest', 'Cliente sin reserva']);
+  });
+
+  it('keeps a name the staff give it, and refuses one it cannot read', () => {
+    const h = harness(FRIDAY_EVENING);
+    expect(h.engine.staffBook({ date: '2026-10-16', partySize: 2, walkIn: true, guestName: ' Garnier ' })).toMatchObject({
+      status: 'booked',
+      booking: { guestName: 'Garnier' },
+    });
+    expect(h.engine.staffBook({ date: '2026-10-16', partySize: 2, walkIn: true, guestName: 'Gar\u0000nier' })).toEqual({
+      status: 'invalid',
+      problems: ['guestName must be 1 to 80 characters of plain text'],
+    });
+  });
+
   it('takes the table away from the assistant, which is the whole point of recording it', () => {
     const h = harness(FRIDAY_EVENING);
     h.engine.staffBook({ date: '2026-10-16', partySize: 6, walkIn: true });
@@ -136,9 +155,17 @@ describe('the service of the day', () => {
 
     const slot = (time: string) => day.slots.find((candidate) => candidate.time === time);
     // The party seated at 20:07 arrives in the 20:00 slot and holds a table for two from 20:07 to 21:37.
-    expect(slot('20:00')).toEqual({ time: '20:00', service: 'dinner', arrivals: 2, inUse: { t2: 0, t4: 0, t6: 0 }, coversInRoom: 0 });
+    expect(slot('20:00')).toEqual({ time: '20:00', service: 'dinner', arrivals: 2, inUse: { t2: 0, t4: 0, t6: 0 } });
+    expect(slot('21:30')).toEqual({ time: '21:30', service: 'dinner', arrivals: 0, inUse: { t2: 1, t4: 1, t6: 1 } });
+
     // At 21:30 the two of 20:07 are still there, with the four of 21:00; a held table is nobody yet.
-    expect(slot('21:30')).toEqual({ time: '21:30', service: 'dinner', arrivals: 0, inUse: { t2: 1, t4: 1, t6: 1 }, coversInRoom: 6 });
+    // The room stays busy after the last bookable time, until the four of 21:00 leave at 23:00.
+    const room = (time: string) => day.room.find((point) => point.service === 'dinner' && point.time === time)?.covers;
+    expect(['19:00', '20:00', '20:15', '21:30', '21:45', '22:45', '23:00'].map(room)).toEqual([0, 0, 2, 6, 4, 4, 0]);
+    expect(day.room.at(-1)).toEqual({ service: 'dinner', time: '23:00', covers: 0 });
+    // With nobody booked, lunch runs from its first to its last seating, empty.
+    const lunch = day.room.filter((point) => point.service === 'lunch');
+    expect([lunch[0]?.time, lunch.at(-1)?.time, lunch.every((point) => point.covers === 0)]).toEqual(['12:00', '13:30', true]);
 
     expect(day.holds).toEqual([{ time: '21:30', partySize: 6, tableGroup: 't6', table: 't6-1', expiresAt: '2026-10-16T18:12:00.000Z' }]);
     expect(day.bookings.map((booking) => [booking.time, booking.status])).toEqual([
@@ -147,6 +174,17 @@ describe('the service of the day', () => {
       ['21:30', 'cancelled'],
     ]);
     expect(day.bookings[0]).toMatchObject({ endsAt: '21:37', allergies: [{ id: 'nuts', name: 'fruits à coque' }], seats: 2 });
+  });
+
+  it('follows the room past midnight on a late night, the clock starting again from 00:00', () => {
+    const h = harness(FRIDAY_EVENING);
+    h.engine.staffBook({ date: '2026-12-31', time: '23:30', partySize: 2, guestName: 'Réveillon' });
+    expect(h.engine.serviceDay('2026-12-31', 'fr').room.slice(-4)).toEqual([
+      { service: 'dinner', time: '00:15', covers: 2 },
+      { service: 'dinner', time: '00:30', covers: 2 },
+      { service: 'dinner', time: '00:45', covers: 2 },
+      { service: 'dinner', time: '01:00', covers: 0 },
+    ]);
   });
 
   it('keeps the history of a moved booking for "20 h 30 (avant 20 h)"', () => {
