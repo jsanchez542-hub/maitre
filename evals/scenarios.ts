@@ -1,5 +1,5 @@
 import type { Allergen } from '../src/allergens.js';
-import type { BookingEngine } from '../src/engine.js';
+import type { SetupBooking } from '../src/demo/replay.js';
 import type { Language } from '../src/i18n/index.js';
 import type { Channel, HandoffReason } from '../src/store.js';
 import type { ToolName } from '../src/tools.js';
@@ -42,15 +42,9 @@ export interface Scenario {
   phone: string | null;
   /** What the guest says, one message per turn, whatever the assistant answers. */
   turns: string[];
-  /** Bookings that exist before the conversation. Returns references by name, for the checks. */
-  setup?: (engine: BookingEngine) => Record<string, string>;
+  /** Bookings that exist before the conversation, as data, so a recording can carry them. */
+  setup?: SetupBooking[];
   expect: Expectation[];
-}
-
-function staffBooked(engine: BookingEngine, request: Parameters<BookingEngine['staffBook']>[0]): string {
-  const result = engine.staffBook(request);
-  if (result.status !== 'booked') throw new Error(`Scenario setup failed: ${result.status}`);
-  return result.booking.reference;
 }
 
 export const SCENARIOS: Scenario[] = [
@@ -147,13 +141,8 @@ export const SCENARIOS: Scenario[] = [
     language: 'fr',
     channel: 'whatsapp',
     phone: '+33611111114',
-    setup: (engine) => {
-      // Eleven tables can seat two: fill them all at 20:00 on Friday.
-      for (let index = 0; index < 11; index += 1) {
-        staffBooked(engine, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: `Client ${index + 1}` });
-      }
-      return {};
-    },
+    // Eleven tables can seat two: all of them are taken at 20:00 on Friday.
+    setup: Array.from({ length: 11 }, (_, index) => ({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: `Client ${index + 1}` })),
     turns: ['Bonsoir, une table pour 2 vendredi à 20h, c’est possible ?', 'Va pour 21 h 30 alors.', 'Au nom de Leroy.', 'Oui, merci.'],
     expect: [{ kind: 'booking', date: '2026-10-16', time: '21:30', partySize: 2, name: /leroy/i }],
   },
@@ -250,9 +239,7 @@ export const SCENARIOS: Scenario[] = [
     language: 'fr',
     channel: 'whatsapp',
     phone: '+33611111117',
-    setup: (engine) => ({
-      friday: staffBooked(engine, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Lefèvre', phone: '+33611111117' }),
-    }),
+    setup: [{ ref: 'friday', date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Lefèvre', phone: '+33611111117' }],
     turns: ['Bonjour, je dois annuler ma réservation de vendredi soir.', 'Oui, annulez-la s’il vous plaît.'],
     expect: [{ kind: 'cancelled', ref: 'friday' }, { kind: 'no_booking' }],
   },
@@ -263,9 +250,7 @@ export const SCENARIOS: Scenario[] = [
     language: 'en',
     channel: 'whatsapp',
     phone: '+447700900106',
-    setup: (engine) => ({
-      saturday: staffBooked(engine, { date: '2026-10-17', time: '20:00', partySize: 2, guestName: 'Wilson', phone: '+447700900106' }),
-    }),
+    setup: [{ ref: 'saturday', date: '2026-10-17', time: '20:00', partySize: 2, guestName: 'Wilson', phone: '+447700900106' }],
     turns: ['Hi, can I move my Saturday dinner booking to 9pm?', 'Yes please.'],
     expect: [{ kind: 'moved', ref: 'saturday', date: '2026-10-17', time: '21:00' }, { kind: 'no_booking' }],
   },

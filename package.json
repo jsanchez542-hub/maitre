@@ -31,7 +31,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "vitest run --config vitest.evals.config.ts evals/run.eval.ts",
-    "eval:rescore": "vitest run --config vitest.evals.config.ts evals/rescore.eval.ts"
+    "eval:rescore": "vitest run --config vitest.evals.config.ts evals/rescore.eval.ts",
+    "eval:export": "vitest run --config vitest.evals.config.ts evals/export.eval.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
