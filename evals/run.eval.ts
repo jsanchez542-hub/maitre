@@ -4,11 +4,11 @@ import { expect, it } from 'vitest';
 import { respond, type TurnResult } from '../src/agent/agent.js';
 import { openRouterModel } from '../src/agent/providers/openai.js';
 import { ModelError, type LanguageModel } from '../src/agent/model.js';
+import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
 import { BookingEngine, type Session } from '../src/engine.js';
 import { randomIds } from '../src/ids.js';
 import { MemoryStore } from '../src/store.js';
 import { checkScenario, type Check } from './checks.js';
-import { EVAL_RESTAURANT } from './restaurant.js';
 import { NOW, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
@@ -66,7 +66,7 @@ function percentile(values: number[], fraction: number): number {
 
 async function runScenario(model: LanguageModel, scenario: Scenario, run: number): Promise<RunRecord> {
   const store = new MemoryStore();
-  const engine = new BookingEngine(EVAL_RESTAURANT, store, { now: () => NOW, ids: randomIds });
+  const engine = new BookingEngine(DEMO_RESTAURANT, store, { now: () => NOW, ids: randomIds });
   const refs = scenario.setup?.(engine) ?? {};
   const before = new Set(store.snapshot().bookings.map((booking) => booking.id));
   const session: Session = {

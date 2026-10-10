@@ -1,10 +1,10 @@
-import type { Dish } from '../src/allergens.js';
-import type { BusinessConfig, Sitting } from '../src/config.js';
+import type { Dish } from '../allergens.js';
+import type { BusinessConfig, Sitting } from '../config.js';
 
 /**
- * The restaurant the evaluation talks to. Invented, with a Bordeaux menu and
- * allergen sheets left incomplete on purpose: an assistant that is never asked
- * about an undocumented allergen is never caught guessing one.
+ * The invented restaurant of the demo and of the evaluation: a Bordeaux menu,
+ * and allergen sheets left incomplete on purpose, because an assistant that is
+ * never asked about an undocumented allergen is never caught guessing one.
  */
 
 const lunch: Sitting = { service: 'lunch', firstSeating: '12:00', lastSeating: '13:45' };
@@ -20,7 +20,7 @@ const dish = (
   allergens: Dish['allergens'],
 ): Dish => ({ id, category, name: { fr, en, es }, priceCents, allergens });
 
-export const EVAL_MENU: Dish[] = [
+export const DEMO_MENU: Dish[] = [
   dish('onion-soup', 'starter', 'Soupe à l’oignon gratinée', 'French onion soup', 'Sopa de cebolla gratinada', 900, {
     gluten: 'contains',
     milk: 'contains',
@@ -76,8 +76,8 @@ export const EVAL_MENU: Dish[] = [
 
 const text = (fr: string, en: string, es: string) => ({ fr, en, es });
 
-export const EVAL_RESTAURANT: BusinessConfig = {
-  id: 'eval-bistro',
+export const DEMO_RESTAURANT: BusinessConfig = {
+  id: 'demo',
   name: 'Bistro de test',
   timeZone: 'Europe/Paris',
   languages: ['fr', 'en', 'es'],
@@ -112,7 +112,7 @@ export const EVAL_RESTAURANT: BusinessConfig = {
   maxAdvanceDays: 60,
   holdMinutes: 5,
   maxPartySize: 6,
-  menu: EVAL_MENU,
+  menu: DEMO_MENU,
   faq: [
     {
       id: 'parking',

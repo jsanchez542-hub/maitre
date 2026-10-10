@@ -13,6 +13,10 @@
     "./agent": {
       "types": "./dist/agent/index.d.ts",
       "import": "./dist/agent/index.js"
+    },
+    "./demo": {
+      "types": "./dist/demo/index.d.ts",
+      "import": "./dist/demo/index.js"
     }
   },
   "types": "./dist/index.d.ts",

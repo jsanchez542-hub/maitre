@@ -4,8 +4,8 @@ import { NO_USAGE } from '../src/agent/model.js';
 import type { Booking } from '../src/store.js';
 import { checkScenario, detectLanguage, normalize, type Outcome } from '../evals/checks.js';
 import { SCENARIOS, type Scenario } from '../evals/scenarios.js';
-import { EVAL_RESTAURANT } from '../evals/restaurant.js';
 import { validateConfig } from '../src/config.js';
+import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
 
 const THIN = ' ';
 
@@ -46,7 +46,7 @@ function outcome(change: Partial<Outcome>): Outcome {
 
 describe('the evaluation harness', () => {
   it('runs on a valid restaurant and scenarios with unique ids', () => {
-    expect(validateConfig(EVAL_RESTAURANT)).toEqual([]);
+    expect(validateConfig(DEMO_RESTAURANT)).toEqual([]);
     const ids = SCENARIOS.map((candidate) => candidate.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
