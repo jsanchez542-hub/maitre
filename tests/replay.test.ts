@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { restaurantFingerprint } from '../evals/fingerprint.js';
+import { RECORDED_WITH, RECORDINGS } from '../src/demo/recordings.js';
 import { applySetup, Replay, ReplayError, type Recording } from '../src/demo/replay.js';
 import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
 import { BookingEngine } from '../src/engine.js';
@@ -92,5 +94,31 @@ describe('replaying a recorded conversation', () => {
     const engine = new BookingEngine(DEMO_RESTAURANT, new MemoryStore(), { now: () => new Date('2026-10-14T08:00:00Z'), ids: sequentialIds() });
     expect(Object.keys(applySetup(engine, [{ ref: 'one', date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Leroy' }]))).toEqual(['one']);
     expect(() => applySetup(engine, [{ date: '2026-10-19', time: '20:00', partySize: 2, guestName: 'Lundi' }])).toThrow(/could not be made: unavailable/);
+  });
+});
+
+describe('the recorded conversations of the demo', () => {
+  it('talk about the restaurant as it is now', () => {
+    // If this fails, the demo restaurant changed: run the evaluation for the chosen model and export again.
+    expect(RECORDED_WITH).toBe(restaurantFingerprint(DEMO_RESTAURANT));
+  });
+
+  it('all play back to the end on today’s engine', () => {
+    expect(RECORDINGS.length).toBeGreaterThanOrEqual(15);
+    for (const recording of RECORDINGS) {
+      const replay = new Replay(recording);
+      let played = 0;
+      while (replay.next()) played += 1;
+      expect(played, recording.id).toBe(recording.turns.length);
+    }
+  });
+
+  it('never show a guest’s number in a reply', () => {
+    for (const recording of RECORDINGS) {
+      if (!recording.phone) continue;
+      const national = recording.phone.slice(-9);
+      // \s covers the non-breaking spaces a French number may be written with.
+      for (const turn of recording.turns) expect(turn.reply.replace(/[\s.-]/g, ''), recording.id).not.toContain(national);
+    }
   });
 });
