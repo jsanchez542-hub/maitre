@@ -38,6 +38,8 @@ export interface Messages {
   dishMayContain(dish: string, allergen: Allergen): string;
   dishFree(dish: string, allergen: Allergen): string;
   dishUnknown(dish: string, allergen: Allergen): string;
+  /** For the team: the allergens a guest asked about that a dish's sheet does not cover. */
+  allergenQuestion(dish: string, allergens: readonly Allergen[]): string;
   /**
    * The first words of a conversation, written here and not by the model. On the
    * phone they say it is an AI and that the call may be recorded, as the law asks.

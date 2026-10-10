@@ -36,6 +36,7 @@ const MIGRATIONS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS holds_by_date ON holds (date, expires_at)`,
   `CREATE INDEX IF NOT EXISTS holds_by_session ON holds (session_id)`,
   `CREATE TABLE IF NOT EXISTS callbacks (id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS callbacks_by_status ON callbacks (status, created_at)`,
 ];
 
 type Row = Record<string, SqlStorageValue>;
@@ -120,12 +121,7 @@ export class SqlStore implements BookingStore {
       deleteHold: (id) => {
         sql.exec(`DELETE FROM holds WHERE id = ?`, id);
       },
-      deleteExpiredHolds: (nowMs) => {
-        // The counters of a cursor are only final once it has been read to the end.
-        const cursor = sql.exec(`DELETE FROM holds WHERE expires_at <= ?`, nowMs);
-        cursor.toArray();
-        return cursor.rowsWritten;
-      },
+      deleteExpiredHolds: (nowMs) => written(sql.exec(`DELETE FROM holds WHERE expires_at <= ?`, nowMs)),
 
       saveCallback: (request) => {
         sql.exec(
@@ -138,7 +134,13 @@ export class SqlStore implements BookingStore {
         );
       },
       callback: (id) => parse<CallbackRequest>(rows(`SELECT data FROM callbacks WHERE id = ?`, id))[0],
-      callbacks: () => parse<CallbackRequest>(rows(`SELECT data FROM callbacks ORDER BY created_at`)),
+      openCallbacks: () => parse<CallbackRequest>(rows(`SELECT data FROM callbacks WHERE status = 'open' ORDER BY created_at`)),
     };
   }
+}
+
+/** Rows a statement changed. A cursor's counters are only final once it has been read to the end. */
+function written(cursor: SqlStorageCursor<Row>): number {
+  cursor.toArray();
+  return cursor.rowsWritten;
 }

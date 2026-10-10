@@ -109,7 +109,8 @@ export interface BookingTx {
 
   saveCallback(request: CallbackRequest): void;
   callback(id: string): CallbackRequest | undefined;
-  callbacks(): CallbackRequest[];
+  /** Requests the team has not dealt with yet, oldest first. */
+  openCallbacks(): CallbackRequest[];
 }
 
 /**
@@ -198,22 +199,25 @@ export class MemoryStore implements BookingStore {
       deleteHold: (id) => {
         state().holds.delete(id);
       },
-      deleteExpiredHolds: (nowMs) => {
-        let removed = 0;
-        for (const [id, hold] of state().holds) {
-          if (hold.expiresAt <= nowMs) {
-            state().holds.delete(id);
-            removed += 1;
-          }
-        }
-        return removed;
-      },
+      deleteExpiredHolds: (nowMs) => removeWhere(state().holds, (hold) => hold.expiresAt <= nowMs),
 
       saveCallback: (request) => {
         state().callbacks.set(request.id, Object.freeze({ ...request }));
       },
       callback: (id) => state().callbacks.get(id),
-      callbacks: () => [...state().callbacks.values()],
+      openCallbacks: () =>
+        [...state().callbacks.values()].filter((c) => c.status === 'open').sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     };
   }
+}
+
+function removeWhere<T>(records: Map<string, T>, condition: (record: T) => boolean): number {
+  let removed = 0;
+  for (const [id, record] of records) {
+    if (condition(record)) {
+      records.delete(id);
+      removed += 1;
+    }
+  }
+  return removed;
 }

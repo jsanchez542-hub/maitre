@@ -97,8 +97,9 @@ function everySentence(language: Language): string[] {
       m.dishUnknown('Plat', allergen),
     );
   }
+  sentences.push(m.allergenQuestion('Plat', ['nuts']), m.allergenQuestion('Plat', ['milk', 'sesame']));
   for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) sentences.push(m.greeting('Le Bistro', channel));
-  sentences.push(m.failureHandedOver(), m.failureRetry(), m.emptyMessage());
+  sentences.push(m.failureHandedOver(), m.failureRetry(), m.emptyMessage(), m.walkInGuest());
   return sentences;
 }
 

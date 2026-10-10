@@ -68,6 +68,9 @@ export const es: Messages = {
       'Prefiero trasladar su pregunta al equipo antes que adivinar.'
     );
   },
+  allergenQuestion(dish, allergens) {
+    return `Alérgenos que la ficha del plato «${dish}» no indica: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
+  },
   greeting(business, channel) {
     if (channel === 'voice') {
       return (

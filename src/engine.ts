@@ -149,7 +149,10 @@ export const HANDOFF_REASONS: readonly HandoffReason[] = [
   'other',
 ];
 
-export type CallbackResult = { status: 'recorded'; id: string } | { status: 'invalid'; problems: string[] };
+export type CallbackResult =
+  /** `needsPhone`: the team has the request but no number to call back on yet. */
+  | { status: 'recorded'; id: string; needsPhone?: true }
+  | { status: 'invalid'; problems: string[] };
 
 export interface DayHours {
   date: PlainDate;
@@ -576,7 +579,11 @@ export class BookingEngine {
     });
   }
 
-  /** Passes something the assistant cannot handle to the team, who call the guest back. */
+  /**
+   * Passes something the assistant cannot handle to the team, who call the
+   * guest back. A second request of the same kind in the same conversation is
+   * added to the first, so the team calls once about both.
+   */
   requestCallback(session: Session, request: { reason: string; summary: string }): CallbackResult {
     const problems: string[] = [];
     const reason = HANDOFF_REASONS.find((candidate) => candidate === request.reason);
@@ -585,19 +592,54 @@ export class BookingEngine {
     if (!summary) problems.push(`summary must be 1 to ${SUMMARY_MAX} characters of plain text`);
     if (!reason || !summary) return { status: 'invalid', problems };
     const clock = this.#clock();
-    const callback: CallbackRequest = {
-      id: this.#deps.ids.id(),
-      sessionId: session.id,
-      channel: session.channel,
-      language: session.language,
-      ...(session.phone ? { phone: session.phone.e164 } : {}),
-      reason,
-      summary,
-      status: 'open',
-      createdAt: new Date(clock.nowMs).toISOString(),
-    };
-    this.#store.transaction((tx) => tx.saveCallback(callback));
-    return { status: 'recorded', id: callback.id };
+    const phone = session.phone?.e164;
+    const callback = this.#store.transaction((tx): CallbackRequest => {
+      const earlier = tx.openCallbacks().find((open) => open.sessionId === session.id && open.reason === reason);
+      if (earlier) {
+        const joined = `${earlier.summary} ${summary}`;
+        const merged: CallbackRequest = {
+          ...earlier,
+          // When both no longer fit, the first is kept whole: the team hears the rest on the call.
+          ...(earlier.summary.includes(summary) || joined.length > SUMMARY_MAX ? {} : { summary: joined }),
+          ...(phone && !earlier.phone ? { phone } : {}),
+        };
+        tx.saveCallback(merged);
+        return merged;
+      }
+      const created: CallbackRequest = {
+        id: this.#deps.ids.id(),
+        sessionId: session.id,
+        channel: session.channel,
+        language: session.language,
+        ...(phone ? { phone } : {}),
+        reason,
+        summary,
+        status: 'open',
+        createdAt: new Date(clock.nowMs).toISOString(),
+      };
+      tx.saveCallback(created);
+      return created;
+    });
+    return { status: 'recorded', id: callback.id, ...(callback.phone ? {} : { needsPhone: true as const }) };
+  }
+
+  /**
+   * Gives the guest's number, once the channel has it, to the requests they
+   * made before it was known: a web guest types it in the chat's field after
+   * the team was already asked to call. Returns how many requests it reached.
+   */
+  addPhoneToCallbacks(session: Session): number {
+    const phone = session.phone?.e164;
+    if (!phone || !isE164(phone)) return 0;
+    return this.#store.transaction((tx) => {
+      let added = 0;
+      for (const open of tx.openCallbacks()) {
+        if (open.sessionId !== session.id || open.phone) continue;
+        tx.saveCallback({ ...open, phone });
+        added += 1;
+      }
+      return added;
+    });
   }
 
   /** Opening hours of one day, or of the next seven when no day is given. Exceptions included. */
@@ -627,7 +669,7 @@ export class BookingEngine {
       const sittings = sittingsOn(this.#config, date);
       const covers = (bookings: Booking[]): number => bookings.reduce((sum, booking) => sum + booking.partySize, 0);
       const exception = this.#config.exceptions.find((candidate) => candidate.date === date);
-      const open = tx.callbacks().filter((callback) => callback.status === 'open');
+      const open = tx.openCallbacks();
 
       return {
         date,

@@ -70,6 +70,9 @@ export const en: Messages = {
       'I would rather pass your question on to the team than guess.'
     );
   },
+  allergenQuestion(dish, allergens) {
+    return `Allergens the sheet for ${dish} does not cover: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
+  },
   greeting(business, channel) {
     if (channel === 'voice') {
       return `Hello, you have reached ${business}. I am the automated booking assistant, an AI, and this call may be recorded. How can I help?`;

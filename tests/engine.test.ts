@@ -392,6 +392,35 @@ describe('handing over to the team', () => {
     expect(h.engine.requestCallback(guest('g1'), { reason: 'whatever', summary: 'x' })).toMatchObject({ status: 'invalid' });
     expect(h.engine.requestCallback(guest('g1'), { reason: 'other', summary: '   ' })).toMatchObject({ status: 'invalid' });
   });
+
+  it('adds a second request of the same kind to the first, so the team calls once about both', () => {
+    const h = harness();
+    const first = h.engine.requestCallback(guest('g1'), { reason: 'allergy_question', summary: 'Mousse : fruits à coque ?' });
+    expect(h.engine.requestCallback(guest('g1'), { reason: 'allergy_question', summary: 'Mousse : fruits à coque ?' })).toEqual(first);
+    expect(h.engine.requestCallback(guest('g1'), { reason: 'allergy_question', summary: 'Soupe : sésame ?' })).toEqual(first);
+    expect(h.store.snapshot().callbacks).toMatchObject([{ summary: 'Mousse : fruits à coque ? Soupe : sésame ?' }]);
+
+    // Another reason, another conversation, or a request the team has already dealt with starts a new one.
+    h.engine.requestCallback(guest('g1'), { reason: 'complaint', summary: 'Plat froid' });
+    h.engine.requestCallback(guest('g2', '+33698765432'), { reason: 'allergy_question', summary: 'Mousse : fruits à coque ?' });
+    if (first.status !== 'recorded') throw new Error('expected a request');
+    h.engine.completeCallback(first.id);
+    expect(h.engine.requestCallback(guest('g1'), { reason: 'allergy_question', summary: 'Tarte : œufs ?' })).not.toEqual(first);
+    expect(h.store.snapshot().callbacks).toHaveLength(4);
+  });
+
+  it('gives a number typed later to the requests made before it', () => {
+    const h = harness();
+    const web = guest('w1', null, 'fr', 'web');
+    expect(h.engine.requestCallback(web, { reason: 'complaint', summary: 'Plat froid' })).toMatchObject({ status: 'recorded', needsPhone: true });
+    expect(h.engine.addPhoneToCallbacks(web)).toBe(0);
+
+    const typed = { ...web, phone: { e164: '+33655555555', source: 'form' as const } };
+    expect(h.engine.addPhoneToCallbacks(typed)).toBe(1);
+    expect(h.store.snapshot().callbacks[0]).toMatchObject({ phone: '+33655555555' });
+    expect(h.engine.addPhoneToCallbacks(typed)).toBe(0);
+    expect(h.engine.requestCallback(typed, { reason: 'complaint', summary: 'Plat froid' })).not.toHaveProperty('needsPhone');
+  });
 });
 
 describe('opening hours', () => {

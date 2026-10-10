@@ -86,23 +86,39 @@ describe('running tools', () => {
         { allergen: 'gluten', answer: 'free' },
         { allergen: 'celery', answer: 'may_contain' },
       ],
-      passToTeam: false,
     });
+    expect(h.store.snapshot().callbacks).toEqual([]);
   });
 
-  it('says it does not know, and asks for the team, when the sheet is silent', () => {
+  it('says it does not know when the sheet is silent, and passes the question to the team itself', () => {
     const h = harness();
     const mousse = runTool(h.engine, guest('g1', '+447700900123', 'en'), 'check_dish', {
       dishId: 'chocolate-mousse',
       allergens: ['nuts'],
     });
-    expect(mousse).toMatchObject({ status: 'ok', passToTeam: true, findings: [{ allergen: 'nuts', answer: 'unknown' }] });
+    expect(mousse).toMatchObject({ status: 'ok', passedToTeam: true, findings: [{ allergen: 'nuts', answer: 'unknown' }] });
+    expect(mousse).not.toHaveProperty('needsPhone');
     expect(mousse['sayExactly']).toEqual([
       'The allergen sheet for Chocolate mousse does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.',
+    ]);
+    // Recorded by the code, not left to the model: a model that promises and forgets leaves an allergic guest waiting.
+    expect(h.store.snapshot().callbacks).toMatchObject([
+      { sessionId: 'g1', reason: 'allergy_question', phone: '+447700900123', summary: 'Allergens the sheet for Chocolate mousse does not cover: tree nuts.' },
     ]);
     expect(runTool(h.engine, guest('g1'), 'check_dish', { dishId: 'tiramisu', allergens: ['eggs'] })).toMatchObject({
       status: 'unknown_dish',
     });
+  });
+
+  it('asks a web guest for a number when the team cannot call back without one', () => {
+    const h = harness();
+    const web = guest('w1', null, 'fr', 'web');
+    const mousse = runTool(h.engine, web, 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] });
+    expect(mousse).toMatchObject({ passedToTeam: true, needsPhone: true });
+    expect(String(mousse['instruction'])).toContain('field shown below the chat');
+    const handOver = runTool(h.engine, web, 'hand_over', { reason: 'complaint', summary: 'Plat froid hier soir' });
+    expect(handOver).toMatchObject({ status: 'recorded', needsPhone: true });
+    expect(String(handOver['instruction'])).toContain('field shown below the chat');
   });
 
   it('lists safe and undocumented dishes apart', () => {

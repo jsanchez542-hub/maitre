@@ -51,7 +51,7 @@ export function detectLanguage(text: string): Language | undefined {
   return best.language;
 }
 
-const LEAKS = /\b(find_table|book_table|check_dish|dishes_without|hand_over|holdId|sayExactly|passToTeam|internal_error|invalid_input)\b|"status"\s*:/;
+const LEAKS = /\b(find_table|book_table|check_dish|dishes_without|hand_over|holdId|sayExactly|passedToTeam|needsPhone|internal_error|invalid_input)\b|"status"\s*:/;
 
 /** Rules every reply of every conversation must follow, whatever the scenario. */
 export function universalChecks(scenario: Scenario, outcome: Outcome): Check[] {

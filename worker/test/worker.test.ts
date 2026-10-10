@@ -44,7 +44,7 @@ function stub() {
 
 interface StaffDay {
   bookings: Record<string, unknown>[];
-  callbacks: { open: number };
+  callbacks: { open: number; list: Record<string, unknown>[] };
 }
 
 async function staffDay(date: string): Promise<StaffDay> {
@@ -250,6 +250,19 @@ describe('conversations', () => {
     });
     expect(typed.status).toBe(400);
     expect(requests).toHaveLength(3);
+  });
+
+  it('asks a web guest for a number the team needs, and gives it to the request already made', async () => {
+    fakeOpenRouter([
+      call('hand_over', { reason: 'complaint', summary: 'Plat arrivé froid hier soir' }),
+      say('Je transmets à l’équipe. Laissez votre numéro dans le champ sous la conversation pour qu’elle vous rappelle.'),
+    ]);
+    const { answer } = await chat({ sessionId: 'web-session-0002', channel: 'web', language: 'fr', message: 'Mon plat était froid hier soir' });
+    expect(answer).toMatchObject({ status: 'ok', askForPhone: true });
+    expect((await staffDay(nextWeek('friday'))).callbacks.list[0]).not.toHaveProperty('phone');
+
+    await SELF.fetch(`${BASE}/sessions/web-session-0002/phone`, { method: 'POST', headers: AGENT, body: JSON.stringify({ phone: '06 99 99 99 99' }) });
+    expect((await staffDay(nextWeek('friday'))).callbacks.list[0]).toMatchObject({ reason: 'complaint', phone: '+33 6 99 99 99 99' });
   });
 
   it('answers in its own words and leaves a callback for the staff when the model is down', async () => {

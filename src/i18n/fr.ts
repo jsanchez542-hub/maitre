@@ -76,6 +76,9 @@ export const fr: Messages = {
       'Je préfère transmettre votre question à l’équipe plutôt que de deviner.'
     );
   },
+  allergenQuestion(dish, allergens) {
+    return `Allergènes que la fiche du plat ${quoted(dish)} ne précise pas${THIN}: ${allergens.map((allergen) => ALLERGEN_WORDS[allergen].name).join(', ')}.`;
+  },
   greeting(business, channel) {
     if (channel === 'voice') {
       return (

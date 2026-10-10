@@ -1,7 +1,7 @@
 import { ALLERGENS, isAllergen, type Allergen, type DishCategory } from './allergens.js';
 import { DAY_FORMS, parseDay, type DateSpec } from './dates.js';
-import { HANDOFF_REASONS, type BookingEngine, type Session } from './engine.js';
-import { localize } from './i18n/index.js';
+import { HANDOFF_REASONS, type BookingEngine, type CallbackResult, type Session } from './engine.js';
+import { localize, messages } from './i18n/index.js';
 import { checkDish, menuView, safeDishes } from './menu.js';
 import type { Channel } from './store.js';
 
@@ -148,7 +148,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'check_dish',
     description:
-      'What the kitchen’s allergen sheet says about one dish. Reply with the `sayExactly` sentences word for word: do not rephrase, soften, summarise or add to them, and never answer an allergen question without this tool. If `passToTeam` is true, also call hand_over with reason "allergy_question".',
+      'What the kitchen’s allergen sheet says about one dish. Reply with the `sayExactly` sentences word for word: do not rephrase, soften, summarise or add to them, and never answer an allergen question without this tool. When the sheet does not cover an allergen, this tool has already passed the question to the team (`passedToTeam`): do not call hand_over for it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -185,7 +185,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'hand_over',
     description:
-      'Passes the conversation to the team, who call the guest back. Use it for parties larger than the maximum, events, complaints, allergy questions the sheet does not answer, and anything you cannot do. Tell the guest the team will get back to them.',
+      'Passes the conversation to the team, who call the guest back. Use it for parties larger than the maximum, events, complaints and anything you cannot do. Allergy questions the sheet does not cover are passed on by check_dish itself. Tell the guest the team will get back to them.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -204,6 +204,15 @@ const PHONE_INSTRUCTIONS: Record<Channel, string> = {
   whatsapp: 'The number of this conversation is missing. Apologise and use hand_over.',
   staff: 'Enter the guest’s phone number in the booking form.',
 };
+
+/**
+ * When the team has a request but no number to call back on, the channel asks
+ * for one: `needsPhone` makes the web chat show its phone field.
+ */
+function phoneRequest(result: CallbackResult, channel: Channel): { needsPhone?: true; instruction?: string } {
+  if (result.status !== 'recorded' || !result.needsPhone || (channel !== 'web' && channel !== 'voice')) return {};
+  return { needsPhone: true, instruction: `The team needs a number to call the guest back. ${PHONE_INSTRUCTIONS[channel]}` };
+}
 
 type Input = Record<string, unknown>;
 
@@ -339,12 +348,18 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
       if (check.list.length > 0 || dishId === undefined || !allergens) return invalid(check.list);
       const result = checkDish(engine.config, language, dishId, allergens);
       if (result.status !== 'ok') return { status: 'unknown_dish', hint: 'Call get_menu for the dish ids.' };
+      // The sheet's own sentence tells the guest the question goes to the team, so the code sends it
+      // rather than trusting the model to: a model that says so and does not is a guest left waiting.
+      const unknown = result.findings.filter((finding) => finding.answer === 'unknown').map((finding) => finding.allergen);
+      const team = result.passToTeam
+        ? engine.requestCallback(session, { reason: 'allergy_question', summary: messages(language).allergenQuestion(result.dish, unknown) })
+        : undefined;
       return {
         status: 'ok',
         dish: result.dish,
         sayExactly: result.findings.map((finding) => finding.sentence),
         findings: result.findings.map(({ allergen, answer }) => ({ allergen, answer })),
-        passToTeam: result.passToTeam,
+        ...(team?.status === 'recorded' ? { passedToTeam: true, ...phoneRequest(team, session.channel) } : {}),
       };
     }
     case 'dishes_without': {
@@ -369,7 +384,8 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
       const reason = check.text(input, 'reason', true);
       const summary = check.text(input, 'summary', true);
       if (reason === undefined || summary === undefined) return invalid(check.list);
-      return engine.requestCallback(session, { reason, summary });
+      const result = engine.requestCallback(session, { reason, summary });
+      return { ...result, ...phoneRequest(result, session.channel) };
     }
     default:
       return { status: 'unknown_tool', tools: TOOL_DEFINITIONS.map((tool) => tool.name) };

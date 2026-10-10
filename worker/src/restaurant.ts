@@ -132,7 +132,7 @@ export class Restaurant extends DurableObject<Env> {
         status: 'ok',
         reply: result.reply,
         outcome: result.outcome,
-        askForPhone: result.tools.some((tool) => tool.output.status === 'phone_required'),
+        askForPhone: result.tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true),
       };
     });
   }
@@ -147,6 +147,8 @@ export class Restaurant extends DurableObject<Env> {
       if (!stored) return { status: 'invalid', problems: ['unknown session'] } as Invalid;
       if (stored.channel !== 'web') return { status: 'invalid', problems: ['only the web chat takes a number from its form'] } as Invalid;
       this.#conversations.save({ ...stored, phone: e164, phoneSource: 'form', updatedAt: new Date().toISOString() });
+      // The team may already have been asked to call back, before the number was known.
+      this.#engine.addPhoneToCallbacks({ id: sessionId, channel: 'web', language: stored.language, phone: { e164, source: 'form' } });
       return { status: 'ok' as const, phone: formatPhone(e164) };
     });
   }
@@ -162,6 +164,8 @@ export class Restaurant extends DurableObject<Env> {
     const phone = keypad ? { e164: keypad, source: 'keypad' as const } : callerId ? { e164: callerId, source: 'caller_id' as const } : undefined;
     const session: Session = { id: request.sessionId, channel: 'voice', language: request.language, ...(phone ? { phone } : {}) };
     const output = runTool(this.#engine, session, request.name, request.input, (error) => console.error('Maître tool failed:', describe(error)));
+    // A caller without caller ID types the number on the keypad: requests made before then get it too.
+    if (phone) this.#engine.addPhoneToCallbacks(session);
     await this.#keepTidy();
     return output;
   }
