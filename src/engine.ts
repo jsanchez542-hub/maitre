@@ -236,7 +236,8 @@ export interface StaffBookRequest {
 
 export type StaffBookResult =
   | { status: 'booked'; booking: StaffBookingView }
-  | { status: 'unavailable'; reason: UnavailableReason }
+  /** With the nearest times the staff could book instead, by the staff's own rules. */
+  | { status: 'unavailable'; reason: UnavailableReason; alternatives: SlotOffer[] }
   | { status: 'invalid'; problems: string[] };
 
 export type StaffActionResult =
@@ -731,8 +732,13 @@ export class BookingEngine {
     if (problems.length > 0 || time === undefined || !guestName) return { status: 'invalid', problems };
 
     return this.#store.transaction((tx): StaffBookResult => {
-      const check = this.#check(tx, date, time, partySize, clock, { sessionId: '' }, new Map(), true);
-      if (!check.ok) return { status: 'unavailable', reason: check.reason };
+      const exclusions: Exclusions = { sessionId: '' };
+      const check = this.#check(tx, date, time, partySize, clock, exclusions, new Map(), true);
+      if (!check.ok) {
+        const alternatives =
+          check.reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true);
+        return { status: 'unavailable', reason: check.reason, alternatives };
+      }
       const id = this.#deps.ids.id();
       const stamp = new Date(clock.nowMs).toISOString();
       const booking: Booking = {
@@ -874,12 +880,13 @@ export class BookingEngine {
     language: Language,
     clock: Clock,
     exclusions: Exclusions,
+    staff = false,
   ): SlotOffer[] {
     const cache = new Map<PlainDate, Occupation[]>();
     const asked = toMinutes(time);
     const service = sittingAt(this.#config, date, time)?.service;
     const free = (day: PlainDate, slot: PlainTime): boolean =>
-      this.#check(tx, day, slot, partySize, clock, exclusions, cache).ok;
+      this.#check(tx, day, slot, partySize, clock, exclusions, cache, staff).ok;
     const byCloseness = (a: PlainTime, b: PlainTime): number =>
       Math.abs(toMinutes(a) - asked) - Math.abs(toMinutes(b) - asked) || toMinutes(a) - toMinutes(b);
     const slotsOfDay = (day: PlainDate): PlainTime[] =>

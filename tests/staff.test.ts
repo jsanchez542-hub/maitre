@@ -47,14 +47,17 @@ describe('bookings entered by the staff', () => {
     });
   });
 
-  it('respect capacity like everyone else', () => {
+  it('respect capacity like everyone else, and get the nearest free times instead', () => {
     const h = harness();
     const held = h.engine.findTable(guest('g1'), { date: FRIDAY, time: '20:00', partySize: 6 });
     expect(held.status).toBe('available');
-    expect(h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 6, guestName: 'Martin' })).toEqual({
-      status: 'unavailable',
-      reason: 'full',
-    });
+    const result = h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 6, guestName: 'Martin' });
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'full' });
+    // The table for six is held from 20:00 to 22:30: before it, 19:00 would end too late (21:30),
+    // so nothing fits that evening, and Saturday at 20:00 is the next offer.
+    expect(result.status === 'unavailable' && result.alternatives.map((offer) => `${offer.date} ${offer.time}`)).toEqual([
+      '2026-10-17 20:00',
+    ]);
   });
 
   it('read the phone number however it is typed and show it grouped', () => {
