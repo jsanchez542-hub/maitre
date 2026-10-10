@@ -1,8 +1,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { Replay, type Recording } from '../src/demo/replay.js';
-import type { RunRecord } from './report.js';
+import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
+import { restaurantFingerprint } from './fingerprint.js';
+import type { RunMeta, RunRecord } from './report.js';
 import { NOW, SCENARIOS } from './scenarios.js';
 
 /**
@@ -33,6 +35,13 @@ it('exports recorded conversations for the demo', () => {
   const records = JSON.parse(readFileSync(file, 'utf8')) as RunRecord[];
   // Files are named after the model, with its "/" written "_".
   const model = basename(file, '.json').replace('_', '/');
+  const metaFile = join(dirname(file), 'meta.json');
+  if (!existsSync(metaFile)) throw new Error(`${metaFile} is missing: there is no telling which restaurant this run talked about`);
+  const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as RunMeta;
+  const restaurant = restaurantFingerprint(DEMO_RESTAURANT);
+  if (meta.restaurant !== restaurant) {
+    throw new Error(`This run talked about another version of the restaurant (${meta.restaurant}; now ${restaurant}). Run the evaluation again.`);
+  }
 
   const recordings: Recording[] = [];
   const missing: string[] = [];
@@ -72,9 +81,12 @@ it('exports recorded conversations for the demo', () => {
   writeFileSync(
     'src/demo/recordings.ts',
     [
-      `// Written by \`npm run eval:export\` from evaluation run ${basename(dirname(file))}, model ${model}.`,
+      `// Written by \`npm run eval:export\` from evaluation run ${basename(dirname(file))} (commit ${meta.commit}), model ${model}.`,
       '// Record again rather than edit by hand: the tests play every conversation back on the engine.',
       "import type { Recording } from './replay.js';",
+      '',
+      '/** The restaurant the conversations talked about. A new name, dish or opening hour means recording them again. */',
+      `export const RECORDED_WITH = '${meta.restaurant}';`,
       '',
       `export const RECORDINGS: readonly Recording[] = ${JSON.stringify(recordings, null, 2)};`,
       '',

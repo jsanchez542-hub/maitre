@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -10,7 +11,8 @@ import { BookingEngine, type Session } from '../src/engine.js';
 import { randomIds } from '../src/ids.js';
 import { MemoryStore } from '../src/store.js';
 import { checkScenario } from './checks.js';
-import { failureLines, SUMMARY_HEADER, summaryRow, type RunRecord } from './report.js';
+import { restaurantFingerprint } from './fingerprint.js';
+import { failureLines, SUMMARY_HEADER, summaryRow, type RunMeta, type RunRecord } from './report.js';
 import { NOW, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
@@ -128,12 +130,21 @@ it('runs the evaluation against real models', async () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const directory = join('evals', 'runs', stamp);
   mkdirSync(directory, { recursive: true });
+  // What the run was made with, so its results and its recordings can be traced back to the code and the restaurant.
+  const git = (...args: string[]): string => execFileSync('git', args, { encoding: 'utf8' }).trim();
+  const meta: RunMeta = {
+    commit: git('rev-parse', '--short', 'HEAD'),
+    uncommittedChanges: git('status', '--porcelain') !== '',
+    restaurant: restaurantFingerprint(DEMO_RESTAURANT),
+  };
+  writeFileSync(join(directory, 'meta.json'), JSON.stringify(meta, null, 2));
 
   let spent = 0;
   const summary: string[] = [
     `# Evaluation ${stamp}`,
     '',
     `${scenarios.length} scenarios, ${runs} runs each. A scenario passes when every run passes.`,
+    `Commit ${meta.commit}${meta.uncommittedChanges ? ', with uncommitted changes' : ''}; restaurant ${meta.restaurant}.`,
     '',
     ...SUMMARY_HEADER,
   ];

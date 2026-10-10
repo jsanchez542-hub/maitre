@@ -25,6 +25,14 @@ export interface RunRecord {
   state?: { newBookings: unknown[]; allBookings: unknown[]; callbacks: unknown[]; refs: Record<string, string> };
 }
 
+/** Written next to a run's results as meta.json. */
+export interface RunMeta {
+  commit: string;
+  uncommittedChanges: boolean;
+  /** `restaurantFingerprint` of the restaurant the conversations talked about. */
+  restaurant: string;
+}
+
 export const SUMMARY_HEADER = [
   '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | Guard fired | Provider errors | Cost |',
   '|---|---|---|---|---|---|---|---|',
