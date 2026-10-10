@@ -70,4 +70,22 @@ export const en: Messages = {
       'I would rather pass your question on to the team than guess.'
     );
   },
+  greeting(business, channel) {
+    if (channel === 'voice') {
+      return `Hello, you have reached ${business}. I am the automated booking assistant, an AI, and this call may be recorded. How can I help?`;
+    }
+    return `Hello and welcome to ${business}. I am the booking assistant: I can find you a table and answer questions about the menu and opening hours. How can I help?`;
+  },
+  failureHandedOver() {
+    return 'I am sorry, something went wrong on my side. I have passed your request on to the team, who will get back to you.';
+  },
+  failureRetry() {
+    return 'I am sorry, something went wrong on my side. Could you try again in a moment?';
+  },
+  emptyMessage() {
+    return 'I did not receive a message. How can I help?';
+  },
+  walkInGuest() {
+    return 'Walk-in guest';
+  },
 };

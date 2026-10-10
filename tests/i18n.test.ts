@@ -97,8 +97,26 @@ function everySentence(language: Language): string[] {
       m.dishUnknown('Plat', allergen),
     );
   }
+  for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) sentences.push(m.greeting('Le Bistro', channel));
+  sentences.push(m.failureHandedOver(), m.failureRetry(), m.emptyMessage());
   return sentences;
 }
+
+describe('the first words of a conversation', () => {
+  it('say on the phone that the assistant is an AI and that the call may be recorded', () => {
+    expect(messages('fr').greeting('Le Bistro', 'voice')).toMatch(/intelligence artificielle[\s\S]*enregistré/);
+    expect(messages('en').greeting('Le Bistro', 'voice')).toMatch(/an AI[\s\S]*recorded/);
+    expect(messages('es').greeting('Le Bistro', 'voice')).toMatch(/inteligencia artificial[\s\S]*grabada/);
+  });
+
+  it('name the business in every language and channel', () => {
+    for (const language of LANGUAGES) {
+      for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) {
+        expect(messages(language).greeting('Le Bistro', channel)).toContain('Le Bistro');
+      }
+    }
+  });
+});
 
 describe('typography', () => {
   it('never uses an em dash or an en dash', () => {

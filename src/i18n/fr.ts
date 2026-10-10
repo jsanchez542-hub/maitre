@@ -76,4 +76,28 @@ export const fr: Messages = {
       'Je préfère transmettre votre question à l’équipe plutôt que de deviner.'
     );
   },
+  greeting(business, channel) {
+    if (channel === 'voice') {
+      return (
+        `Bonjour, vous êtes bien chez ${business}. Je suis l’assistant vocal de réservation, un programme ` +
+        `d’intelligence artificielle, et cet appel peut être enregistré. Que puis-je faire pour vous${THIN}?`
+      );
+    }
+    return (
+      `Bonjour et bienvenue chez ${business}. Je suis l’assistant de réservation${THIN}: je peux vous trouver ` +
+      `une table et vous renseigner sur la carte et les horaires. Que puis-je faire pour vous${THIN}?`
+    );
+  },
+  failureHandedOver() {
+    return 'Je suis désolé, je rencontre un problème technique. J’ai transmis votre demande à l’équipe, qui vous recontactera.';
+  },
+  failureRetry() {
+    return `Je suis désolé, je rencontre un problème technique. Pouvez-vous réessayer dans un instant${THIN}?`;
+  },
+  emptyMessage() {
+    return `Je n’ai pas reçu de message. Que puis-je faire pour vous${THIN}?`;
+  },
+  walkInGuest() {
+    return 'Client sur place';
+  },
 };

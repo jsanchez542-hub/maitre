@@ -68,4 +68,28 @@ export const es: Messages = {
       'Prefiero trasladar su pregunta al equipo antes que adivinar.'
     );
   },
+  greeting(business, channel) {
+    if (channel === 'voice') {
+      return (
+        `Hola, ha llamado a ${business}. Soy el asistente automático de reservas, un programa de inteligencia ` +
+        'artificial, y esta llamada puede ser grabada. ¿En qué puedo ayudarle?'
+      );
+    }
+    return (
+      `Hola y bienvenido a ${business}. Soy el asistente de reservas: puedo buscarle una mesa y responder ` +
+      'a sus preguntas sobre la carta y los horarios. ¿En qué puedo ayudarle?'
+    );
+  },
+  failureHandedOver() {
+    return 'Lo siento, tengo un problema técnico. He trasladado su solicitud al equipo, que se pondrá en contacto con usted.';
+  },
+  failureRetry() {
+    return 'Lo siento, tengo un problema técnico. ¿Puede intentarlo de nuevo en un momento?';
+  },
+  emptyMessage() {
+    return 'No he recibido ningún mensaje. ¿En qué puedo ayudarle?';
+  },
+  walkInGuest() {
+    return 'Cliente sin reserva';
+  },
 };

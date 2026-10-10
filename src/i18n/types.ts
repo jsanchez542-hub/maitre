@@ -1,4 +1,5 @@
 import type { Allergen } from '../allergens.js';
+import type { Channel } from '../store.js';
 
 export const LANGUAGES = ['fr', 'en', 'es'] as const;
 
@@ -37,4 +38,16 @@ export interface Messages {
   dishMayContain(dish: string, allergen: Allergen): string;
   dishFree(dish: string, allergen: Allergen): string;
   dishUnknown(dish: string, allergen: Allergen): string;
+  /**
+   * The first words of a conversation, written here and not by the model. On the
+   * phone they say it is an AI and that the call may be recorded, as the law asks.
+   */
+  greeting(business: string, channel: Channel): string;
+  /** Something failed and the team has been asked to call the guest back. */
+  failureHandedOver(): string;
+  /** Something failed and there is no number to call back: the guest is asked to try again. */
+  failureRetry(): string;
+  emptyMessage(): string;
+  /** The name shown for a party seated on the spot when the staff give none. */
+  walkInGuest(): string;
 }
