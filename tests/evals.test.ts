@@ -55,7 +55,10 @@ describe('the evaluation harness', () => {
     const checks = checkScenario(
       scenario,
       outcome({
-        turns: [turn('C’est réservé au nom de Dupont pour vendredi 16 octobre à 20 h. Nous vous attendons avec plaisir et vous souhaitons une belle soirée.')],
+        turns: [
+          turn('J’ai une table pour 4 personnes vendredi 16 octobre à 20 h. À quel nom, et y a-t-il des allergies à signaler ?'),
+          turn('C’est réservé au nom de Dupont pour vendredi 16 octobre à 20 h. Nous vous attendons avec plaisir et vous souhaitons une belle soirée.'),
+        ],
         newBookings: [booking({})],
       }),
     );
