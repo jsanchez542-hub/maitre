@@ -1,5 +1,5 @@
 import { isAllergen, type Allergen } from './allergens.js';
-import { peakUse, pickTableGroup, stayMinutes, type Occupation } from './availability.js';
+import { peakUse, stayMinutes, suitableGroups, type Occupation } from './availability.js';
 import {
   addDays,
   compareDates,
@@ -12,12 +12,13 @@ import {
   type PlainDate,
   type PlainTime,
 } from './calendar.js';
-import { assertValidConfig, type BusinessConfig, type Sitting, type TableGroup } from './config.js';
+import { assertValidConfig, type BusinessConfig, type Sitting, type TableGroup, type TableShape } from './config.js';
 import { resolveDate, type DateSpec } from './dates.js';
 import { formatBooking, formatDate, formatDateAtTime, formatTime, localize, messages, type Language } from './i18n/index.js';
 import { isReference, type IdSource } from './ids.js';
 import { formatPhone, isE164, normalizePhone } from './phone.js';
 import { isOnGrid, isOpenOn, sittingAt, sittingsOn, slotsOf, slotsOn } from './schedule.js';
+import { physicalTables, planGroup, type PhysicalTable, type Stay } from './seating.js';
 import {
   isActive,
   type Booking,
@@ -162,17 +163,28 @@ export interface DayHours {
   note?: string;
 }
 
+/** Where a party is in its evening, for the list and the plan. */
+export type ArrivalStage = 'expected' | 'arrived' | 'seated' | 'left' | 'cancelled' | 'no_show';
+
 /** A booking as the staff see it in the dashboard: everything, the phone number included. */
 export interface StaffBookingView {
   reference: string;
   date: PlainDate;
   time: PlainTime;
-  /** When the table is free again, on the 24-hour clock. */
+  /** When the table is free again, on the 24-hour clock: the time the party left, if it has. */
   endsAt: PlainTime;
   partySize: number;
   stayMinutes: number;
   tableGroup: string;
   seats: number;
+  /** The table on the plan, for every booking still to come or under way. */
+  table?: string;
+  /** Seated, or placed by the staff: the plan will not move it. */
+  tableFixed: boolean;
+  stage: ArrivalStage;
+  arrivedAt?: string;
+  seatedAt?: string;
+  leftAt?: string;
   service: string;
   guestName: string;
   status: BookingStatus;
@@ -211,13 +223,21 @@ export interface ServiceDay {
   open: boolean;
   note?: string;
   tables: { id: string; seats: number; count: number }[];
+  /** Every real table, with its place on the plan when the restaurant drew one. */
+  floor: FloorTableView[];
+  zones: { id: string; name: string }[];
+  /** Who looks after which tables, for each service of the day. */
+  sections: { service: string; waiter: string; waiterName: string; tables: string[] }[];
   sittings: { service: string; name: string; firstBooking: PlainTime; lastBooking: PlainTime; bookings: number; covers: number }[];
-  /** Every bookable time of the day: covers arriving in that slot and tables of each size in use at that moment. */
-  slots: { time: PlainTime; service: string; arrivals: number; inUse: Record<string, number> }[];
+  /**
+   * Every bookable time of the day: covers arriving in that slot, tables of
+   * each size in use at that moment, and covers planned to be in the room then.
+   */
+  slots: { time: PlainTime; service: string; arrivals: number; inUse: Record<string, number>; coversInRoom: number }[];
   /** In order of arrival, cancelled ones included. */
   bookings: StaffBookingView[];
-  /** Tables set aside while a guest finishes booking. */
-  holds: { time: PlainTime; partySize: number; tableGroup: string; expiresAt: string }[];
+  /** Tables set aside while a guest finishes booking, at the table the plan would give them. */
+  holds: { time: PlainTime; partySize: number; tableGroup: string; table?: string; expiresAt: string }[];
   totals: { bookings: number; covers: number; withAllergies: number; walkIns: number; cancelled: number; noShows: number };
   /** Open requests to call back, whatever their day. */
   callbacks: { open: number; largeGroups: number; list: CallbackView[] };
@@ -232,21 +252,50 @@ export interface StaffBookRequest {
   phone?: string;
   notes?: string;
   allergies?: readonly string[];
-  /** A party already in the restaurant ("sur place"). */
+  /** A party already in the restaurant ("sur place"): seated at once. */
   walkIn?: boolean;
+  /** A table the staff choose, by its number. Otherwise the plan gives one. */
+  table?: string;
   language?: Language;
 }
+
+export interface FloorTableView {
+  number: string;
+  group: string;
+  seats: number;
+  shape?: TableShape;
+  rotation?: 0 | 90;
+  x?: number;
+  y?: number;
+  zone?: string;
+}
+
+/** The tables that would take the party instead, by number. */
+export type TableTaken = { status: 'table_taken'; free: string[] };
 
 export type StaffBookResult =
   | { status: 'booked'; booking: StaffBookingView }
   /** With the nearest times the staff could book instead, by the staff's own rules. */
   | { status: 'unavailable'; reason: UnavailableReason; alternatives: SlotOffer[] }
+  | TableTaken
   | { status: 'invalid'; problems: string[] };
+
+export type StaffRefusal =
+  | 'already_cancelled'
+  | 'not_active'
+  | 'not_started'
+  | 'not_today'
+  | 'in_the_past'
+  | 'already_arrived'
+  | 'not_seated'
+  | 'already_left';
 
 export type StaffActionResult =
   | { status: 'done'; booking: StaffBookingView }
   | { status: 'not_found' }
-  | { status: 'not_allowed'; reason: 'already_cancelled' | 'not_active' | 'not_started' };
+  | { status: 'not_allowed'; reason: StaffRefusal };
+
+export type TableActionResult = StaffActionResult | TableTaken | { status: 'unknown_table' };
 
 interface Clock {
   today: PlainDate;
@@ -259,6 +308,16 @@ interface Exclusions {
   bookingId?: string;
 }
 
+/** What one request reads more than once: the stays around a day, and those of one table group. */
+interface PlanCache {
+  occupations: Map<PlainDate, Occupation[]>;
+  stays: Map<string, Stay[]>;
+}
+
+function newCache(): PlanCache {
+  return { occupations: new Map(), stays: new Map() };
+}
+
 type Check =
   | { ok: true; group: TableGroup; sitting: Sitting }
   | { ok: false; reason: UnavailableReason };
@@ -268,6 +327,14 @@ const NOTES_MAX = 500;
 const SUMMARY_MAX = 500;
 const ALTERNATIVE_DAYS = 14;
 const HISTORY_LENGTH = 20;
+
+/** A booking without its table, to be placed again. */
+function unseated(booking: Booking): Booking {
+  const copy: Booking = { ...booking };
+  delete copy.table;
+  delete copy.tableFixed;
+  return copy;
+}
 
 /** Collapses whitespace and refuses control characters, empty text and anything too long. */
 function cleanText(value: unknown, max: number): string | undefined {
@@ -353,7 +420,7 @@ export class BookingEngine {
         if (booking && booking.phone === session.phone.e164) exclusions.bookingId = booking.id;
       }
 
-      const check = this.#check(tx, date, time, partySize, clock, exclusions, new Map());
+      const check = this.#check(tx, date, time, partySize, clock, exclusions, newCache());
       if (!check.ok) {
         const requested = this.#offer(date, time, session.language, clock);
         if (check.reason === 'too_far_ahead') {
@@ -467,9 +534,11 @@ export class BookingEngine {
         createdAt: stamp,
         updatedAt: stamp,
       };
-      tx.saveBooking(booking);
+      // Only tables fixed by hand since the hold was taken can stop it here.
+      const seated = this.#seatAndSave(tx, booking, { sessionId: session.id }, clock.nowMs);
+      if (!seated) return { status: 'hold_expired' };
       tx.deleteHold(hold.id);
-      return { status: 'booked', booking: this.#view(booking, session.language, clock) };
+      return { status: 'booked', booking: this.#view(seated, session.language, clock) };
     });
   }
 
@@ -516,7 +585,8 @@ export class BookingEngine {
       const previous = { ...this.#offer(booking.date, booking.time, session.language, clock), partySize: booking.partySize };
       const stamp = new Date(clock.nowMs).toISOString();
       const moved: Booking = {
-        ...booking,
+        // At a new time the party needs a table again, wherever the staff had put it.
+        ...unseated(booking),
         holdId: hold.id,
         date: hold.date,
         time: hold.time,
@@ -532,9 +602,10 @@ export class BookingEngine {
         ].slice(-HISTORY_LENGTH),
         updatedAt: stamp,
       };
-      tx.saveBooking(moved);
+      const seated = this.#seatAndSave(tx, moved, { sessionId: session.id }, clock.nowMs);
+      if (!seated) return { status: 'hold_expired' };
       tx.deleteHold(hold.id);
-      return { status: 'changed', booking: this.#view(moved, session.language, clock), previous };
+      return { status: 'changed', booking: this.#view(seated, session.language, clock), previous };
     });
   }
 
@@ -670,6 +741,26 @@ export class BookingEngine {
       const covers = (bookings: Booking[]): number => bookings.reduce((sum, booking) => sum + booking.partySize, 0);
       const exception = this.#config.exceptions.find((candidate) => candidate.date === date);
       const open = tx.openCallbacks();
+      const holds = tx.holdsOn(date, clock.nowMs);
+      // Held tables, and bookings saved before tables were planned, get the table the plan
+      // would give them, for the view only: nothing is written.
+      const unplaced = new Map<string, string>();
+      const groupsToPlan = new Set([
+        ...active.filter((booking) => booking.table === undefined).map((booking) => booking.tableGroup),
+        ...holds.map((hold) => hold.tableGroup),
+      ]);
+      for (const group of groupsToPlan) {
+        const plan = planGroup(this.#stays(tx, date, group, { sessionId: '' }, clock.nowMs), this.#tableNumbers(group));
+        for (const [id, table] of plan ?? []) unplaced.set(id, table);
+      }
+      // Who is in the room at each moment, the late parties of the evening before included.
+      const present = [
+        ...tx
+          .bookingsOn(addDays(date, -1))
+          .filter(isActive)
+          .map((booking) => ({ booking, shift: -1440 })),
+        ...active.map((booking) => ({ booking, shift: 0 })),
+      ].map(({ booking, shift }) => ({ covers: booking.partySize, start: toMinutes(booking.time) + shift, end: this.#stayEnd(booking) + shift }));
 
       return {
         date,
@@ -677,6 +768,13 @@ export class BookingEngine {
         open: sittings.length > 0,
         ...(exception?.reason ? { note: localize(exception.reason, language) } : {}),
         tables: this.#config.tables.map(({ id, seats, count }) => ({ id, seats, count })),
+        floor: this.#floorView(),
+        zones: (this.#config.floor?.zones ?? []).map((zone) => ({ id: zone.id, name: localize(zone.name, language) })),
+        sections: sittings.flatMap((sitting) =>
+          (this.#config.waiters ?? [])
+            .filter((waiter) => waiter.services === undefined || waiter.services.includes(sitting.service))
+            .map((waiter) => ({ service: sitting.service, waiter: waiter.id, waiterName: waiter.name, tables: [...waiter.tables] })),
+        ),
         sittings: sittings.map((sitting) => {
           const first = toMinutes(sitting.firstSeating);
           const last = toMinutes(sitting.lastSeating);
@@ -700,15 +798,20 @@ export class BookingEngine {
               active.filter((booking) => toMinutes(booking.time) >= minute && toMinutes(booking.time) < minute + this.#config.slotMinutes),
             ),
             inUse: Object.fromEntries(this.#config.tables.map((group) => [group.id, peakUse(occupations, group.id, minute, minute + 1)])),
+            coversInRoom: present.filter((stay) => stay.start <= minute && minute < stay.end).reduce((sum, stay) => sum + stay.covers, 0),
           };
         }),
-        bookings: all.map((booking) => this.#staffView(booking, language, clock)),
-        holds: tx.holdsOn(date, clock.nowMs).map((hold) => ({
-          time: hold.time,
-          partySize: hold.partySize,
-          tableGroup: hold.tableGroup,
-          expiresAt: new Date(hold.expiresAt).toISOString(),
-        })),
+        bookings: all.map((booking) => this.#staffView(booking, language, clock, unplaced.get(booking.id))),
+        holds: holds.map((hold) => {
+          const table = unplaced.get(`hold ${hold.id}`);
+          return {
+            time: hold.time,
+            partySize: hold.partySize,
+            tableGroup: hold.tableGroup,
+            ...(table === undefined ? {} : { table }),
+            expiresAt: new Date(hold.expiresAt).toISOString(),
+          };
+        }),
         totals: {
           bookings: active.length,
           covers: covers(active),
@@ -771,12 +874,18 @@ export class BookingEngine {
       if (!isAllergen(allergen)) problems.push(`unknown allergen "${String(allergen).slice(0, 40)}"`);
       else if (!allergies.includes(allergen)) allergies.push(allergen);
     }
+    const chosen = request.table === undefined ? undefined : this.#physicalTable(request.table);
+    if (request.table !== undefined && !chosen) problems.push(`there is no table "${String(request.table).slice(0, 20)}"`);
+    else if (chosen && Number.isInteger(partySize) && chosen.seats < partySize) {
+      problems.push(`table ${chosen.number} seats ${chosen.seats}, not ${partySize}`);
+    }
     if (problems.length > 0 || time === undefined || !guestName) return { status: 'invalid', problems };
 
     return this.#store.transaction((tx): StaffBookResult => {
       const exclusions: Exclusions = { sessionId: '' };
-      const check = this.#check(tx, date, time, partySize, clock, exclusions, new Map(), true);
+      const check = this.#check(tx, date, time, partySize, clock, exclusions, newCache(), true, chosen?.group);
       if (!check.ok) {
+        if (chosen && check.reason === 'full') return { status: 'table_taken', free: this.#freeTablesAt(tx, date, time, partySize, clock.nowMs) };
         const alternatives =
           check.reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true);
         return { status: 'unavailable', reason: check.reason, alternatives };
@@ -792,6 +901,9 @@ export class BookingEngine {
         partySize,
         stayMinutes: stayMinutes(this.#config, partySize),
         tableGroup: check.group.id,
+        ...(chosen ? { table: chosen.number } : {}),
+        // A table chosen by the staff, or a party already sitting down, stays where it is.
+        ...(chosen || walkIn ? { tableFixed: true } : {}),
         service: check.sitting.service,
         guestName,
         ...(phone ? { phone, phoneSource: 'staff' as const } : {}),
@@ -801,13 +913,14 @@ export class BookingEngine {
         language,
         ...(notes ? { notes } : {}),
         allergies,
-        ...(walkIn ? { walkIn: true } : {}),
+        ...(walkIn ? { walkIn: true, arrivedAt: stamp, seatedAt: stamp } : {}),
         history: [],
         createdAt: stamp,
         updatedAt: stamp,
       };
-      tx.saveBooking(booking);
-      return { status: 'booked', booking: this.#staffView(booking, language, clock) };
+      const seated = this.#seatAndSave(tx, booking, exclusions, clock.nowMs);
+      if (!seated) return { status: 'table_taken', free: this.#freeTablesAt(tx, date, time, partySize, clock.nowMs) };
+      return { status: 'booked', booking: this.#staffView(seated, language, clock) };
     });
   }
 
@@ -816,17 +929,91 @@ export class BookingEngine {
     return this.#staffUpdate(reference, language, (booking) => {
       if (booking.status === 'cancelled') return { reason: 'already_cancelled' };
       if (!isActive(booking)) return { reason: 'not_active' };
-      return { status: 'cancelled' };
+      return { update: { status: 'cancelled' } };
     });
   }
 
-  /** A guest who did not come. Only once their time has passed. */
+  /** A guest who did not come. Only once their time has passed, and never once they arrived. */
   markNoShow(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
     return this.#staffUpdate(reference, language, (booking, clock) => {
       if (!isActive(booking)) return { reason: 'not_active' };
+      if (booking.arrivedAt) return { reason: 'already_arrived' };
       if (!this.#hasStarted(booking, clock)) return { reason: 'not_started' };
-      return { status: 'no_show' };
+      return { update: { status: 'no_show' } };
     });
+  }
+
+  /** The party is at the door. Saying it twice changes nothing. */
+  markArrived(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
+    return this.#staffUpdate(reference, language, (booking, clock, stamp) => {
+      const refusal = this.#eveningRefusal(booking, clock);
+      if (refusal) return { reason: refusal };
+      return { update: { arrivedAt: booking.arrivedAt ?? stamp } };
+    });
+  }
+
+  /** The party has gone: its table is free again from now, for the assistant as for the staff. */
+  markLeft(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
+    return this.#staffUpdate(reference, language, (booking, clock, stamp) => {
+      if (booking.leftAt) return { update: {} };
+      const refusal = this.#eveningRefusal(booking, clock);
+      if (refusal) return { reason: refusal };
+      if (!booking.seatedAt) return { reason: 'not_seated' };
+      return { update: { leftAt: stamp } };
+    });
+  }
+
+  /** The party sits down, at the table the plan gave them or at one the staff choose, and is fixed there. */
+  seat(reference: string, table?: string, language: Language = this.#config.defaultLanguage): TableActionResult {
+    return this.#placeByStaff(reference, table, language, true);
+  }
+
+  /** The staff put a booking at another table, for tonight or a day to come. The plan leaves it there. */
+  moveTable(reference: string, table: string, language: Language = this.#config.defaultLanguage): TableActionResult {
+    return this.#placeByStaff(reference, table, language, false);
+  }
+
+  #placeByStaff(reference: string, tableNumber: string | undefined, language: Language, seating: boolean): TableActionResult {
+    const normalized = normalizeReference(reference);
+    if (!normalized) return { status: 'not_found' };
+    const wanted = tableNumber === undefined ? undefined : this.#physicalTable(tableNumber);
+    if (tableNumber !== undefined && !wanted) return { status: 'unknown_table' };
+    const clock = this.#clock();
+    const stamp = new Date(clock.nowMs).toISOString();
+    return this.#store.transaction((tx): TableActionResult => {
+      const booking = tx.bookingByReference(normalized);
+      if (!booking) return { status: 'not_found' };
+      const refusal = seating ? this.#eveningRefusal(booking, clock) : this.#movingRefusal(booking, clock);
+      if (refusal) return { status: 'not_allowed', reason: refusal };
+      if (wanted && wanted.seats < booking.partySize) return { status: 'table_taken', free: this.#freeTables(tx, booking, clock.nowMs) };
+      const placed: Booking = {
+        ...booking,
+        ...(wanted ? { tableGroup: wanted.group, table: wanted.number } : {}),
+        tableFixed: true,
+        ...(seating ? { arrivedAt: booking.arrivedAt ?? stamp, seatedAt: booking.seatedAt ?? stamp } : {}),
+        updatedAt: stamp,
+      };
+      const saved = this.#seatAndSave(tx, placed, { sessionId: '' }, clock.nowMs);
+      if (!saved) return { status: 'table_taken', free: this.#freeTables(tx, booking, clock.nowMs) };
+      return { status: 'done', booking: this.#staffView(saved, language, clock) };
+    });
+  }
+
+  /** What stops an arrival, a seating or a departure: only on the evening itself, which may run past midnight. */
+  #eveningRefusal(booking: Booking, clock: Clock): StaffRefusal | undefined {
+    if (booking.status === 'cancelled') return 'already_cancelled';
+    if (!isActive(booking)) return 'not_active';
+    if (booking.date !== clock.today && addDays(booking.date, 1) !== clock.today) return 'not_today';
+    if (booking.leftAt) return 'already_left';
+    return undefined;
+  }
+
+  #movingRefusal(booking: Booking, clock: Clock): StaffRefusal | undefined {
+    if (booking.status === 'cancelled') return 'already_cancelled';
+    if (!isActive(booking)) return 'not_active';
+    if (compareDates(booking.date, clock.today) < 0 && addDays(booking.date, 1) !== clock.today) return 'in_the_past';
+    if (booking.leftAt) return 'already_left';
+    return undefined;
   }
 
   /** The team has called the guest back. */
@@ -875,8 +1062,10 @@ export class BookingEngine {
     partySize: number,
     clock: Clock,
     exclusions: Exclusions,
-    cache: Map<PlainDate, Occupation[]>,
+    cache: PlanCache,
     staff = false,
+    /** For a table the staff chose: its group, whatever its size. */
+    onlyGroup?: string,
   ): Check {
     const daysAhead = daysBetween(clock.today, date);
     if (daysAhead > this.#config.maxAdvanceDays) return { ok: false, reason: 'too_far_ahead' };
@@ -887,13 +1076,150 @@ export class BookingEngine {
     const minutesUntil = daysAhead * 1440 + toMinutes(time) - clock.nowMinutes;
     if (!staff && minutesUntil < this.#config.minNoticeMinutes) return { ok: false, reason: 'too_soon' };
 
-    let occupations = cache.get(date);
+    let occupations = cache.occupations.get(date);
     if (!occupations) {
       occupations = this.#occupations(tx, date, clock.nowMs, exclusions);
-      cache.set(date, occupations);
+      cache.occupations.set(date, occupations);
     }
-    const group = pickTableGroup(this.#config, partySize, toMinutes(time), occupations);
+    const start = toMinutes(time);
+    const end = start + stayMinutes(this.#config, partySize);
+    const groups =
+      onlyGroup === undefined
+        ? suitableGroups(this.#config, partySize)
+        : this.#config.tables.filter((group) => group.id === onlyGroup && group.seats >= partySize);
+    const group = groups.find(
+      (candidate) =>
+        peakUse(occupations, candidate.id, start, end) < candidate.count &&
+        this.#seatable(tx, date, candidate.id, start, end, exclusions, clock.nowMs, cache),
+    );
     return group ? { ok: true, group, sitting } : { ok: false, reason: 'full' };
+  }
+
+  /**
+   * Whether a new stay of one group still fits on its real tables. Capacity
+   * already answers that while no table is fixed: stays placed in order of
+   * arrival always fit. Tables the staff fixed by hand are the one case it
+   * cannot see, so only then is the plan worked out.
+   */
+  #seatable(tx: BookingTx, date: PlainDate, group: string, start: number, end: number, exclusions: Exclusions, nowMs: number, cache: PlanCache): boolean {
+    const key = `${date} ${group}`;
+    let stays = cache.stays.get(key);
+    if (!stays) {
+      stays = this.#stays(tx, date, group, exclusions, nowMs);
+      cache.stays.set(key, stays);
+    }
+    if (!stays.some((stay) => stay.fixed)) return true;
+    return planGroup([...stays, { id: 'candidate', start, end, fixed: false, order: '~' }], this.#tableNumbers(group)) !== undefined;
+  }
+
+  /** When a booking's table is free again, in minutes from midnight of its day: early if the party has left. */
+  #stayEnd(booking: Booking): number {
+    const start = toMinutes(booking.time);
+    const planned = start + booking.stayMinutes;
+    if (!booking.leftAt) return planned;
+    const left = localNow(new Date(booking.leftAt), this.#config.timeZone);
+    const leftMinute = daysBetween(booking.date, left.date) * 1440 + toMinutes(left.time);
+    return Math.min(planned, Math.max(start, leftMinute));
+  }
+
+  /** The stays of one table group around a day, as the plan sees them, held tables included. */
+  #stays(tx: BookingTx, date: PlainDate, group: string, exclusions: Exclusions, nowMs: number): Stay[] {
+    const stays: Stay[] = [];
+    const days: [PlainDate, number][] = [
+      [addDays(date, -1), -1440],
+      [date, 0],
+      [addDays(date, 1), 1440],
+    ];
+    for (const [day, shift] of days) {
+      for (const booking of tx.bookingsOn(day)) {
+        if (!isActive(booking) || booking.tableGroup !== group || booking.id === exclusions.bookingId) continue;
+        const start = toMinutes(booking.time) + shift;
+        const end = this.#stayEnd(booking) + shift;
+        if (end <= start) continue;
+        stays.push({
+          id: booking.id,
+          start,
+          end,
+          ...(booking.table === undefined ? {} : { table: booking.table }),
+          // A neighbouring day's booking keeps its table: one day's plan never rearranges another's.
+          fixed: booking.tableFixed === true || (day !== date && booking.table !== undefined),
+          order: booking.createdAt,
+        });
+      }
+      for (const hold of tx.holdsOn(day, nowMs)) {
+        if (hold.tableGroup !== group || hold.sessionId === exclusions.sessionId) continue;
+        const start = toMinutes(hold.time) + shift;
+        stays.push({ id: `hold ${hold.id}`, start, end: start + hold.stayMinutes, fixed: false, order: `hold ${hold.expiresAt}` });
+      }
+    }
+    return stays;
+  }
+
+  #tableNumbers(group: string): string[] {
+    return physicalTables(this.#config)
+      .filter((table) => table.group === group)
+      .map((table) => table.number);
+  }
+
+  #physicalTable(number: string): PhysicalTable | undefined {
+    if (typeof number !== 'string') return undefined;
+    return physicalTables(this.#config).find((table) => table.number.toLowerCase() === number.trim().toLowerCase());
+  }
+
+  /**
+   * Gives a booking its table and saves it, moving bookings that are not fixed
+   * when it only fits that way; they are saved too. Undefined when it cannot
+   * be seated, which only happens around tables fixed by hand.
+   */
+  #seatAndSave(tx: BookingTx, booking: Booking, exclusions: Exclusions, nowMs: number): Booking | undefined {
+    const others = this.#stays(tx, booking.date, booking.tableGroup, { ...exclusions, bookingId: booking.id }, nowMs);
+    const own: Stay = {
+      id: booking.id,
+      start: toMinutes(booking.time),
+      end: this.#stayEnd(booking),
+      ...(booking.table === undefined ? {} : { table: booking.table }),
+      // A party seated without a table chosen takes the one the plan gives, then keeps it.
+      fixed: booking.tableFixed === true && booking.table !== undefined,
+      order: booking.createdAt,
+    };
+    const plan = planGroup([...others, own], this.#tableNumbers(booking.tableGroup));
+    const table = plan?.get(booking.id);
+    if (!plan || table === undefined) return undefined;
+    for (const stay of others) {
+      const moved = plan.get(stay.id);
+      if (stay.id.startsWith('hold ') || moved === undefined || moved === stay.table) continue;
+      const other = this.#bookingById(tx, booking.date, stay.id);
+      if (other) tx.saveBooking({ ...other, table: moved, updatedAt: new Date(nowMs).toISOString() });
+    }
+    const seated: Booking = { ...booking, table };
+    tx.saveBooking(seated);
+    return seated;
+  }
+
+  #bookingById(tx: BookingTx, date: PlainDate, id: string): Booking | undefined {
+    for (const day of [date, addDays(date, -1), addDays(date, 1)]) {
+      const found = tx.bookingsOn(day).find((booking) => booking.id === id);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  /** Every other table where the party could sit for its stay, with the rest of the plan still working. */
+  #freeTables(tx: BookingTx, booking: Booking, nowMs: number): string[] {
+    return this.#freeTablesAt(tx, booking.date, booking.time, booking.partySize, nowMs, booking);
+  }
+
+  #freeTablesAt(tx: BookingTx, date: PlainDate, time: PlainTime, partySize: number, nowMs: number, booking?: Booking): string[] {
+    const start = toMinutes(time);
+    const end = booking ? this.#stayEnd(booking) : start + stayMinutes(this.#config, partySize);
+    return physicalTables(this.#config)
+      .filter((table) => table.seats >= partySize && table.number !== booking?.table)
+      .filter((table) => {
+        const others = this.#stays(tx, date, table.group, { sessionId: '', ...(booking ? { bookingId: booking.id } : {}) }, nowMs);
+        const own: Stay = { id: booking?.id ?? 'candidate', start, end, table: table.number, fixed: true, order: booking?.createdAt ?? '~' };
+        return planGroup([...others, own], this.#tableNumbers(table.group)) !== undefined;
+      })
+      .map((table) => table.number);
   }
 
   /** Every table taken around a day, including stays that cross midnight from either side. */
@@ -908,7 +1234,9 @@ export class BookingEngine {
       for (const booking of tx.bookingsOn(day)) {
         if (!isActive(booking) || booking.id === exclusions.bookingId) continue;
         const start = toMinutes(booking.time) + shift;
-        occupations.push({ tableGroup: booking.tableGroup, start, end: start + booking.stayMinutes });
+        // A party that has left frees its table there and then.
+        const end = this.#stayEnd(booking) + shift;
+        if (end > start) occupations.push({ tableGroup: booking.tableGroup, start, end });
       }
       for (const hold of tx.holdsOn(day, nowMs)) {
         if (hold.sessionId === exclusions.sessionId) continue;
@@ -935,7 +1263,7 @@ export class BookingEngine {
     exclusions: Exclusions,
     staff = false,
   ): SlotOffer[] {
-    const cache = new Map<PlainDate, Occupation[]>();
+    const cache = newCache();
     const asked = toMinutes(time);
     const service = sittingAt(this.#config, date, time)?.service;
     const free = (day: PlainDate, slot: PlainTime): boolean =>
@@ -986,6 +1314,8 @@ export class BookingEngine {
   }
 
   #hasStarted(booking: Booking, clock: Clock): boolean {
+    // A party that arrived early has started too: it can no longer be cancelled from a phone.
+    if (booking.arrivedAt) return true;
     return daysBetween(clock.today, booking.date) * 1440 + toMinutes(booking.time) <= clock.nowMinutes;
   }
 
@@ -1009,34 +1339,72 @@ export class BookingEngine {
   #staffUpdate(
     reference: string,
     language: Language,
-    decide: (booking: Booking, clock: Clock) => { status: BookingStatus } | { reason: 'already_cancelled' | 'not_active' | 'not_started' },
+    decide: (booking: Booking, clock: Clock, stamp: string) => { update: Partial<Booking> } | { reason: StaffRefusal },
   ): StaffActionResult {
     const normalized = normalizeReference(reference);
     if (!normalized) return { status: 'not_found' };
     const clock = this.#clock();
+    const stamp = new Date(clock.nowMs).toISOString();
     return this.#store.transaction((tx): StaffActionResult => {
       const booking = tx.bookingByReference(normalized);
       if (!booking) return { status: 'not_found' };
-      const decision = decide(booking, clock);
+      const decision = decide(booking, clock, stamp);
       if ('reason' in decision) return { status: 'not_allowed', reason: decision.reason };
-      const updated: Booking = { ...booking, status: decision.status, updatedAt: new Date(clock.nowMs).toISOString() };
+      const updated: Booking = { ...booking, ...decision.update, updatedAt: stamp };
       tx.saveBooking(updated);
       return { status: 'done', booking: this.#staffView(updated, language, clock) };
     });
   }
 
-  #staffView(booking: Booking, language: Language, clock: Clock): StaffBookingView {
+  #stage(booking: Booking): ArrivalStage {
+    if (booking.status === 'cancelled') return 'cancelled';
+    if (booking.status === 'no_show') return 'no_show';
+    if (booking.leftAt) return 'left';
+    if (booking.seatedAt) return 'seated';
+    if (booking.arrivedAt) return 'arrived';
+    return 'expected';
+  }
+
+  #floorView(): FloorTableView[] {
+    return physicalTables(this.#config).map((table) => {
+      const drawn = this.#config.floor?.tables.find((candidate) => candidate.number === table.number);
+      return {
+        number: table.number,
+        group: table.group,
+        seats: table.seats,
+        ...(drawn
+          ? {
+              shape: drawn.shape,
+              ...(drawn.rotation === undefined ? {} : { rotation: drawn.rotation }),
+              x: drawn.x,
+              y: drawn.y,
+              ...(drawn.zone === undefined ? {} : { zone: drawn.zone }),
+            }
+          : {}),
+      };
+    });
+  }
+
+  #staffView(booking: Booking, language: Language, clock: Clock, plannedTable?: string): StaffBookingView {
     const group = this.#config.tables.find((candidate) => candidate.id === booking.tableGroup);
     const words = messages(language);
+    // A cancelled booking or a no-show holds no table, whatever it was planned at.
+    const table = isActive(booking) ? (booking.table ?? plannedTable) : undefined;
     return {
       reference: booking.reference,
       date: booking.date,
       time: booking.time,
-      endsAt: fromMinutes((toMinutes(booking.time) + booking.stayMinutes) % 1440),
+      endsAt: fromMinutes(((this.#stayEnd(booking) % 1440) + 1440) % 1440),
       partySize: booking.partySize,
       stayMinutes: booking.stayMinutes,
       tableGroup: booking.tableGroup,
       seats: group?.seats ?? 0,
+      ...(table === undefined ? {} : { table }),
+      tableFixed: booking.tableFixed === true,
+      stage: this.#stage(booking),
+      ...(booking.arrivedAt ? { arrivedAt: booking.arrivedAt } : {}),
+      ...(booking.seatedAt ? { seatedAt: booking.seatedAt } : {}),
+      ...(booking.leftAt ? { leftAt: booking.leftAt } : {}),
       service: this.#serviceName(booking.service, language),
       guestName: booking.guestName,
       status: booking.status,

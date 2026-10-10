@@ -1,6 +1,7 @@
 import { ALLERGENS, isAllergenStatus, type Dish } from './allergens.js';
 import { assertTimeZone, isPlainDate, isPlainTime, toMinutes, type PlainDate, type PlainTime, type Weekday } from './calendar.js';
 import { LANGUAGES, isLanguage, type Language, type LocalizedText } from './i18n/index.js';
+import { physicalTables } from './seating.js';
 
 export interface ServiceDefinition {
   /** Stable id used in data, such as "lunch" or "dinner". */
@@ -29,6 +30,43 @@ export interface TableGroup {
   count: number;
 }
 
+export type TableShape = 'round' | 'square' | 'rect';
+
+/** A part of the room, such as the terrace. */
+export interface FloorZone {
+  id: string;
+  name: LocalizedText;
+}
+
+/** One real table, where the staff see it on the plan. */
+export interface FloorTable {
+  /** What the staff call it: "12". */
+  number: string;
+  /** The table group it counts in. Each group has as many tables on the plan as its count. */
+  group: string;
+  shape: TableShape;
+  /** A rectangle lies across the plan (0, the default) or along it (90). */
+  rotation?: 0 | 90;
+  /** Where its centre is on the plan, from 0 to 100 across and down. */
+  x: number;
+  y: number;
+  zone?: string;
+}
+
+export interface FloorPlan {
+  zones?: readonly FloorZone[];
+  tables: readonly FloorTable[];
+}
+
+/** Someone who serves on the floor and the tables they look after. Only the name the plan shows. */
+export interface Waiter {
+  id: string;
+  name: string;
+  tables: readonly string[];
+  /** The services they work; all of them when absent. */
+  services?: readonly string[];
+}
+
 /** How long a party keeps its table, by size: up to 2 guests for 90 minutes, and so on. */
 export interface StayRule {
   upToPartySize: number;
@@ -55,6 +93,9 @@ export interface BusinessConfig {
   /** Bookable times are every this many minutes from a service's first seating. */
   slotMinutes: number;
   tables: readonly TableGroup[];
+  /** The real tables and where they stand. Without it, the engine numbers the tables of each group itself. */
+  floor?: FloorPlan;
+  waiters?: readonly Waiter[];
   /** A party never gets a table with more empty seats than this: two guests do not take a table for six. */
   maxEmptySeats: number;
   stays: readonly StayRule[];
@@ -123,6 +164,67 @@ function checkSittings(
   }
 }
 
+const TABLE_NUMBER = /^[A-Za-z0-9][A-Za-z0-9-]{0,7}$/;
+
+function checkFloor(config: BusinessConfig, problems: string[]): void {
+  if (!config.floor) return;
+  const zones = config.floor.zones ?? [];
+  checkUniqueIds(zones, 'zone', problems);
+  for (const zone of zones) checkLocalized(zone.name, `zone "${zone.id}"`, problems);
+  const zoneIds = new Set(zones.map((zone) => zone.id));
+
+  const numbers = new Set<string>();
+  const drawn = new Map<string, number>();
+  for (const table of config.floor.tables) {
+    if (!TABLE_NUMBER.test(table.number)) problems.push(`table number "${table.number}" must be 1 to 8 letters, digits or dashes`);
+    if (numbers.has(table.number.toLowerCase())) problems.push(`table number "${table.number}" is used twice`);
+    numbers.add(table.number.toLowerCase());
+    if (!config.tables.some((group) => group.id === table.group)) problems.push(`table ${table.number}: unknown table group "${table.group}"`);
+    drawn.set(table.group, (drawn.get(table.group) ?? 0) + 1);
+    if (table.shape !== 'round' && table.shape !== 'square' && table.shape !== 'rect') {
+      problems.push(`table ${table.number}: shape must be round, square or rect`);
+    }
+    if (table.rotation !== undefined && table.rotation !== 0 && table.rotation !== 90) problems.push(`table ${table.number}: rotation must be 0 or 90`);
+    for (const [axis, value] of [
+      ['x', table.x],
+      ['y', table.y],
+    ] as const) {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+        problems.push(`table ${table.number}: ${axis} must be a number from 0 to 100`);
+      }
+    }
+    if (table.zone !== undefined && !zoneIds.has(table.zone)) problems.push(`table ${table.number}: unknown zone "${table.zone}"`);
+  }
+  for (const group of config.tables) {
+    const count = drawn.get(group.id) ?? 0;
+    if (count !== group.count) problems.push(`table group "${group.id}" counts ${group.count} tables but the plan has ${count}`);
+  }
+}
+
+function checkWaiters(config: BusinessConfig, serviceIds: ReadonlySet<string>, problems: string[]): void {
+  const waiters = config.waiters ?? [];
+  checkUniqueIds(waiters, 'waiter', problems);
+  const tableNumbers = new Set(physicalTables(config).map((table) => table.number));
+  const sections = new Map<string, string>();
+  for (const waiter of waiters) {
+    if (typeof waiter.name !== 'string' || waiter.name.trim() === '' || waiter.name.length > 40 || /[\u0000-\u001f\u007f]/.test(waiter.name)) {
+      problems.push(`waiter "${waiter.id}" needs a name of 1 to 40 characters`);
+    }
+    for (const service of waiter.services ?? []) {
+      if (!serviceIds.has(service)) problems.push(`waiter "${waiter.id}": unknown service "${service}"`);
+    }
+    for (const table of waiter.tables) {
+      if (!tableNumbers.has(table)) problems.push(`waiter "${waiter.id}": unknown table "${table}"`);
+      for (const service of waiter.services ?? [...serviceIds]) {
+        const key = `${service} ${table}`;
+        const other = sections.get(key);
+        if (other) problems.push(`table ${table} is in the sections of both "${other}" and "${waiter.id}" at ${service}`);
+        sections.set(key, waiter.id);
+      }
+    }
+  }
+}
+
 /** Every problem in a configuration, in plain words. An empty list means it is safe to run. */
 export function validateConfig(config: BusinessConfig): string[] {
   const problems: string[] = [];
@@ -175,6 +277,8 @@ export function validateConfig(config: BusinessConfig): string[] {
     if (!isWholeNumber(group.count, 1, 200)) problems.push(`table group "${group.id}" needs a count from 1 to 200`);
   }
   if (!isWholeNumber(config.maxEmptySeats, 0, 30)) problems.push('maxEmptySeats must be a whole number from 0 to 30');
+  checkFloor(config, problems);
+  checkWaiters(config, serviceIds, problems);
 
   if (!isWholeNumber(config.maxPartySize, 1, 30)) problems.push('maxPartySize must be a whole number from 1 to 30');
   for (let size = 1; size <= config.maxPartySize && size <= 30; size += 1) {

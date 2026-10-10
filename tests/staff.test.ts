@@ -136,10 +136,11 @@ describe('the service of the day', () => {
 
     const slot = (time: string) => day.slots.find((candidate) => candidate.time === time);
     // The party seated at 20:07 arrives in the 20:00 slot and holds a table for two from 20:07 to 21:37.
-    expect(slot('20:00')).toEqual({ time: '20:00', service: 'dinner', arrivals: 2, inUse: { t2: 0, t4: 0, t6: 0 } });
-    expect(slot('21:30')).toEqual({ time: '21:30', service: 'dinner', arrivals: 0, inUse: { t2: 1, t4: 1, t6: 1 } });
+    expect(slot('20:00')).toEqual({ time: '20:00', service: 'dinner', arrivals: 2, inUse: { t2: 0, t4: 0, t6: 0 }, coversInRoom: 0 });
+    // At 21:30 the two of 20:07 are still there, with the four of 21:00; a held table is nobody yet.
+    expect(slot('21:30')).toEqual({ time: '21:30', service: 'dinner', arrivals: 0, inUse: { t2: 1, t4: 1, t6: 1 }, coversInRoom: 6 });
 
-    expect(day.holds).toEqual([{ time: '21:30', partySize: 6, tableGroup: 't6', expiresAt: '2026-10-16T18:12:00.000Z' }]);
+    expect(day.holds).toEqual([{ time: '21:30', partySize: 6, tableGroup: 't6', table: 't6-1', expiresAt: '2026-10-16T18:12:00.000Z' }]);
     expect(day.bookings.map((booking) => [booking.time, booking.status])).toEqual([
       ['20:07', 'confirmed'],
       ['21:00', 'booked'],

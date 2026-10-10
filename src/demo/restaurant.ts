@@ -102,6 +102,30 @@ export const DEMO_RESTAURANT: BusinessConfig = {
     { id: 't4', seats: 4, count: 5 },
     { id: 't6', seats: 6, count: 2 },
   ],
+  // The room as the design draws it: round tables for two along the top, square
+  // tables for four in the middle, the two long tables for six at the back.
+  floor: {
+    tables: [
+      { number: '1', group: 't2', shape: 'round', x: 14, y: 15 },
+      { number: '2', group: 't2', shape: 'round', x: 38, y: 15 },
+      { number: '3', group: 't2', shape: 'round', x: 62, y: 15 },
+      { number: '4', group: 't2', shape: 'round', x: 86, y: 15 },
+      { number: '5', group: 't2', shape: 'round', x: 14, y: 38 },
+      { number: '6', group: 't2', shape: 'round', x: 38, y: 38 },
+      { number: '7', group: 't4', shape: 'square', x: 64, y: 38 },
+      { number: '8', group: 't4', shape: 'square', x: 86, y: 38 },
+      { number: '9', group: 't4', shape: 'square', x: 14, y: 64 },
+      { number: '10', group: 't4', shape: 'square', x: 38, y: 64 },
+      { number: '11', group: 't4', shape: 'square', x: 64, y: 64 },
+      { number: '12', group: 't6', shape: 'rect', x: 26, y: 87 },
+      { number: '13', group: 't6', shape: 'rect', x: 70, y: 87 },
+    ],
+  },
+  // Invented, like everything else in this restaurant.
+  waiters: [
+    { id: 'lea', name: 'Léa', tables: ['1', '2', '3', '4', '5', '6'], services: ['dinner'] },
+    { id: 'hugo', name: 'Hugo', tables: ['7', '8', '9', '10', '11', '12', '13'], services: ['dinner'] },
+  ],
   maxEmptySeats: 2,
   stays: [
     { upToPartySize: 2, minutes: 90 },

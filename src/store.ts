@@ -33,6 +33,10 @@ export interface Booking {
   /** Fixed when the booking is made, so changing the stay rules later never stretches a booking already promised. */
   stayMinutes: number;
   tableGroup: string;
+  /** The table the party is planned at or sits at, by its number on the plan. */
+  table?: string;
+  /** Seated, or placed by the staff: the plan never moves it to another table. */
+  tableFixed?: boolean;
   service: string;
   guestName: string;
   /**
@@ -48,6 +52,11 @@ export interface Booking {
   allergies: readonly Allergen[];
   /** Entered by the staff for a party already in the restaurant. */
   walkIn?: boolean;
+  /** On the day itself, as ISO 8601 instants: when the party arrived, sat down and left. */
+  arrivedAt?: string;
+  seatedAt?: string;
+  /** Leaving ends the stay there and then: the table is free again for the rest of it. */
+  leftAt?: string;
   /** Oldest first, the most recent twenty. */
   history: readonly BookingChange[];
   /** ISO 8601 instants. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { daysBetween, toMinutes } from '../src/calendar.js';
 import type { BookingEngine, Session } from '../src/engine.js';
 import { slotsOn } from '../src/schedule.js';
+import { physicalTables } from '../src/seating.js';
 import { isActive, type MemoryStore } from '../src/store.js';
 import { TEST_CONFIG, guest, harness } from './fixtures.js';
 
@@ -45,7 +46,36 @@ function capacityViolations(store: MemoryStore, nowMs: number): string[] {
   return violations;
 }
 
-function run(seed: number, steps: number): { violations: string[]; booked: number } {
+/**
+ * Also written without the engine's own code: every active booking sits at a
+ * table of its group, no two at the same table at once, and a table the staff
+ * fixed is still the one the booking has, unless the guest moved the booking.
+ */
+function tableViolations(store: MemoryStore, fixed: ReadonlyMap<string, string>): string[] {
+  const active = store.snapshot().bookings.filter(isActive);
+  const violations: string[] = [];
+  const minutes = (booking: (typeof active)[number]) => {
+    const start = daysBetween(ORIGIN, booking.date) * 1440 + toMinutes(booking.time);
+    return { start, end: start + booking.stayMinutes };
+  };
+  for (const booking of active) {
+    if (!booking.table) violations.push(`${booking.reference} has no table`);
+    else if (!booking.table.startsWith(`${booking.tableGroup}-`)) violations.push(`${booking.reference} sits at ${booking.table}, outside ${booking.tableGroup}`);
+    if (booking.tableFixed && fixed.has(booking.id) && fixed.get(booking.id) !== booking.table) {
+      violations.push(`${booking.reference} was fixed at ${fixed.get(booking.id)} and is now at ${booking.table}`);
+    }
+  }
+  for (const a of active) {
+    for (const b of active) {
+      if (a.id >= b.id || a.table === undefined || a.table !== b.table) continue;
+      const [x, y] = [minutes(a), minutes(b)];
+      if (x.start < y.end && y.start < x.end) violations.push(`${a.reference} and ${b.reference} share table ${a.table}`);
+    }
+  }
+  return violations;
+}
+
+function run(seed: number, steps: number): { violations: string[]; booked: number; moves: number } {
   const next = random(seed);
   const pick = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
   const h = harness();
@@ -53,7 +83,10 @@ function run(seed: number, steps: number): { violations: string[]; booked: numbe
   const sessions: Session[] = Array.from({ length: 6 }, (_, index) => guest(`s${index}`, `+3361234567${index}`));
   const heldBy = new Map<string, string>();
   const references = new Map<string, string[]>();
+  const fixed = new Map<string, string>();
+  const tables = physicalTables(TEST_CONFIG).map((table) => table.number);
   const violations: string[] = [];
+  let moves = 0;
   let now = new Date('2026-10-14T08:00:00Z').getTime();
 
   for (let step = 0; step < steps && violations.length === 0; step += 1) {
@@ -89,26 +122,42 @@ function run(seed: number, steps: number): { violations: string[]; booked: numbe
         });
         if (found.status === 'available') engine.change(session, { reference, holdId: found.holdId });
       }
+    } else if (action < 0.97) {
+      // The staff move a booking to a table of their choice, which fixes it there.
+      const active = h.store.snapshot().bookings.filter(isActive);
+      if (active.length > 0) {
+        const booking = pick(active);
+        const moved = engine.moveTable(booking.reference, pick(tables));
+        if (moved.status === 'done' && moved.booking.table) {
+          fixed.set(booking.id, moved.booking.table);
+          moves += 1;
+        }
+      }
     } else {
       const minutes = Math.floor(next() * 4);
       h.advanceMinutes(minutes);
       now += minutes * 60_000;
     }
-    violations.push(...capacityViolations(h.store, now).map((violation) => `seed ${seed}, step ${step}: ${violation}`));
+    violations.push(
+      ...[...capacityViolations(h.store, now), ...tableViolations(h.store, fixed)].map((violation) => `seed ${seed}, step ${step}: ${violation}`),
+    );
   }
-  return { violations, booked: h.store.snapshot().bookings.filter(isActive).length };
+  return { violations, booked: h.store.snapshot().bookings.filter(isActive).length, moves };
 }
 
-describe('capacity under random traffic', () => {
-  it('never puts more parties on a table group than it has tables', () => {
+describe('capacity and tables under random traffic', () => {
+  it('never puts more parties on a table group than it has tables, nor two at one table, nor moves a fixed one', () => {
     let booked = 0;
+    let moves = 0;
     for (let seed = 1; seed <= 40; seed += 1) {
       const result = run(seed, 300);
       expect(result.violations).toEqual([]);
       booked += result.booked;
+      moves += result.moves;
     }
-    // Guard against a test that passes because nothing was ever booked.
+    // Guard against a test that passes because nothing was ever booked or moved.
     expect(booked).toBeGreaterThan(400);
+    expect(moves).toBeGreaterThan(100);
   });
 
   it('never gives two bookings the same reference', () => {
