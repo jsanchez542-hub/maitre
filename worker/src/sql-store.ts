@@ -135,6 +135,10 @@ export class SqlStore implements BookingStore {
       },
       callback: (id) => parse<CallbackRequest>(rows(`SELECT data FROM callbacks WHERE id = ?`, id))[0],
       openCallbacks: () => parse<CallbackRequest>(rows(`SELECT data FROM callbacks WHERE status = 'open' ORDER BY created_at`)),
+
+      deleteBookingsBefore: (date) => written(sql.exec(`DELETE FROM bookings WHERE date < ?`, date)),
+      // ISO instants sort as text, and "2026-07-12T…" comes before "2026-07-13".
+      deleteCallbacksBefore: (date) => written(sql.exec(`DELETE FROM callbacks WHERE created_at < ?`, date)),
     };
   }
 }

@@ -201,10 +201,12 @@ export class Restaurant extends DurableObject<Env> {
 
   /**
    * Expired holds are already ignored when tables are counted; the alarm only
-   * clears them away, along with conversations past their retention period.
+   * clears them away. It also deletes what is past the retention period:
+   * conversations, bookings for days long gone and old requests to call back.
    */
   override async alarm(): Promise<void> {
     this.#engine.purgeExpiredHolds();
+    this.#engine.purgeOlderThan(RETENTION_DAYS);
     this.#conversations.purgeBefore(new Date(Date.now() - RETENTION_DAYS * DAY_MS).toISOString());
     const next = this.#store.hasHolds() ? DEMO_RESTAURANT.holdMinutes * 60_000 : DAY_MS;
     await this.ctx.storage.setAlarm(Date.now() + next);

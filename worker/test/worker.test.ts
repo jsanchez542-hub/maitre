@@ -396,4 +396,24 @@ describe('the SQLite store', () => {
       expect(await state.storage.getAlarm()).not.toBeNull();
     });
   });
+
+  it('deletes bookings, requests and conversations past the retention period when its alarm rings', async () => {
+    const restaurant = stub();
+    const friday = nextWeek('friday');
+    expect((await staffBook({ date: friday, time: '20:00', partySize: 2, guestName: 'Récent', phone: '06 22 22 22 22' })).status).toBe(201);
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO bookings (id, reference, hold_id, date, time, phone, data) VALUES ('old', 'OLDREF', 'hold-old', '2000-01-07', '20:00', NULL, '{}')`);
+      sql.exec(`INSERT INTO callbacks (id, status, created_at, data) VALUES ('old', 'done', '2000-01-07T10:00:00.000Z', '{}')`);
+      sql.exec(`INSERT INTO sessions (id, updated_at, data) VALUES ('old', '2000-01-07T10:00:00.000Z', '{}')`);
+      sql.exec(`INSERT INTO turns (session_id, at, data) VALUES ('old', '2000-01-07T10:00:00.000Z', '{}')`);
+      await state.storage.setAlarm(Date.now() + 60_000);
+    });
+    expect(await runDurableObjectAlarm(restaurant)).toBe(true);
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      const rows = (table: string) => state.storage.sql.exec(`SELECT * FROM ${table}`).toArray().length;
+      expect([rows('callbacks'), rows('sessions'), rows('turns')]).toEqual([0, 0, 0]);
+      expect(state.storage.sql.exec(`SELECT date FROM bookings`).toArray()).toEqual([{ date: friday }]);
+    });
+  });
 });

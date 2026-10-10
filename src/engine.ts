@@ -846,6 +846,17 @@ export class BookingEngine {
     return this.#store.transaction((tx) => tx.deleteExpiredHolds(nowMs));
   }
 
+  /**
+   * Deletes bookings for days more than `days` days ago, and requests to call
+   * back made before then: names, numbers and allergies are kept no longer than
+   * the service needs them. The production store calls it from an alarm.
+   */
+  purgeOlderThan(days: number): { bookings: number; callbacks: number } {
+    if (!Number.isInteger(days) || days < 1) throw new RangeError('The retention period must be a whole number of days, at least one');
+    const cutoff = addDays(this.#clock().today, -days);
+    return this.#store.transaction((tx) => ({ bookings: tx.deleteBookingsBefore(cutoff), callbacks: tx.deleteCallbacksBefore(cutoff) }));
+  }
+
   #clock(): Clock {
     const instant = this.#deps.now();
     const local = localNow(instant, this.#config.timeZone);

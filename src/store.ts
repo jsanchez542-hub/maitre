@@ -111,6 +111,11 @@ export interface BookingTx {
   callback(id: string): CallbackRequest | undefined;
   /** Requests the team has not dealt with yet, oldest first. */
   openCallbacks(): CallbackRequest[];
+
+  /** For the retention period: bookings for days before `date`. */
+  deleteBookingsBefore(date: PlainDate): number;
+  /** For the retention period: requests made before `date` began, in UTC. */
+  deleteCallbacksBefore(date: PlainDate): number;
 }
 
 /**
@@ -207,6 +212,10 @@ export class MemoryStore implements BookingStore {
       callback: (id) => state().callbacks.get(id),
       openCallbacks: () =>
         [...state().callbacks.values()].filter((c) => c.status === 'open').sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+
+      deleteBookingsBefore: (date) => removeWhere(state().bookings, (booking) => compareDates(booking.date, date) < 0),
+      // ISO instants sort as text, and "2026-07-12T…" comes before "2026-07-13".
+      deleteCallbacksBefore: (date) => removeWhere(state().callbacks, (callback) => callback.createdAt < date),
     };
   }
 }

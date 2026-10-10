@@ -423,6 +423,27 @@ describe('handing over to the team', () => {
   });
 });
 
+describe('retention', () => {
+  it('deletes bookings and requests older than the retention period, and nothing more recent', () => {
+    const h = harness('2026-07-01T08:00:00Z');
+    expect(h.engine.staffBook({ date: '2026-07-03', time: '20:00', partySize: 2, guestName: 'Ancien', phone: '06 11 11 11 11' })).toMatchObject({
+      status: 'booked',
+    });
+    h.engine.requestCallback(guest('g1'), { reason: 'other', summary: 'Ancienne demande' });
+
+    h.setNow('2026-10-14T08:00:00Z');
+    h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Récent', phone: '06 22 22 22 22' });
+    h.engine.requestCallback(guest('g2', '+33698765432'), { reason: 'other', summary: 'Demande récente' });
+
+    expect(h.engine.purgeOlderThan(90)).toEqual({ bookings: 1, callbacks: 1 });
+    const left = h.store.snapshot();
+    expect(left.bookings.map((booking) => booking.guestName)).toEqual(['Récent']);
+    expect(left.callbacks.map((callback) => callback.summary)).toEqual(['Demande récente']);
+    expect(h.engine.purgeOlderThan(90)).toEqual({ bookings: 0, callbacks: 0 });
+    expect(() => h.engine.purgeOlderThan(0)).toThrow(RangeError);
+  });
+});
+
 describe('opening hours', () => {
   it('describes the next seven days, closures included', () => {
     const h = harness();
