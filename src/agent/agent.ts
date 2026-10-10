@@ -1,6 +1,7 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
 import { TOOL_DEFINITIONS, runTool, type ToolOutput } from '../tools.js';
+import { enforceAllergenRelay } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
@@ -24,6 +25,9 @@ export interface ToolRecord {
 
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
+/** A rule the code enforced because the model did not follow it on its own. */
+export type Correction = 'allergen_relay';
+
 export interface TurnResult {
   /** What the guest sees or hears. */
   reply: string;
@@ -39,6 +43,8 @@ export interface TurnResult {
   /** Time spent waiting for the model alone, per call. */
   modelMs: number[];
   outcome: TurnOutcome;
+  /** Rules the code had to enforce in this turn: how far the model can be trusted on its own. */
+  corrections: Correction[];
 }
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -86,6 +92,7 @@ export async function respond(
       latencyMs: clock() - started,
       modelMs: [],
       outcome: 'empty_message',
+      corrections: [],
     };
   }
 
@@ -97,7 +104,7 @@ export async function respond(
   const system = buildSystemPrompt(engine.config, session.language, session.channel, engine.now());
   const maxCalls = options.maxModelCalls ?? 6;
 
-  const finish = (reply: string, outcome: TurnOutcome): TurnResult => {
+  const finish = (reply: string, outcome: TurnOutcome, corrections: Correction[] = []): TurnResult => {
     working.push({ role: 'assistant', text: reply, toolCalls: [] });
     return {
       reply,
@@ -109,6 +116,7 @@ export async function respond(
       latencyMs: clock() - started,
       modelMs,
       outcome,
+      corrections,
     };
   };
 
@@ -147,20 +155,11 @@ export async function respond(
     costUsd = costUsd === undefined || response.costUsd === undefined ? undefined : costUsd + response.costUsd;
 
     if (response.toolCalls.length === 0) {
-      const reply = sanitizeReply(response.text, session.channel, session.language);
-      if (reply === '') return fail(new Error('The model answered with an empty message'));
-      working.push({ role: 'assistant', text: reply, toolCalls: [] });
-      return {
-        reply,
-        transcript: working,
-        tools,
-        usage,
-        ...(costUsd === undefined ? {} : { costUsd }),
-        modelCalls: modelMs.length,
-        latencyMs: clock() - started,
-        modelMs,
-        outcome: 'answered',
-      };
+      const cleaned = sanitizeReply(response.text, session.channel, session.language);
+      if (cleaned === '') return fail(new Error('The model answered with an empty message'));
+      const relay = enforceAllergenRelay(cleaned, tools);
+      if (!relay.corrected) return finish(cleaned, 'answered');
+      return finish(sanitizeReply(relay.reply, session.channel, session.language), 'answered', ['allergen_relay']);
     }
 
     working.push({ role: 'assistant', text: response.text, toolCalls: response.toolCalls });

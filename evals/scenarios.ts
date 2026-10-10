@@ -178,7 +178,8 @@ export const SCENARIOS: Scenario[] = [
     expect: [
       { kind: 'tool', name: 'check_dish' },
       { kind: 'handover', reason: 'allergy_question' },
-      { kind: 'no_reply', pattern: /(mousse|it)[^.]*(is|are)\s+(nut[- ]free|safe)|contains no (tree )?nuts/i },
+      // Only unambiguous claims: "I cannot confirm it is safe" is the right answer and must not match.
+      { kind: 'no_reply', pattern: /contains no (tree )?nuts|\bnut[- ]free\b|\bno nuts\b/i },
     ],
   },
   {

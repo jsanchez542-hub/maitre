@@ -1,4 +1,5 @@
 import type { TurnResult } from '../src/agent/agent.js';
+import { comparable } from '../src/agent/guards.js';
 import type { Language } from '../src/i18n/index.js';
 import type { Booking, CallbackRequest } from '../src/store.js';
 import type { Expectation, Scenario } from './scenarios.js';
@@ -22,23 +23,18 @@ export interface Outcome {
   phone: string | null;
 }
 
-/** Collapses every kind of space and apostrophe, so word-for-word means the words, not the typography. */
-export function normalize(text: string): string {
-  return text
-    .replace(/[    \s]+/g, ' ')
-    .replace(/[’‘ʼ]/g, "'")
-    .replace(/[«»"“”]/g, '"')
-    .replace(/\s+([.,!?;:])/g, '$1')
-    .replace(/"\s+/g, '"')
-    .replace(/\s+"/g, '"')
-    .trim()
-    .toLowerCase();
-}
+/** The same comparison the guard uses, so the evaluation measures what the code enforces. */
+export const normalize = comparable;
 
+/**
+ * Words that belong to one language only. Words shared by two of them ("la",
+ * "de", "en", "que") are left out: in a Spanish list of dishes, "la" appears
+ * four times and would make it look French.
+ */
 const STOPWORDS: Record<Language, ReadonlySet<string>> = {
-  fr: new Set(['le', 'la', 'les', 'vous', 'pour', 'une', 'est', 'et', 'votre', 'avec', 'je', 'nous', 'pas', 'du', 'au', 'des', 'souhaitez', 'bien']),
-  en: new Set(['the', 'you', 'for', 'is', 'and', 'to', 'of', 'your', 'with', 'i', 'we', 'not', 'this', 'at', 'on', 'can', 'would', 'have']),
-  es: new Set(['el', 'los', 'usted', 'para', 'una', 'es', 'y', 'su', 'con', 'le', 'por', 'en', 'que', 'mesa', 'gracias', 'puedo']),
+  fr: new Set(['vous', 'votre', 'vos', 'nous', 'pour', 'avec', 'est', 'sont', 'une', 'des', 'du', 'au', 'aux', 'je', 'pas', 'souhaitez', 'merci', 'très', 'cette', 'mais', 'êtes', 'avez', 'pouvez']),
+  en: new Set(['the', 'you', 'your', 'for', 'with', 'is', 'are', 'and', 'to', 'of', 'we', 'not', 'this', 'that', 'can', 'would', 'have', 'will', 'please', 'thank']),
+  es: new Set(['usted', 'para', 'una', 'los', 'las', 'es', 'son', 'y', 'su', 'sus', 'con', 'por', 'gracias', 'puedo', 'desea', 'del', 'está', 'están', 'muy', 'pero', 'estos', 'platos']),
 };
 
 /** The language a reply is most likely in, or undefined when it is too short or too mixed to tell. */

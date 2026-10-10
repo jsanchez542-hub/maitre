@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { respond, type TurnResult } from '../src/agent/agent.js';
 import { openRouterModel } from '../src/agent/providers/openai.js';
-import type { LanguageModel } from '../src/agent/model.js';
+import { ModelError, type LanguageModel } from '../src/agent/model.js';
 import { BookingEngine, type Session } from '../src/engine.js';
 import { randomIds } from '../src/ids.js';
 import { MemoryStore } from '../src/store.js';
@@ -45,7 +45,12 @@ interface RunRecord {
     modelMs: number[];
     tools: { name: string; input: unknown; output: unknown }[];
     costUsd?: number;
+    corrections: string[];
+    /** Failed model calls, by kind: "rate_limited 429" means the provider refused, not that the model got it wrong. */
+    errors: string[];
   }[];
+  /** What the conversation left behind, so a run can be scored again without calling the model. */
+  state?: { newBookings: unknown[]; allBookings: unknown[]; callbacks: unknown[]; refs: Record<string, string> };
 }
 
 function setting(name: string, fallback: string): string {
@@ -74,17 +79,24 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
   };
 
   const turns: TurnResult[] = [];
+  const errors: string[][] = [];
   let transcript: TurnResult['transcript'] = [];
   for (const message of scenario.turns) {
-    const result = await respond(engine, model, session, transcript, message);
+    const seen: string[] = [];
+    const result = await respond(engine, model, session, transcript, message, {
+      onError: (error) =>
+        seen.push(error instanceof ModelError ? `${error.kind} ${error.status ?? ''}`.trim() : error instanceof Error ? error.message.slice(0, 80) : 'error'),
+    });
     turns.push(result);
+    errors.push(seen);
     transcript = result.transcript;
   }
 
   const snapshot = store.snapshot();
+  const newBookings = snapshot.bookings.filter((booking) => !before.has(booking.id));
   const checks = checkScenario(scenario, {
     turns,
-    newBookings: snapshot.bookings.filter((booking) => !before.has(booking.id)),
+    newBookings,
     allBookings: snapshot.bookings,
     callbacks: snapshot.callbacks,
     refs,
@@ -105,7 +117,10 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
       modelMs: turn.modelMs,
       tools: turn.tools.map(({ name, input, output }) => ({ name, input, output })),
       ...(turn.costUsd === undefined ? {} : { costUsd: turn.costUsd }),
+      corrections: turn.corrections,
+      errors: errors[index] ?? [],
     })),
+    state: { newBookings, allBookings: snapshot.bookings, callbacks: snapshot.callbacks, refs },
   };
 }
 
@@ -148,8 +163,8 @@ it('runs the evaluation against real models', async () => {
     '',
     `${scenarios.length} scenarios, ${runs} runs each. A scenario passes when every run passes.`,
     '',
-    '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | Cost |',
-    '|---|---|---|---|---|---|',
+    '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | Guard fired | Provider errors | Cost |',
+    '|---|---|---|---|---|---|---|---|',
   ];
   const failures: string[] = [];
 
@@ -187,8 +202,15 @@ it('runs the evaluation against real models', async () => {
     const runsPassed = records.filter((record) => record.passed).length;
     const latencies = records.flatMap((record) => record.turns.map((turn) => turn.latencyMs));
     const cost = records.reduce((sum, record) => sum + record.costUsd, 0);
+    const guarded = records.reduce((sum, record) => sum + record.turns.filter((turn) => turn.corrections.length > 0).length, 0);
+    const turnCount = records.reduce((sum, record) => sum + record.turns.length, 0);
+    // A turn whose model calls all failed says nothing about the model's judgement, only about its provider.
+    const providerFailed = records.reduce(
+      (sum, record) => sum + record.turns.filter((turn) => turn.errors.length > 0 && turn.outcome !== 'answered').length,
+      0,
+    );
     summary.push(
-      `| ${id} | ${scenariosPassed}/${byScenario.size} | ${runsPassed}/${records.length} | ${(percentile(latencies, 0.5) / 1000).toFixed(1)} s | ${(percentile(latencies, 0.95) / 1000).toFixed(1)} s | $${cost.toFixed(3)} |`,
+      `| ${id} | ${scenariosPassed}/${byScenario.size} | ${runsPassed}/${records.length} | ${(percentile(latencies, 0.5) / 1000).toFixed(1)} s | ${(percentile(latencies, 0.95) / 1000).toFixed(1)} s | ${guarded}/${turnCount} turns | ${providerFailed}/${turnCount} turns | $${cost.toFixed(3)} |`,
     );
     for (const record of records.filter((candidate) => !candidate.passed)) {
       const failed = record.skipped ? [`skipped: ${record.skipped}`] : record.checks.filter((check) => !check.ok).map((check) => `${check.name}${check.detail ? ` (${check.detail})` : ''}`);

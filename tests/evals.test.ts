@@ -10,7 +10,7 @@ import { validateConfig } from '../src/config.js';
 const THIN = ' ';
 
 function turn(reply: string, tools: TurnResult['tools'] = []): TurnResult {
-  return { reply, transcript: [], tools, usage: NO_USAGE, modelCalls: 1, latencyMs: 900, modelMs: [800], outcome: 'answered' };
+  return { reply, transcript: [], tools, usage: NO_USAGE, modelCalls: 1, latencyMs: 900, modelMs: [800], outcome: 'answered', corrections: [] };
 }
 
 function booking(change: Partial<Booking>): Booking {
@@ -96,6 +96,14 @@ describe('the evaluation harness', () => {
     expect(detectLanguage('Your table for two is booked for Friday at eight in the evening.')).toBe('en');
     expect(detectLanguage('Su mesa para dos está reservada el viernes a las ocho, gracias por su visita.')).toBe('es');
     expect(detectLanguage('Merci !')).toBeUndefined();
+  });
+
+  it('is not fooled by a Spanish list of dishes full of "la" (a real misreading from the first run)', () => {
+    const reply =
+      'Según la ficha de alérgenos de la cocina, estos platos no contienen gluten:\n\nOstras de la bahía de Arcachon\n' +
+      'Confit de pato con patatas sarladesas\nEntrecot a la bordelesa\nRisotto de boletus\nMousse de chocolate\n\n' +
+      'Si quiere, puedo consultarle cualquier otro plato en concreto.';
+    expect(detectLanguage(reply)).toBe('es');
   });
 
   it('compares words, not spaces and quotation marks', () => {

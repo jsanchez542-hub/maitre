@@ -1,4 +1,5 @@
 export * from './agent.js';
+export * from './guards.js';
 export * from './http.js';
 export * from './model.js';
 export * from './prompt.js';
