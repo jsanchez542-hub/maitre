@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maitre",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "RESTAURANTS", "class_name": "Restaurant" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Restaurant"] }],
+  "vars": {
+    // Every restaurant's data stays in the EU. workerd cannot pin data, so
+    // local runs override this with "none" in .dev.vars and the test config.
+    "DATA_JURISDICTION": "eu",
+    // Chosen with the evaluation (evals/RESULTS.md).
+    "MODEL": "anthropic/claude-haiku-5.5",
+    "RESTAURANT_IDS": "demo"
+  }
+  // Secrets, never in this file: OPENROUTER_API_KEY, AGENT_TOKEN and STAFF_TOKEN,
+  // set with `wrangler secret put` in production and in .dev.vars locally.
+}

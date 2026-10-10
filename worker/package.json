@@ -1,0 +1,21 @@
+{
+  "name": "maitre-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Maître on Cloudflare: one Durable Object per restaurant, so two guests can never book the same table",
+  "author": "Miguel Sanchez Torres",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.0",
+    "@cloudflare/workers-types": "^5.20261010.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.149.0"
+  }
+}
