@@ -13,6 +13,14 @@ export type PhoneSource = 'caller_id' | 'whatsapp' | 'keypad' | 'form' | 'staff'
 
 export type BookingStatus = 'booked' | 'confirmed' | 'cancelled' | 'no_show';
 
+/** One move of a booking, kept so "20 h 30 (avant 20 h)" can be shown and a dispute settled. */
+export interface BookingChange {
+  /** ISO 8601 instant of the change. */
+  at: string;
+  from: { date: PlainDate; time: PlainTime; partySize: number };
+  channel: Channel;
+}
+
 export interface Booking {
   id: string;
   /** Short code the guest can quote, without letters that look like digits. */
@@ -27,14 +35,21 @@ export interface Booking {
   tableGroup: string;
   service: string;
   guestName: string;
-  /** E.164, such as +33612345678. */
-  phone: string;
-  phoneSource: PhoneSource;
+  /**
+   * E.164, such as +33612345678. Every booking made by a guest has one; only a
+   * party the staff seat on the spot ("sur place") may have none.
+   */
+  phone?: string;
+  phoneSource?: PhoneSource;
   status: BookingStatus;
   channel: Channel;
   language: Language;
   notes?: string;
   allergies: readonly Allergen[];
+  /** Entered by the staff for a party already in the restaurant. */
+  walkIn?: boolean;
+  /** Oldest first, the most recent twenty. */
+  history: readonly BookingChange[];
   /** ISO 8601 instants. */
   createdAt: string;
   updatedAt: string;
@@ -93,6 +108,7 @@ export interface BookingTx {
   deleteExpiredHolds(nowMs: number): number;
 
   saveCallback(request: CallbackRequest): void;
+  callback(id: string): CallbackRequest | undefined;
   callbacks(): CallbackRequest[];
 }
 
@@ -166,7 +182,10 @@ export class MemoryStore implements BookingStore {
           .filter((b) => b.phone === phone && compareDates(b.date, fromDate) >= 0)
           .sort((a, b) => compareDates(a.date, b.date) || a.time.localeCompare(b.time)),
       saveBooking: (booking) => {
-        state().bookings.set(booking.id, Object.freeze({ ...booking, allergies: [...booking.allergies] }));
+        state().bookings.set(
+          booking.id,
+          Object.freeze({ ...booking, allergies: [...booking.allergies], history: booking.history.map((change) => ({ ...change })) }),
+        );
       },
       referenceTaken: (reference) => [...state().bookings.values()].some((b) => b.reference === reference),
 
@@ -193,6 +212,7 @@ export class MemoryStore implements BookingStore {
       saveCallback: (request) => {
         state().callbacks.set(request.id, Object.freeze({ ...request }));
       },
+      callback: (id) => state().callbacks.get(id),
       callbacks: () => [...state().callbacks.values()],
     };
   }

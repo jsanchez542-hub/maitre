@@ -1,11 +1,22 @@
 import { isAllergen, type Allergen } from './allergens.js';
-import { pickTableGroup, stayMinutes, type Occupation } from './availability.js';
-import { addDays, daysBetween, isPlainTime, localNow, toMinutes, type PlainDate, type PlainTime } from './calendar.js';
+import { peakUse, pickTableGroup, stayMinutes, type Occupation } from './availability.js';
+import {
+  addDays,
+  compareDates,
+  daysBetween,
+  fromMinutes,
+  isPlainDate,
+  isPlainTime,
+  localNow,
+  toMinutes,
+  type PlainDate,
+  type PlainTime,
+} from './calendar.js';
 import { assertValidConfig, type BusinessConfig, type Sitting, type TableGroup } from './config.js';
 import { resolveDate, type DateSpec } from './dates.js';
-import { formatBooking, formatDate, formatDateAtTime, formatTime, localize, type Language } from './i18n/index.js';
+import { formatBooking, formatDate, formatDateAtTime, formatTime, localize, messages, type Language } from './i18n/index.js';
 import { isReference, type IdSource } from './ids.js';
-import { isE164 } from './phone.js';
+import { formatPhone, isE164, normalizePhone } from './phone.js';
 import { isOnGrid, isOpenOn, sittingAt, sittingsOn, slotsOf, slotsOn } from './schedule.js';
 import {
   isActive,
@@ -148,6 +159,91 @@ export interface DayHours {
   note?: string;
 }
 
+/** A booking as the staff see it in the dashboard: everything, the phone number included. */
+export interface StaffBookingView {
+  reference: string;
+  date: PlainDate;
+  time: PlainTime;
+  /** When the table is free again, on the 24-hour clock. */
+  endsAt: PlainTime;
+  partySize: number;
+  stayMinutes: number;
+  tableGroup: string;
+  seats: number;
+  service: string;
+  guestName: string;
+  status: BookingStatus;
+  /** Grouped for reading: +33 6 12 34 56 78. */
+  phone?: string;
+  phoneSource?: PhoneSource;
+  channel: Channel;
+  language: Language;
+  notes?: string;
+  allergies: { id: Allergen; name: string }[];
+  walkIn: boolean;
+  /** Oldest first: where the booking was before each move. */
+  history: { at: string; from: SlotOffer & { partySize: number }; channel: Channel }[];
+  createdAt: string;
+  readBack: string;
+}
+
+export interface CallbackView {
+  id: string;
+  createdAt: string;
+  channel: Channel;
+  language: Language;
+  phone?: string;
+  reason: HandoffReason;
+  summary: string;
+  status: 'open' | 'done';
+}
+
+/**
+ * Everything the dashboard shows for one day, computed by the same code that
+ * decides whether a table is free, so the screen and the assistant never disagree.
+ */
+export interface ServiceDay {
+  date: PlainDate;
+  readBack: string;
+  open: boolean;
+  note?: string;
+  tables: { id: string; seats: number; count: number }[];
+  sittings: { service: string; name: string; firstBooking: PlainTime; lastBooking: PlainTime; bookings: number; covers: number }[];
+  /** Every bookable time of the day: covers arriving in that slot and tables of each size in use at that moment. */
+  slots: { time: PlainTime; service: string; arrivals: number; inUse: Record<string, number> }[];
+  /** In order of arrival, cancelled ones included. */
+  bookings: StaffBookingView[];
+  /** Tables set aside while a guest finishes booking. */
+  holds: { time: PlainTime; partySize: number; tableGroup: string; expiresAt: string }[];
+  totals: { bookings: number; covers: number; withAllergies: number; walkIns: number; cancelled: number; noShows: number };
+  /** Open requests to call back, whatever their day. */
+  callbacks: { open: number; largeGroups: number; list: CallbackView[] };
+}
+
+export interface StaffBookRequest {
+  date: PlainDate;
+  /** Defaults to now for a party on the spot. */
+  time?: PlainTime;
+  partySize: number;
+  guestName?: string;
+  phone?: string;
+  notes?: string;
+  allergies?: readonly string[];
+  /** A party already in the restaurant ("sur place"). */
+  walkIn?: boolean;
+  language?: Language;
+}
+
+export type StaffBookResult =
+  | { status: 'booked'; booking: StaffBookingView }
+  | { status: 'unavailable'; reason: UnavailableReason }
+  | { status: 'invalid'; problems: string[] };
+
+export type StaffActionResult =
+  | { status: 'done'; booking: StaffBookingView }
+  | { status: 'not_found' }
+  | { status: 'not_allowed'; reason: 'already_cancelled' | 'not_active' | 'not_started' };
+
 interface Clock {
   today: PlainDate;
   nowMinutes: number;
@@ -167,6 +263,7 @@ const NAME_MAX = 80;
 const NOTES_MAX = 500;
 const SUMMARY_MAX = 500;
 const ALTERNATIVE_DAYS = 14;
+const HISTORY_LENGTH = 20;
 
 /** Collapses whitespace and refuses control characters, empty text and anything too long. */
 function cleanText(value: unknown, max: number): string | undefined {
@@ -218,6 +315,11 @@ export class BookingEngine {
   /** Today's date and the current time in the business's own time zone. */
   today(): { date: PlainDate; time: PlainTime } {
     return localNow(this.#deps.now(), this.#config.timeZone);
+  }
+
+  /** The engine's clock, so the assistant's prompt and the bookings agree on what "now" is. */
+  now(): Date {
+    return this.#deps.now();
   }
 
   /**
@@ -357,6 +459,7 @@ export class BookingEngine {
         language: session.language,
         ...(notes ? { notes } : {}),
         allergies,
+        history: [],
         createdAt: stamp,
         updatedAt: stamp,
       };
@@ -407,6 +510,7 @@ export class BookingEngine {
       if (!hold || hold.sessionId !== session.id || hold.expiresAt <= clock.nowMs) return { status: 'hold_expired' };
 
       const previous = { ...this.#offer(booking.date, booking.time, session.language, clock), partySize: booking.partySize };
+      const stamp = new Date(clock.nowMs).toISOString();
       const moved: Booking = {
         ...booking,
         holdId: hold.id,
@@ -418,7 +522,11 @@ export class BookingEngine {
         service: hold.service,
         // A moved booking is confirmed again, so the reminder goes out for the new time.
         status: 'booked',
-        updatedAt: new Date(clock.nowMs).toISOString(),
+        history: [
+          ...booking.history,
+          { at: stamp, from: { date: booking.date, time: booking.time, partySize: booking.partySize }, channel: session.channel },
+        ].slice(-HISTORY_LENGTH),
+        updatedAt: stamp,
       };
       tx.saveBooking(moved);
       tx.deleteHold(hold.id);
@@ -505,6 +613,185 @@ export class BookingEngine {
     };
   }
 
+  /** The dashboard's view of one day. */
+  serviceDay(date: PlainDate, language: Language): ServiceDay {
+    if (!isPlainDate(date)) throw new RangeError(`Not a calendar date: ${date}`);
+    const clock = this.#clock();
+    return this.#store.transaction((tx) => {
+      const occupations = this.#occupations(tx, date, clock.nowMs, { sessionId: '' });
+      const all = tx
+        .bookingsOn(date)
+        .sort((a, b) => toMinutes(a.time) - toMinutes(b.time) || a.createdAt.localeCompare(b.createdAt));
+      const active = all.filter(isActive);
+      const sittings = sittingsOn(this.#config, date);
+      const covers = (bookings: Booking[]): number => bookings.reduce((sum, booking) => sum + booking.partySize, 0);
+      const exception = this.#config.exceptions.find((candidate) => candidate.date === date);
+      const open = tx.callbacks().filter((callback) => callback.status === 'open');
+
+      return {
+        date,
+        readBack: formatDate(date, language, clock.today),
+        open: sittings.length > 0,
+        ...(exception?.reason ? { note: localize(exception.reason, language) } : {}),
+        tables: this.#config.tables.map(({ id, seats, count }) => ({ id, seats, count })),
+        sittings: sittings.map((sitting) => {
+          const first = toMinutes(sitting.firstSeating);
+          const last = toMinutes(sitting.lastSeating);
+          const inSitting = active.filter((booking) => toMinutes(booking.time) >= first && toMinutes(booking.time) <= last);
+          return {
+            service: sitting.service,
+            name: this.#serviceName(sitting.service, language),
+            firstBooking: sitting.firstSeating,
+            lastBooking: sitting.lastSeating,
+            bookings: inSitting.length,
+            covers: covers(inSitting),
+          };
+        }),
+        slots: slotsOn(this.#config, date).map((time) => {
+          const minute = toMinutes(time);
+          return {
+            time,
+            service: sittingAt(this.#config, date, time)?.service ?? '',
+            // A party seated at 20:07 counts in the 20:00 slot.
+            arrivals: covers(
+              active.filter((booking) => toMinutes(booking.time) >= minute && toMinutes(booking.time) < minute + this.#config.slotMinutes),
+            ),
+            inUse: Object.fromEntries(this.#config.tables.map((group) => [group.id, peakUse(occupations, group.id, minute, minute + 1)])),
+          };
+        }),
+        bookings: all.map((booking) => this.#staffView(booking, language, clock)),
+        holds: tx.holdsOn(date, clock.nowMs).map((hold) => ({
+          time: hold.time,
+          partySize: hold.partySize,
+          tableGroup: hold.tableGroup,
+          expiresAt: new Date(hold.expiresAt).toISOString(),
+        })),
+        totals: {
+          bookings: active.length,
+          covers: covers(active),
+          withAllergies: active.filter((booking) => booking.allergies.length > 0).length,
+          walkIns: active.filter((booking) => booking.walkIn === true).length,
+          cancelled: all.filter((booking) => booking.status === 'cancelled').length,
+          noShows: all.filter((booking) => booking.status === 'no_show').length,
+        },
+        callbacks: {
+          open: open.length,
+          largeGroups: open.filter((callback) => callback.reason === 'large_group').length,
+          list: open.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((callback) => this.#callbackView(callback)),
+        },
+      };
+    });
+  }
+
+  /**
+   * A booking entered by the staff: a phone call taken by hand or a party at
+   * the door. No notice period and no phone number required, but the same
+   * capacity as everyone else: a party seated without being recorded is a table
+   * the assistant would offer to someone else.
+   */
+  staffBook(request: StaffBookRequest): StaffBookResult {
+    const clock = this.#clock();
+    const language = request.language ?? this.#config.defaultLanguage;
+    const walkIn = request.walkIn === true;
+    const problems: string[] = [];
+
+    const date = request.date;
+    if (!isPlainDate(date)) problems.push('date must be a calendar date written YYYY-MM-DD');
+    else if (compareDates(date, clock.today) < 0) problems.push('date is in the past');
+    else if (walkIn && date !== clock.today) problems.push('a party on the spot is booked for today');
+
+    const time = request.time ?? (walkIn ? fromMinutes(clock.nowMinutes) : undefined);
+    if (time === undefined || !isPlainTime(time)) problems.push('time must be written HH:mm');
+
+    const { partySize } = request;
+    if (!Number.isInteger(partySize) || partySize < 1) problems.push('partySize must be a whole number from 1');
+    else if (partySize > this.#config.maxPartySize) {
+      problems.push(`parties larger than ${this.#config.maxPartySize} need tables joined, which bookings do not handle`);
+    }
+
+    const guestName = cleanText(request.guestName ?? '', NAME_MAX) ?? (walkIn ? messages(language).walkInGuest() : undefined);
+    if (!guestName) problems.push(`guestName must be 1 to ${NAME_MAX} characters of plain text`);
+
+    let phone: string | undefined;
+    if (request.phone !== undefined && request.phone.trim() !== '') {
+      phone = normalizePhone(request.phone);
+      if (!phone) problems.push('phone cannot be read: write it like 06 12 34 56 78 or +44 7700 900123');
+    }
+
+    let notes: string | undefined;
+    if (request.notes !== undefined && request.notes.trim() !== '') {
+      notes = cleanText(request.notes, NOTES_MAX);
+      if (!notes) problems.push(`notes must be at most ${NOTES_MAX} characters of plain text`);
+    }
+    const allergies: Allergen[] = [];
+    for (const allergen of request.allergies ?? []) {
+      if (!isAllergen(allergen)) problems.push(`unknown allergen "${String(allergen).slice(0, 40)}"`);
+      else if (!allergies.includes(allergen)) allergies.push(allergen);
+    }
+    if (problems.length > 0 || time === undefined || !guestName) return { status: 'invalid', problems };
+
+    return this.#store.transaction((tx): StaffBookResult => {
+      const check = this.#check(tx, date, time, partySize, clock, { sessionId: '' }, new Map(), true);
+      if (!check.ok) return { status: 'unavailable', reason: check.reason };
+      const id = this.#deps.ids.id();
+      const stamp = new Date(clock.nowMs).toISOString();
+      const booking: Booking = {
+        id,
+        reference: this.#newReference(tx),
+        holdId: `staff-${id}`,
+        date,
+        time,
+        partySize,
+        stayMinutes: stayMinutes(this.#config, partySize),
+        tableGroup: check.group.id,
+        service: check.sitting.service,
+        guestName,
+        ...(phone ? { phone, phoneSource: 'staff' as const } : {}),
+        // A party standing in the restaurant has nothing left to confirm.
+        status: walkIn ? 'confirmed' : 'booked',
+        channel: 'staff',
+        language,
+        ...(notes ? { notes } : {}),
+        allergies,
+        ...(walkIn ? { walkIn: true } : {}),
+        history: [],
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      tx.saveBooking(booking);
+      return { status: 'booked', booking: this.#staffView(booking, language, clock) };
+    });
+  }
+
+  /** The staff cancel any booking, whoever made it. */
+  staffCancel(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
+    return this.#staffUpdate(reference, language, (booking) => {
+      if (booking.status === 'cancelled') return { reason: 'already_cancelled' };
+      if (!isActive(booking)) return { reason: 'not_active' };
+      return { status: 'cancelled' };
+    });
+  }
+
+  /** A guest who did not come. Only once their time has passed. */
+  markNoShow(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
+    return this.#staffUpdate(reference, language, (booking, clock) => {
+      if (!isActive(booking)) return { reason: 'not_active' };
+      if (!this.#hasStarted(booking, clock)) return { reason: 'not_started' };
+      return { status: 'no_show' };
+    });
+  }
+
+  /** The team has called the guest back. */
+  completeCallback(id: string): { status: 'done' } | { status: 'not_found' } {
+    if (typeof id !== 'string' || id.length > 100) return { status: 'not_found' };
+    return this.#store.transaction((tx) => {
+      const callback = tx.callback(id);
+      if (!callback) return { status: 'not_found' as const };
+      if (callback.status !== 'done') tx.saveCallback({ ...callback, status: 'done' });
+      return { status: 'done' as const };
+    });
+  }
+
   /** Removes holds whose time has run out. The production store calls it from an alarm. */
   purgeExpiredHolds(): number {
     const { nowMs } = this.#clock();
@@ -517,6 +804,11 @@ export class BookingEngine {
     return { today: local.date, nowMinutes: toMinutes(local.time), nowMs: instant.getTime() };
   }
 
+  /**
+   * Whether a party can have a table at this time. The staff skip the notice
+   * period and the grid, because a party standing at the door does not arrive
+   * on the quarter hour, but never the capacity: nobody can book a table twice.
+   */
   #check(
     tx: BookingTx,
     date: PlainDate,
@@ -525,15 +817,16 @@ export class BookingEngine {
     clock: Clock,
     exclusions: Exclusions,
     cache: Map<PlainDate, Occupation[]>,
+    staff = false,
   ): Check {
     const daysAhead = daysBetween(clock.today, date);
     if (daysAhead > this.#config.maxAdvanceDays) return { ok: false, reason: 'too_far_ahead' };
     if (!isOpenOn(this.#config, date)) return { ok: false, reason: 'closed' };
     const sitting = sittingAt(this.#config, date, time);
     if (!sitting) return { ok: false, reason: 'outside_hours' };
-    if (!isOnGrid(sitting, time, this.#config.slotMinutes)) return { ok: false, reason: 'not_a_slot' };
+    if (!staff && !isOnGrid(sitting, time, this.#config.slotMinutes)) return { ok: false, reason: 'not_a_slot' };
     const minutesUntil = daysAhead * 1440 + toMinutes(time) - clock.nowMinutes;
-    if (minutesUntil < this.#config.minNoticeMinutes) return { ok: false, reason: 'too_soon' };
+    if (!staff && minutesUntil < this.#config.minNoticeMinutes) return { ok: false, reason: 'too_soon' };
 
     let occupations = cache.get(date);
     if (!occupations) {
@@ -651,6 +944,70 @@ export class BookingEngine {
   #serviceName(serviceId: string, language: Language): string {
     const service = this.#config.services.find((candidate) => candidate.id === serviceId);
     return service ? localize(service.name, language) : serviceId;
+  }
+
+  #staffUpdate(
+    reference: string,
+    language: Language,
+    decide: (booking: Booking, clock: Clock) => { status: BookingStatus } | { reason: 'already_cancelled' | 'not_active' | 'not_started' },
+  ): StaffActionResult {
+    const normalized = normalizeReference(reference);
+    if (!normalized) return { status: 'not_found' };
+    const clock = this.#clock();
+    return this.#store.transaction((tx): StaffActionResult => {
+      const booking = tx.bookingByReference(normalized);
+      if (!booking) return { status: 'not_found' };
+      const decision = decide(booking, clock);
+      if ('reason' in decision) return { status: 'not_allowed', reason: decision.reason };
+      const updated: Booking = { ...booking, status: decision.status, updatedAt: new Date(clock.nowMs).toISOString() };
+      tx.saveBooking(updated);
+      return { status: 'done', booking: this.#staffView(updated, language, clock) };
+    });
+  }
+
+  #staffView(booking: Booking, language: Language, clock: Clock): StaffBookingView {
+    const group = this.#config.tables.find((candidate) => candidate.id === booking.tableGroup);
+    const words = messages(language);
+    return {
+      reference: booking.reference,
+      date: booking.date,
+      time: booking.time,
+      endsAt: fromMinutes((toMinutes(booking.time) + booking.stayMinutes) % 1440),
+      partySize: booking.partySize,
+      stayMinutes: booking.stayMinutes,
+      tableGroup: booking.tableGroup,
+      seats: group?.seats ?? 0,
+      service: this.#serviceName(booking.service, language),
+      guestName: booking.guestName,
+      status: booking.status,
+      ...(booking.phone ? { phone: formatPhone(booking.phone) } : {}),
+      ...(booking.phoneSource ? { phoneSource: booking.phoneSource } : {}),
+      channel: booking.channel,
+      language: booking.language,
+      ...(booking.notes ? { notes: booking.notes } : {}),
+      allergies: booking.allergies.map((id) => ({ id, name: words.allergen(id) })),
+      walkIn: booking.walkIn === true,
+      history: booking.history.map((change) => ({
+        at: change.at,
+        from: { ...this.#offer(change.from.date, change.from.time, language, clock), partySize: change.from.partySize },
+        channel: change.channel,
+      })),
+      createdAt: booking.createdAt,
+      readBack: formatBooking(booking.partySize, booking.date, booking.time, language, clock.today),
+    };
+  }
+
+  #callbackView(callback: CallbackRequest): CallbackView {
+    return {
+      id: callback.id,
+      createdAt: callback.createdAt,
+      channel: callback.channel,
+      language: callback.language,
+      ...(callback.phone ? { phone: formatPhone(callback.phone) } : {}),
+      reason: callback.reason,
+      summary: callback.summary,
+      status: callback.status,
+    };
   }
 
   #view(booking: Booking, language: Language, clock: Clock): BookingView {
