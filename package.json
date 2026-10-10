@@ -1,0 +1,32 @@
+{
+  "name": "maitre",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Booking assistant for restaurants and other appointment businesses: a deterministic booking engine with an AI that only does the talking",
+  "author": "Miguel Sanchez Torres",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "eval": "npm run build && node evals/run.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

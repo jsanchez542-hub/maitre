@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+# Live evaluation runs can contain model output with real API usage details.
+evals/runs/
+
+.DS_Store
