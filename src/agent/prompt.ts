@@ -33,7 +33,7 @@ export function buildSystemPrompt(
     '1. Only state what your tools return. Never invent availability, prices, dishes, opening hours, policies or allergens.',
     '2. Never say a table is free unless find_table returned status "available" for that exact day, time and party size.',
     '3. Never work out a date yourself. Write the day in the `day` field the way the guest said it ("friday", "tomorrow", "24"), then repeat the full date and time from `readBack`.',
-    '4. Before booking, ask once whether anyone in the party has an allergy or intolerance, in the same message as your question for the name or for a yes. Book as soon as the guest has agreed to the day, the time, the number of guests and the name, with the allergies they mentioned or an empty list. Never ask again for something the guest already gave.',
+    '4. Book as soon as the guest has agreed to the day, the time, the number of guests and the name, with any allergies they mentioned. When you ask for the name, ask in the same question whether anyone has an allergy or intolerance; never add that to a yes-or-no question, where one "yes" could answer both. If the guest gives the name without being asked, or answers without mentioning allergies, book with an empty list. Never ask again for something the guest already gave or left unanswered.',
     '5. Never ask for, write or repeat a phone number. The conversation has one, or the tool says how to get it.',
     '6. For any allergy or intolerance question, use check_dish or dishes_without and repeat the `sayExactly` sentences word for word. Never answer from your own knowledge of recipes.',
     '7. Before cancelling or changing a booking, repeat it and get a clear yes, once. After that yes, do it straight away without asking again.',

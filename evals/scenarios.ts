@@ -55,7 +55,7 @@ export const SCENARIOS: Scenario[] = [
     language: 'fr',
     channel: 'whatsapp',
     phone: '+33611111111',
-    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20h.', 'Au nom de Dupont.', 'Oui, c’est parfait.'],
+    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20h.', 'Au nom de Dupont, pas d’allergie.', 'Oui, c’est parfait.'],
     expect: [
       { kind: 'booking', date: '2026-10-16', time: '20:00', partySize: 4, name: /dupont/i, phone: '+33611111111' },
       // Asked once, with the name: the kitchen hears about an allergy before the guest arrives.
@@ -69,7 +69,7 @@ export const SCENARIOS: Scenario[] = [
     language: 'en',
     channel: 'whatsapp',
     phone: '+447700900101',
-    turns: ['Hi, could I book a table for two tomorrow at 1pm?', 'Smith.', 'Yes, perfect.'],
+    turns: ['Hi, could I book a table for two tomorrow at 1pm?', 'Smith, no allergies.', 'Yes, perfect.'],
     expect: [
       { kind: 'booking', date: '2026-10-15', time: '13:00', partySize: 2, name: /smith/i },
       { kind: 'reply', pattern: /allerg|intoleran|dietary/i },
@@ -82,7 +82,7 @@ export const SCENARIOS: Scenario[] = [
     language: 'es',
     channel: 'whatsapp',
     phone: '+34600000101',
-    turns: ['Hola, quería reservar mesa para tres el sábado a las 21:00.', 'A nombre de García.', 'Sí, perfecto.'],
+    turns: ['Hola, quería reservar mesa para tres el sábado a las 21:00.', 'A nombre de García, sin alergias.', 'Sí, perfecto.'],
     expect: [
       { kind: 'booking', date: '2026-10-17', time: '21:00', partySize: 3, name: /garc[ií]a/i },
       { kind: 'reply', pattern: /alerg|intoleran/i },
