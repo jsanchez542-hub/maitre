@@ -1,4 +1,19 @@
+import type { Language } from '../i18n/index.js';
 import type { Channel } from '../store.js';
+
+const THIN = ' ';
+
+/**
+ * French puts a narrow no-break space before ? ! ; : and inside « ». Models
+ * write a plain space or none at all. A colon is only fixed when a space is
+ * already there, so 20:30 and web addresses are never touched.
+ */
+export function frenchSpacing(text: string): string {
+  return text
+    .replace(/[  ]+([?!;:»])/g, `${THIN}$1`)
+    .replace(/([^\s  \d/=&?!])([?!;»])/g, `$1${THIN}$2`)
+    .replace(/«[  ]*/g, `«${THIN}`);
+}
 
 /**
  * The last step before a reply reaches a guest. Prompts ask for plain text,
@@ -6,7 +21,7 @@ import type { Channel } from '../store.js';
  * them deterministically instead of hoping the prompt holds. On the phone,
  * where text becomes speech, line breaks and emoji go as well.
  */
-export function sanitizeReply(text: string, channel: Channel): string {
+export function sanitizeReply(text: string, channel: Channel, language?: Language): string {
   // Bold markers are removed by splitting, not by a regular expression: linear
   // on any input, and nothing in a reply needs a literal ** or __.
   let reply = text.replace(/\r\n?/g, '\n').split('**').join('').split('__').join('');
@@ -30,10 +45,11 @@ export function sanitizeReply(text: string, channel: Channel): string {
     reply = reply.replace(/\p{Extended_Pictographic}️?/gu, '').replace(/\n+/g, ' ');
   }
 
-  return reply
+  reply = reply
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/ ,/g, ',')
     .replace(/,{2,}/g, ',')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return language === 'fr' ? frenchSpacing(reply) : reply;
 }

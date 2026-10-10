@@ -147,7 +147,7 @@ export async function respond(
     costUsd = costUsd === undefined || response.costUsd === undefined ? undefined : costUsd + response.costUsd;
 
     if (response.toolCalls.length === 0) {
-      const reply = sanitizeReply(response.text, session.channel);
+      const reply = sanitizeReply(response.text, session.channel, session.language);
       if (reply === '') return fail(new Error('The model answered with an empty message'));
       working.push({ role: 'assistant', text: reply, toolCalls: [] });
       return {

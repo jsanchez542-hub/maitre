@@ -180,6 +180,15 @@ describe('reply cleaning', () => {
     expect(sanitizeReply('À quel nom ?', 'web')).toBe('À quel nom ?');
   });
 
+  it('puts French punctuation right without touching times or web addresses', () => {
+    expect(sanitizeReply('Au nom de qui dois-je réserver ?', 'web', 'fr')).toBe('Au nom de qui dois-je réserver ?');
+    expect(sanitizeReply('Parfait!', 'web', 'fr')).toBe('Parfait !');
+    expect(sanitizeReply('Le plat « Confit » : sans gluten.', 'web', 'fr')).toBe('Le plat « Confit » : sans gluten.');
+    expect(sanitizeReply('À 20:30, voir https://exemple.fr/?q=1', 'web', 'fr')).toBe('À 20:30, voir https://exemple.fr/?q=1');
+    // English keeps its own rule: no space before a question mark.
+    expect(sanitizeReply('Which name ?', 'web', 'en')).toBe('Which name ?');
+  });
+
   it('stays fast on hostile input', () => {
     const hostile = `${'*'.repeat(20_000)}${'—'.repeat(20_000)}`;
     const started = Date.now();

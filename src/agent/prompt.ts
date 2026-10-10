@@ -1,6 +1,6 @@
 import { localNow } from '../calendar.js';
 import type { BusinessConfig } from '../config.js';
-import { formatDate, formatTime, messages, type Language } from '../i18n/index.js';
+import { formatDate, formatTime, localize, messages, type Language } from '../i18n/index.js';
 import type { Channel } from '../store.js';
 import type { SystemPrompt } from './model.js';
 
@@ -45,6 +45,11 @@ export function buildSystemPrompt(
     '- Short, warm and professional, like a good maître d’. One question at a time.',
     '- Plain sentences only: no markdown, no headings, no bullet points, no emoji, no dashes.',
     '- Do not repeat the greeting; the guest has already seen it.',
+    '',
+    // The dishes and their ids, so an allergen question goes straight to check_dish
+    // instead of first fetching the menu: one model call less, a second less on the phone.
+    'The menu, as dish id = name. Use the ids with check_dish; prices and details come from get_menu.',
+    ...config.menu.map((dish) => `- ${dish.id} = ${localize(dish.name, language)}`),
   ].join('\n');
 
   const local = localNow(now, config.timeZone);

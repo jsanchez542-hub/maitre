@@ -147,6 +147,12 @@ describe('the system prompt', () => {
     expect(prompt.stable).not.toContain('2026-10-14');
   });
 
+  it('lists the dishes with their ids in the guest’s language, so allergen questions skip a call', () => {
+    const prompt = buildSystemPrompt(TEST_CONFIG, 'es', 'web', new Date('2026-10-14T08:00:00Z'));
+    expect(prompt.stable).toContain('- duck-confit = Confit de pato');
+    expect(prompt.stable).toContain('- chocolate-mousse = Mousse de chocolate');
+  });
+
   it('is identical from one turn to the next except for the clock', () => {
     const a = buildSystemPrompt(TEST_CONFIG, 'en', 'web', new Date('2026-10-14T08:00:00Z'));
     const b = buildSystemPrompt(TEST_CONFIG, 'en', 'web', new Date('2026-10-15T19:30:00Z'));
