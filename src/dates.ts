@@ -25,6 +25,42 @@ export type DateResolution =
   | { ok: true; date: PlainDate }
   | { ok: false; error: 'invalid_date' | 'in_the_past' };
 
+const WEEKDAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+/**
+ * The forms the language model may use to say which day the guest means, in
+ * one short text field. A single field instead of several optional ones,
+ * because some models fill every optional field with a default: one sent
+ * `month: 1` for "the 24th" in a real run, which is 24 January.
+ */
+export const DAY_FORMS =
+  '"today", "tomorrow", "day after tomorrow", "in 3 days", a weekday such as "friday" (the nearest one, today included), ' +
+  '"friday next week" (only when the guest clearly means the week after), "24" for the 24th, "24/10" for 24 October, ' +
+  'or "2026-10-24" when the guest gave a full date';
+
+/** Reads one of the DAY_FORMS. Anything else is refused, never guessed. */
+export function parseDay(input: string): DateSpec | undefined {
+  if (input.length > 40) return undefined;
+  const text = input.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return { kind: 'date', date: text };
+  if (text === 'today' || text === 'tonight') return { kind: 'relative', days: 0 };
+  if (text === 'tomorrow') return { kind: 'relative', days: 1 };
+  if (text === 'day after tomorrow' || text === 'the day after tomorrow') return { kind: 'relative', days: 2 };
+  const inDays = /^in (\d{1,3}) days?$/.exec(text);
+  if (inDays) return { kind: 'relative', days: Number(inDays[1]) };
+  const weekday = /^(?:this )?([a-z]+)( next week)?$/.exec(text);
+  if (weekday) {
+    const index = WEEKDAY_NAMES.indexOf(weekday[1] ?? '');
+    if (index >= 0) return { kind: 'weekday', weekday: (index + 1) as Weekday, week: weekday[2] ? 'next' : 'this' };
+  }
+  const dayOfMonth = /^(?:the )?(\d{1,2})(?:st|nd|rd|th)?(?:\/(\d{1,2}))?$/.exec(text);
+  if (dayOfMonth) {
+    const day = Number(dayOfMonth[1]);
+    return dayOfMonth[2] === undefined ? { kind: 'day_of_month', day } : { kind: 'day_of_month', day, month: Number(dayOfMonth[2]) };
+  }
+  return undefined;
+}
+
 const MAX_RELATIVE_DAYS = 3660;
 
 function isWeekday(value: unknown): value is Weekday {

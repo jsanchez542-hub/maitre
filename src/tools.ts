@@ -1,6 +1,5 @@
 import { ALLERGENS, isAllergen, type Allergen, type DishCategory } from './allergens.js';
-import type { Weekday } from './calendar.js';
-import type { DateSpec } from './dates.js';
+import { DAY_FORMS, parseDay, type DateSpec } from './dates.js';
 import { HANDOFF_REASONS, type BookingEngine, type Session } from './engine.js';
 import { localize } from './i18n/index.js';
 import { checkDish, menuView, safeDishes } from './menu.js';
@@ -41,32 +40,20 @@ export interface ToolOutput {
   [key: string]: unknown;
 }
 
-const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const CATEGORIES: readonly DishCategory[] = ['starter', 'main', 'dessert', 'drink', 'side'];
 const MAX_TEXT = 600;
 
-const DATE_PROPERTIES = {
-  dateKind: {
+/**
+ * One short text for the day, in a small grammar the code reads, instead of a
+ * field per kind of date: some models fill every optional field with a default,
+ * and one sent `month: 1` for "the 24th" in a real evaluation run.
+ */
+const DAY_PROPERTY = {
+  day: {
     type: 'string',
-    enum: ['date', 'relative', 'weekday', 'day_of_month'],
-    description:
-      'How the guest gave the day. Describe what they said; never work out a calendar date yourself, the tool does it.',
+    maxLength: 40,
+    description: `The day the guest means, written in one of these forms: ${DAY_FORMS}. Describe what the guest said; never work out a calendar date yourself, the tool does it. "Vendredi prochain" and "next Friday" usually mean the coming Friday: write "friday".`,
   },
-  date: { type: 'string', description: 'YYYY-MM-DD. Only with dateKind "date", when the guest gave a full date.' },
-  daysFromToday: {
-    type: 'integer',
-    minimum: 0,
-    description: 'Only with dateKind "relative": 0 for today or tonight, 1 for tomorrow, 2 for the day after tomorrow.',
-  },
-  weekday: { type: 'string', enum: WEEKDAYS, description: 'Only with dateKind "weekday".' },
-  week: {
-    type: 'string',
-    enum: ['this', 'next'],
-    description:
-      'Only with dateKind "weekday". "this": the nearest such day from today, today included. Use it also for "vendredi prochain" or "next Friday", which usually mean the coming one. "next": the same day in the following Monday-to-Sunday week, only when the guest clearly means the week after ("la semaine prochaine").',
-  },
-  dayOfMonth: { type: 'integer', minimum: 1, maximum: 31, description: 'Only with dateKind "day_of_month", for "le 11".' },
-  month: { type: 'integer', minimum: 1, maximum: 12, description: 'Optional with dateKind "day_of_month", when the guest names the month.' },
 } as const;
 
 const ALLERGEN_LIST = { type: 'array', items: { type: 'string', enum: ALLERGENS }, uniqueItems: true } as const;
@@ -79,31 +66,37 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        ...DATE_PROPERTIES,
+        ...DAY_PROPERTY,
         time: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$', description: '24-hour time, HH:mm. "8 pm" is "20:00".' },
         partySize: { type: 'integer', minimum: 1, description: 'Number of guests, children included.' },
         changingReference: {
           type: 'string',
-          description: 'When moving an existing booking: its reference, so its own table is not counted as taken.',
+          description: 'Only when moving an existing booking: its reference, so its own table is not counted as taken. Leave it out otherwise.',
         },
       },
-      required: ['dateKind', 'time', 'partySize'],
+      required: ['day', 'time', 'partySize'],
       additionalProperties: false,
     },
   },
   {
     name: 'book_table',
     description:
-      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. If the guest mentioned an allergy or intolerance, pass it in `allergies` so the kitchen is warned. Read back `booking.readBack` and the reference once it is booked.',
+      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. Read back `booking.readBack` and the reference once it is booked. Never tell the guest an allergy is noted unless it is in `booking.allergies`.',
     inputSchema: {
       type: 'object',
       properties: {
         holdId: { type: 'string', description: 'From the "available" answer of find_table.' },
         guestName: { type: 'string', description: 'The name to book under, as the guest gave it.' },
+        // Required on purpose: optional, one model skipped it three times out of three
+        // and still told the guest "je prends note de l'allergie".
+        allergies: {
+          ...ALLERGEN_LIST,
+          description:
+            'Required. Every allergy or intolerance mentioned in this conversation for anyone in the party, so the kitchen is warned. An empty list only when none was mentioned.',
+        },
         notes: { type: 'string', description: 'Optional: high chair, wheelchair access, birthday. Never put allergies here.' },
-        allergies: { ...ALLERGEN_LIST, description: 'Allergies the guest declared for this booking.' },
       },
-      required: ['holdId', 'guestName'],
+      required: ['holdId', 'guestName', 'allergies'],
       additionalProperties: false,
     },
   },
@@ -181,7 +174,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: 'opening_hours',
     description:
       'The times a table can be booked: for one day if date fields are given, otherwise for the next seven days. Exceptional closures are included.',
-    inputSchema: { type: 'object', properties: { ...DATE_PROPERTIES }, additionalProperties: false },
+    inputSchema: { type: 'object', properties: { ...DAY_PROPERTY }, additionalProperties: false },
   },
   {
     name: 'business_info',
@@ -247,10 +240,14 @@ class InputProblems {
     return value as number;
   }
 
-  allergens(input: Input, key: string, required: boolean): Allergen[] | undefined {
+  /**
+   * A list of allergens. `presence: 'required'` asks for the field but accepts
+   * an empty list; `presence: 'non_empty'` needs at least one.
+   */
+  allergens(input: Input, key: string, presence: 'optional' | 'required' | 'non_empty'): Allergen[] | undefined {
     const value = input[key];
     if (value === undefined || value === null) {
-      if (required) this.add(`${key} is required`);
+      if (presence !== 'optional') this.add(`${key} is required${presence === 'required' ? ' (an empty list when none was mentioned)' : ''}`);
       return undefined;
     }
     if (!Array.isArray(value) || value.length > ALLERGENS.length) {
@@ -262,43 +259,19 @@ class InputProblems {
       if (!isAllergen(item)) this.add(`unknown allergen "${String(item).slice(0, 40)}"; use one of ${ALLERGENS.join(', ')}`);
       else if (!allergens.includes(item)) allergens.push(item);
     }
-    if (required && allergens.length === 0) this.add(`${key} needs at least one allergen`);
+    if (presence === 'non_empty' && allergens.length === 0) this.add(`${key} needs at least one allergen`);
     return allergens;
   }
 
-  date(input: Input, required: boolean): DateSpec | undefined {
-    const kind = input['dateKind'];
-    if (kind === undefined || kind === null) {
-      if (required) this.add('dateKind is required');
+  day(input: Input, required: boolean): DateSpec | undefined {
+    const value = input['day'];
+    if (value === undefined || value === null || value === '') {
+      if (required) this.add('day is required');
       return undefined;
     }
-    switch (kind) {
-      case 'date': {
-        const date = this.text(input, 'date', true);
-        return date === undefined ? undefined : { kind: 'date', date };
-      }
-      case 'relative': {
-        const days = this.integer(input, 'daysFromToday', true);
-        return days === undefined ? undefined : { kind: 'relative', days };
-      }
-      case 'weekday': {
-        const weekday = WEEKDAYS.indexOf(input['weekday'] as (typeof WEEKDAYS)[number]);
-        const week = input['week'];
-        if (weekday < 0) this.add(`weekday must be one of ${WEEKDAYS.join(', ')}`);
-        if (week !== 'this' && week !== 'next') this.add('week must be "this" or "next"');
-        if (weekday < 0 || (week !== 'this' && week !== 'next')) return undefined;
-        return { kind: 'weekday', weekday: (weekday + 1) as Weekday, week };
-      }
-      case 'day_of_month': {
-        const day = this.integer(input, 'dayOfMonth', true);
-        const month = this.integer(input, 'month', false);
-        if (day === undefined) return undefined;
-        return month === undefined ? { kind: 'day_of_month', day } : { kind: 'day_of_month', day, month };
-      }
-      default:
-        this.add('dateKind must be one of date, relative, weekday, day_of_month');
-        return undefined;
-    }
+    const spec = typeof value === 'string' ? parseDay(value) : undefined;
+    if (!spec) this.add(`day "${String(value).slice(0, 40)}" is not one of the forms: ${DAY_FORMS}`);
+    return spec;
   }
 }
 
@@ -312,7 +285,7 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
 
   switch (name) {
     case 'find_table': {
-      const date = check.date(input, true);
+      const date = check.day(input, true);
       const time = check.text(input, 'time', true);
       const partySize = check.integer(input, 'partySize', true);
       const changing = check.text(input, 'changingReference', false);
@@ -323,7 +296,7 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
       const holdId = check.text(input, 'holdId', true);
       const guestName = check.text(input, 'guestName', true);
       const notes = check.text(input, 'notes', false);
-      const allergies = check.allergens(input, 'allergies', false);
+      const allergies = check.allergens(input, 'allergies', 'required');
       if (check.list.length > 0 || holdId === undefined || guestName === undefined) return invalid(check.list);
       const result = engine.book(session, {
         holdId,
@@ -362,7 +335,7 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
     }
     case 'check_dish': {
       const dishId = check.text(input, 'dishId', true);
-      const allergens = check.allergens(input, 'allergens', true);
+      const allergens = check.allergens(input, 'allergens', 'non_empty');
       if (check.list.length > 0 || dishId === undefined || !allergens) return invalid(check.list);
       const result = checkDish(engine.config, language, dishId, allergens);
       if (result.status !== 'ok') return { status: 'unknown_dish', hint: 'Call get_menu for the dish ids.' };
@@ -375,12 +348,12 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
       };
     }
     case 'dishes_without': {
-      const allergens = check.allergens(input, 'allergens', true);
+      const allergens = check.allergens(input, 'allergens', 'non_empty');
       if (check.list.length > 0 || !allergens) return invalid(check.list);
       return { status: 'ok', ...safeDishes(engine.config, language, allergens) };
     }
     case 'opening_hours': {
-      const date = check.date(input, false);
+      const date = check.day(input, false);
       if (check.list.length > 0) return invalid(check.list);
       return engine.openingHours(language, date);
     }

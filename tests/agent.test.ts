@@ -18,7 +18,7 @@ describe('a turn of conversation', () => {
   it('lets the model call tools until it can answer, then books', async () => {
     const h = harness();
     const model = scriptedModel([
-      { toolCalls: [{ name: 'find_table', input: { dateKind: 'weekday', weekday: 'friday', week: 'this', time: '20:00', partySize: 4 } }] },
+      { toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 4 } }] },
       { text: 'J’ai une table pour 4 personnes vendredi 16 octobre à 20 h. À quel nom ?' },
     ]);
     const first = await respond(h.engine, model, guest('g1'), [], 'Une table pour 4 vendredi à 20h ?', { clock: ticking() });
@@ -28,7 +28,7 @@ describe('a turn of conversation', () => {
 
     const holdId = first.tools[0]?.output['holdId'];
     const book = scriptedModel([
-      { toolCalls: [{ name: 'book_table', input: { holdId, guestName: 'Dupont' } }] },
+      { toolCalls: [{ name: 'book_table', input: { holdId, guestName: 'Dupont', allergies: [] } }] },
       { text: 'C’est réservé au nom de Dupont.' },
     ]);
     const second = await respond(h.engine, book, guest('g1'), first.transcript, 'Dupont', { clock: ticking() });

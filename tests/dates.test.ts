@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDate } from '../src/dates.js';
+import { parseDay, resolveDate } from '../src/dates.js';
+
+describe('the day as the model writes it', () => {
+  it('reads every documented form', () => {
+    expect(parseDay('2026-10-24')).toEqual({ kind: 'date', date: '2026-10-24' });
+    expect(parseDay('today')).toEqual({ kind: 'relative', days: 0 });
+    expect(parseDay('Tonight')).toEqual({ kind: 'relative', days: 0 });
+    expect(parseDay('tomorrow')).toEqual({ kind: 'relative', days: 1 });
+    expect(parseDay('the day after tomorrow')).toEqual({ kind: 'relative', days: 2 });
+    expect(parseDay('in 3 days')).toEqual({ kind: 'relative', days: 3 });
+    expect(parseDay('friday')).toEqual({ kind: 'weekday', weekday: 5, week: 'this' });
+    expect(parseDay('this Friday')).toEqual({ kind: 'weekday', weekday: 5, week: 'this' });
+    expect(parseDay('friday next week')).toEqual({ kind: 'weekday', weekday: 5, week: 'next' });
+    expect(parseDay('24')).toEqual({ kind: 'day_of_month', day: 24 });
+    expect(parseDay('the 24th')).toEqual({ kind: 'day_of_month', day: 24 });
+    expect(parseDay('24/10')).toEqual({ kind: 'day_of_month', day: 24, month: 10 });
+  });
+
+  it('refuses anything else instead of guessing', () => {
+    for (const text of ['vendredi', 'next month', 'someday', '', '24/10/2026', 'in 1000 days', 'x'.repeat(41)]) {
+      expect(parseDay(text), text).toBeUndefined();
+    }
+  });
+
+  it('turns "the 24th" into the coming 24th, with no stray month', () => {
+    const spec = parseDay('24');
+    expect(spec && resolveDate(spec, '2026-10-14')).toEqual({ ok: true, date: '2026-10-24' });
+  });
+});
 
 // Wednesday 14 October 2026.
 const WEDNESDAY = '2026-10-14';

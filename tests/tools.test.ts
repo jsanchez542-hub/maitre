@@ -30,26 +30,15 @@ describe('tool definitions', () => {
 describe('running tools', () => {
   it('finds a table from a weekday the way the guest said it', () => {
     const h = harness();
-    const result = runTool(h.engine, guest('g1'), 'find_table', {
-      dateKind: 'weekday',
-      weekday: 'friday',
-      week: 'this',
-      time: '20:00',
-      partySize: 2,
-    });
+    const result = runTool(h.engine, guest('g1'), 'find_table', { day: 'friday', time: '20:00', partySize: 2 });
     expect(result).toMatchObject({ status: 'available', date: '2026-10-16', time: '20:00' });
   });
 
   it('explains every problem with the input instead of guessing', () => {
     const h = harness();
-    expect(runTool(h.engine, guest('g1'), 'find_table', { dateKind: 'weekday', weekday: 'vendredi', time: '20:00' })).toEqual({
-      status: 'invalid_input',
-      problems: [
-        'weekday must be one of monday, tuesday, wednesday, thursday, friday, saturday, sunday',
-        'week must be "this" or "next"',
-        'partySize is required',
-      ],
-    });
+    const invalid = runTool(h.engine, guest('g1'), 'find_table', { day: 'vendredi', time: '20:00' });
+    expect(invalid['status']).toBe('invalid_input');
+    expect(invalid['problems']).toEqual([expect.stringContaining('day "vendredi" is not one of the forms'), 'partySize is required']);
     expect(runTool(h.engine, guest('g1'), 'find_table', [])).toEqual({
       status: 'invalid_input',
       problems: ['the input must be an object'],
@@ -60,8 +49,8 @@ describe('running tools', () => {
   it('tells the assistant how to get a number on each channel', () => {
     const h = harness();
     const web = guest('w1', null, 'fr', 'web');
-    const found = runTool(h.engine, web, 'find_table', { dateKind: 'relative', daysFromToday: 2, time: '20:00', partySize: 2 });
-    const book = runTool(h.engine, web, 'book_table', { holdId: found['holdId'], guestName: 'Dupont' });
+    const found = runTool(h.engine, web, 'find_table', { day: 'day after tomorrow', time: '20:00', partySize: 2 });
+    const book = runTool(h.engine, web, 'book_table', { holdId: found['holdId'], guestName: 'Dupont', allergies: [] });
     expect(book).toMatchObject({ status: 'phone_required' });
     expect(String(book['instruction'])).toContain('field shown below the chat');
 
@@ -73,9 +62,9 @@ describe('running tools', () => {
     const h = harness();
     const session = guest('g1', '+33698765432');
     const outputs = [
-      runTool(h.engine, session, 'find_table', { dateKind: 'date', date: '2026-10-16', time: '20:00', partySize: 2 }),
+      runTool(h.engine, session, 'find_table', { day: '2026-10-16', time: '20:00', partySize: 2 }),
     ];
-    outputs.push(runTool(h.engine, session, 'book_table', { holdId: outputs[0]?.['holdId'], guestName: 'Dupont' }));
+    outputs.push(runTool(h.engine, session, 'book_table', { holdId: outputs[0]?.['holdId'], guestName: 'Dupont', allergies: [] }));
     outputs.push(runTool(h.engine, session, 'my_bookings', {}));
     outputs.push(runTool(h.engine, session, 'confirm_booking', {}));
     outputs.push(runTool(h.engine, session, 'hand_over', { reason: 'other', summary: 'Question sur un menu de groupe' }));
@@ -151,7 +140,7 @@ describe('running tools', () => {
     const engine = new BookingEngine(TEST_CONFIG, broken, { now: () => new Date('2026-10-14T08:00:00Z'), ids: sequentialIds() });
     const seen: unknown[] = [];
     expect(
-      runTool(engine, guest('g1'), 'find_table', { dateKind: 'relative', daysFromToday: 2, time: '20:00', partySize: 2 }, (error) =>
+      runTool(engine, guest('g1'), 'find_table', { day: 'in 2 days', time: '20:00', partySize: 2 }, (error) =>
         seen.push(error),
       ),
     ).toEqual({ status: 'internal_error' });
@@ -166,5 +155,28 @@ describe('prices', () => {
     expect(formatPrice(2450, 'en')).toBe('€24.50');
     expect(formatPrice(2400, 'en')).toBe('€24');
     expect(formatPrice(905, 'es')).toBe(`9,05${NBSP}€`);
+  });
+});
+
+describe('the fields that used to go wrong in real runs', () => {
+  it('refuses a booking that does not say whether anyone has an allergy', () => {
+    const h = harness();
+    const found = runTool(h.engine, guest('g1'), 'find_table', { day: 'friday', time: '20:00', partySize: 2 });
+    expect(runTool(h.engine, guest('g1'), 'book_table', { holdId: found['holdId'], guestName: 'Rousseau' })).toEqual({
+      status: 'invalid_input',
+      problems: ['allergies is required (an empty list when none was mentioned)'],
+    });
+    expect(runTool(h.engine, guest('g1'), 'book_table', { holdId: found['holdId'], guestName: 'Rousseau', allergies: ['nuts'] })).toMatchObject({
+      status: 'booked',
+      booking: { allergies: ['nuts'] },
+    });
+  });
+
+  it('reads "the 24th" without a stray month', () => {
+    const h = harness();
+    expect(runTool(h.engine, guest('g1'), 'find_table', { day: '24', time: '20:00', partySize: 2 })).toMatchObject({
+      status: 'available',
+      date: '2026-10-24',
+    });
   });
 });

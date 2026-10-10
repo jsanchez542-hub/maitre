@@ -12,7 +12,7 @@ const transcript: TranscriptEntry[] = [
   {
     role: 'assistant',
     text: '',
-    toolCalls: [{ id: 'call-1', name: 'find_table', input: { dateKind: 'weekday', weekday: 'friday', week: 'this', time: '20:00', partySize: 4 } }],
+    toolCalls: [{ id: 'call-1', name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 4 } }],
   },
   { role: 'tool', callId: 'call-1', name: 'find_table', output: { status: 'available', holdId: 'h1' } },
   { role: 'assistant', text: 'C’est noté. À quel nom ?', toolCalls: [] },
