@@ -8,7 +8,8 @@ import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
 import { BookingEngine, type Session } from '../src/engine.js';
 import { randomIds } from '../src/ids.js';
 import { MemoryStore } from '../src/store.js';
-import { checkScenario, type Check } from './checks.js';
+import { checkScenario } from './checks.js';
+import { failureLines, SUMMARY_HEADER, summaryRow, type RunRecord } from './report.js';
 import { NOW, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
@@ -29,39 +30,9 @@ import { NOW, SCENARIOS, type Scenario } from './scenarios.js';
 
 const DEFAULT_MODELS = ['anthropic/claude-haiku-5.5', 'openai/gpt-6-luna', 'mistralai/mistral-small-2603'];
 
-interface RunRecord {
-  scenario: string;
-  category: string;
-  run: number;
-  passed: boolean;
-  skipped?: string;
-  checks: Check[];
-  costUsd: number;
-  turns: {
-    guest: string;
-    reply: string;
-    outcome: string;
-    latencyMs: number;
-    modelMs: number[];
-    tools: { name: string; input: unknown; output: unknown }[];
-    costUsd?: number;
-    corrections: string[];
-    /** Failed model calls, by kind: "rate_limited 429" means the provider refused, not that the model got it wrong. */
-    errors: string[];
-  }[];
-  /** What the conversation left behind, so a run can be scored again without calling the model. */
-  state?: { newBookings: unknown[]; allBookings: unknown[]; callbacks: unknown[]; refs: Record<string, string> };
-}
-
 function setting(name: string, fallback: string): string {
   const value = process.env[name];
   return value === undefined || value.trim() === '' ? fallback : value.trim();
-}
-
-function percentile(values: number[], fraction: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))] ?? 0;
 }
 
 async function runScenario(model: LanguageModel, scenario: Scenario, run: number): Promise<RunRecord> {
@@ -163,8 +134,7 @@ it('runs the evaluation against real models', async () => {
     '',
     `${scenarios.length} scenarios, ${runs} runs each. A scenario passes when every run passes.`,
     '',
-    '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | Guard fired | Provider errors | Cost |',
-    '|---|---|---|---|---|---|---|---|',
+    ...SUMMARY_HEADER,
   ];
   const failures: string[] = [];
 
@@ -195,27 +165,8 @@ it('runs the evaluation against real models', async () => {
     );
     const records = await pool(tasks, concurrency);
     writeFileSync(join(directory, `${id.replace(/[/:]/g, '_')}.json`), JSON.stringify(records, null, 2));
-
-    const byScenario = new Map<string, RunRecord[]>();
-    for (const record of records) byScenario.set(record.scenario, [...(byScenario.get(record.scenario) ?? []), record]);
-    const scenariosPassed = [...byScenario.values()].filter((group) => group.every((record) => record.passed)).length;
-    const runsPassed = records.filter((record) => record.passed).length;
-    const latencies = records.flatMap((record) => record.turns.map((turn) => turn.latencyMs));
-    const cost = records.reduce((sum, record) => sum + record.costUsd, 0);
-    const guarded = records.reduce((sum, record) => sum + record.turns.filter((turn) => turn.corrections.length > 0).length, 0);
-    const turnCount = records.reduce((sum, record) => sum + record.turns.length, 0);
-    // A turn whose model calls all failed says nothing about the model's judgement, only about its provider.
-    const providerFailed = records.reduce(
-      (sum, record) => sum + record.turns.filter((turn) => turn.errors.length > 0 && turn.outcome !== 'answered').length,
-      0,
-    );
-    summary.push(
-      `| ${id} | ${scenariosPassed}/${byScenario.size} | ${runsPassed}/${records.length} | ${(percentile(latencies, 0.5) / 1000).toFixed(1)} s | ${(percentile(latencies, 0.95) / 1000).toFixed(1)} s | ${guarded}/${turnCount} turns | ${providerFailed}/${turnCount} turns | $${cost.toFixed(3)} |`,
-    );
-    for (const record of records.filter((candidate) => !candidate.passed)) {
-      const failed = record.skipped ? [`skipped: ${record.skipped}`] : record.checks.filter((check) => !check.ok).map((check) => `${check.name}${check.detail ? ` (${check.detail})` : ''}`);
-      failures.push(`- ${id} · ${record.scenario} · run ${record.run}: ${failed.join('; ')}`);
-    }
+    summary.push(summaryRow(id, records));
+    failures.push(...failureLines(id, records));
   }
 
   summary.push('', `Spent: $${spent.toFixed(3)} of a $${budget} budget.`, '', '## Failures', '', ...(failures.length ? failures : ['None.']));
