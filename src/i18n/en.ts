@@ -1,0 +1,73 @@
+import type { Allergen } from '../allergens.js';
+import type { Messages } from './types.js';
+
+// British English: the restaurant is in France and most English-speaking guests are European.
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const ALLERGEN_NAMES: Record<Allergen, string> = {
+  gluten: 'gluten',
+  crustaceans: 'crustaceans',
+  eggs: 'eggs',
+  fish: 'fish',
+  peanuts: 'peanuts',
+  soybeans: 'soya',
+  milk: 'milk',
+  nuts: 'tree nuts',
+  celery: 'celery',
+  mustard: 'mustard',
+  sesame: 'sesame',
+  sulphites: 'sulphites',
+  lupin: 'lupin',
+  molluscs: 'molluscs',
+};
+
+export const en: Messages = {
+  date({ weekday, day, month, year }) {
+    const base = `${WEEKDAYS[weekday - 1]} ${day} ${MONTHS[month - 1]}`;
+    return year === undefined ? base : `${base} ${year}`;
+  },
+  time(hours, minutes) {
+    const suffix = hours < 12 ? 'am' : 'pm';
+    const twelveHour = hours % 12 === 0 ? 12 : hours % 12;
+    return minutes === 0 ? `${twelveHour} ${suffix}` : `${twelveHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+  },
+  dateAtTime(date, time) {
+    return `${date} at ${time}`;
+  },
+  booking(partySize, date, time) {
+    const table = partySize === 1 ? 'a table for one' : `a table for ${partySize}`;
+    return `${table} on ${date} at ${time}`;
+  },
+  allergen(allergen) {
+    return ALLERGEN_NAMES[allergen];
+  },
+  dishContains(dish, allergen) {
+    return `${dish} contains ${ALLERGEN_NAMES[allergen]}.`;
+  },
+  dishMayContain(dish, allergen) {
+    return `${dish} may contain traces of ${ALLERGEN_NAMES[allergen]}.`;
+  },
+  dishFree(dish, allergen) {
+    return `According to the kitchen’s allergen sheet, ${dish} contains no ${ALLERGEN_NAMES[allergen]}.`;
+  },
+  dishUnknown(dish, allergen) {
+    return (
+      `The allergen sheet for ${dish} does not say whether it contains ${ALLERGEN_NAMES[allergen]}. ` +
+      'I would rather pass your question on to the team than guess.'
+    );
+  },
+};
