@@ -87,6 +87,10 @@ What it found, and what changed:
 - Mistral Medium still asked twice before moving a booking, in one run of three.
 - When the guard stepped in for Haiku, the reply now reads cleanly: the exact sentences first, then what the model added, said once.
 
+### Run F: the chosen model on the final code, for the demo
+
+Claude Haiku 5.5 alone, on commit b85dfe6 with the demo restaurant renamed Merrain: the code after the floor plan was added, and the name the demo shows. Right in all 57 conversations again (19/19), with a p50 of 3.0 s, a p95 of 6.6 s, the guard stepping in on 2 turns of 117, and $0.118 spent. The demo's recorded conversations come from this run.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -125,4 +129,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-The five runs and a few test calls cost $4.09 in total. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone.
+The six runs and a few test calls cost $4.19 in total. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone.

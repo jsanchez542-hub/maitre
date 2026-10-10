@@ -78,7 +78,7 @@ const text = (fr: string, en: string, es: string) => ({ fr, en, es });
 
 export const DEMO_RESTAURANT: BusinessConfig = {
   id: 'demo',
-  name: 'Bistro de test',
+  name: 'Merrain',
   timeZone: 'Europe/Paris',
   languages: ['fr', 'en', 'es'],
   defaultLanguage: 'fr',

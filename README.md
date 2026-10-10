@@ -43,7 +43,7 @@ The engine has no dependency on Node or on a browser: the same code runs on a se
 
 Nineteen conversations written in advance, in French, English and Spanish, are played against real models. What must happen is written as checks on the outcome: the booking made, with its day, time, party size, name and phone number; nothing booked; the team asked to call back; replies that must or must not say something. Every reply is also checked for the allergen sentences word for word, internal names, formatting, language, and the guest's number. Each conversation runs three times and passes only if all three pass.
 
-The final run, on the code in this repository:
+The final comparison, on commit ac58952:
 
 | Model | Conversations right, all three times | Latency p50 | p95 | Per conversation |
 |---|---|---|---|---|
@@ -53,7 +53,9 @@ The final run, on the code in this repository:
 | Mistral Medium 3.1 | 18/19 | 1.6 s | 2.7 s | $0.0010 |
 | Gemini 3.1 Flash Lite | 17/19 | 1.8 s | 2.8 s | $0.0025 |
 
-Five runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Three of the failures they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
+Claude Haiku 5.5 was then run again on the final code, with the demo restaurant under its final name, Merrain: right in all 57 conversations again. The demo's recorded conversations come from that run.
+
+Six runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Three of the failures they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
 
 ```bash
 # Needs OPENROUTER_API_KEY in .env. Costs a few cents per model.

@@ -81,7 +81,7 @@ it('exports recorded conversations for the demo', () => {
   writeFileSync(
     'src/demo/recordings.ts',
     [
-      `// Written by \`npm run eval:export\` from evaluation run ${basename(dirname(file))} (commit ${meta.commit}), model ${model}.`,
+      `// Written by \`npm run eval:export\` from evaluation run ${basename(dirname(file))} (commit ${meta.commit}${meta.uncommittedChanges ? ' with uncommitted changes' : ''}), model ${model}.`,
       '// Record again rather than edit by hand: the tests play every conversation back on the engine.',
       "import type { Recording } from './replay.js';",
       '',
