@@ -13,6 +13,10 @@ permissions:
 jobs:
   analyze:
     name: Analyze
+    # Code scanning on private repositories needs a paid plan. The repository stays
+    # private until its security review is done, so the analysis starts when it is
+    # made public instead of failing on every push until then.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
