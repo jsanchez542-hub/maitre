@@ -106,6 +106,27 @@ describe('the evaluation harness', () => {
     expect(detectLanguage(reply)).toBe('es');
   });
 
+  it('accepts every way of saying there is no dinner on Sunday, and only those (real replies from the second run)', () => {
+    const hours = SCENARIOS.find((candidate) => candidate.id === 'hours-es') as Scenario;
+    const tools: TurnResult['tools'] = [{ name: 'opening_hours', input: {}, output: { status: 'ok', days: [] }, ms: 1 }];
+    const verdict = (reply: string) =>
+      checkScenario(hours, outcome({ turns: [turn(reply, tools)], phone: '+34600000103' }))
+        .filter((check) => !check.name.startsWith('turn 1 is in'))
+        .every((check) => check.ok);
+    for (const right of [
+      'El domingo 18 de octubre abrimos para la comida, de 12:00 a 14:00, pero no por la noche.',
+      'No, el domingo 18 de octubre no abrimos por la noche. Abrimos para la comida, de 12:00 a 14:00.',
+      'No, el domingo 18 de octubre solo abrimos para comer de 12:00 a 14:00.',
+      'El domingo 18 de octubre abrimos solo para comidas, con reservas de 12:00 a 14:00. No tenemos servicio de cena ese día.',
+      'Este domingo, 18 de octubre, abrimos para el servicio de comida, con reservas de 12:00 a 14:00. No aparece servicio por la noche.',
+    ]) {
+      expect(verdict(right), right).toBe(true);
+    }
+    for (const wrong of ['Sí, el domingo abrimos por la noche, de 19:00 a 21:30.', 'El domingo abrimos a mediodía y por la noche.']) {
+      expect(verdict(wrong), wrong).toBe(false);
+    }
+  });
+
   it('compares words, not spaces and quotation marks', () => {
     expect(normalize(`Le plat «${THIN}Confit${THIN}» ne contient pas de gluten${THIN}!`)).toBe(normalize('Le plat "Confit" ne contient pas de gluten!'));
   });

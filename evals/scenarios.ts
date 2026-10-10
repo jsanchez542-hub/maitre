@@ -267,7 +267,16 @@ export const SCENARIOS: Scenario[] = [
     channel: 'whatsapp',
     phone: '+34600000103',
     turns: ['¿Abren el domingo por la noche?'],
-    expect: [{ kind: 'tool', name: 'opening_hours' }, { kind: 'no_reply', pattern: /domingo[^.]*(abrimos|abierto)[^.]*noche/i }],
+    expect: [
+      { kind: 'tool', name: 'opening_hours' },
+      // The answer is no, in whatever words: "No, …", "no tenemos servicio de cena", "solo abrimos para comer".
+      {
+        kind: 'reply',
+        pattern: /^\s*no\b|\bno\b[^.]*\b(noche|cena)|cerrad[oa]s?[^.]*noche|noche[^.]*cerrad|(solo|solamente|únicamente)[^.]*(mediod[ií]a|comida|comer|almuerzo)/i,
+      },
+      // And never the opposite. "No abrimos por la noche" is the right answer, so a "no" before the verb does not count.
+      { kind: 'no_reply', pattern: /(?<!\bno\s)\b(abrimos|abre|abren|abierto|servimos)\s+(el domingo\s+)?(por la noche|para (la )?cena|cenas)\b/i },
+    ],
   },
   {
     id: 'faq-en',
