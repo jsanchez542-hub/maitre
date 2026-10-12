@@ -154,6 +154,23 @@ describe('the spoken reference guard', () => {
     expect(dropSpokenReferences('Noted. Your reference is 3, P, Y, P, J, A. Goodbye.', ['3PYPJA']).reply).toBe('Noted. Goodbye.');
   });
 
+  it('takes out only the mention when the reference shares its sentence with the confirmation (the phone evaluation of 12 October)', () => {
+    const cases: [string, string, string][] = [
+      ['Merci, votre réservation est confirmée, référence A4XXCE.', 'A4XXCE', 'Merci, votre réservation est confirmée.'],
+      [
+        'Très bien, votre réservation est confirmée pour 2 personnes le jeudi 15 octobre à 20 h, sous la référence WT9DEW.',
+        'WT9DEW',
+        'Très bien, votre réservation est confirmée pour 2 personnes le jeudi 15 octobre à 20 h.',
+      ],
+      ['C’est réservé sous la référence 3PYPJA pour vendredi à 20 h.', '3PYPJA', 'C’est réservé pour vendredi à 20 h.'],
+      ['Your table is booked, your reference is ACDEFH. See you on Friday!', 'ACDEFH', 'Your table is booked. See you on Friday!'],
+      ['Su mesa está reservada con la referencia 34PDUE para el viernes.', '34PDUE', 'Su mesa está reservada para el viernes.'],
+    ];
+    for (const [reply, reference, expected] of cases) {
+      expect(dropSpokenReferences(reply, [reference]), reply).toEqual({ reply: expected, corrected: true });
+    }
+  });
+
   it('leaves a reply without a reference, and one that would be left empty', () => {
     expect(dropSpokenReferences('C’est réservé pour vendredi.', ['3PYPJA'])).toEqual({ reply: 'C’est réservé pour vendredi.', corrected: false });
     expect(dropSpokenReferences('Référence 3PYPJA.', ['3PYPJA'])).toEqual({ reply: 'Référence 3PYPJA.', corrected: false });

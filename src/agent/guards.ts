@@ -120,10 +120,30 @@ export function referencesIn(outputs: readonly unknown[]): string[] {
  */
 export function dropSpokenReferences(reply: string, references: readonly string[]): { reply: string; corrected: boolean } {
   if (references.length === 0) return { reply, corrected: false };
-  const spoken = references.map((reference) => new RegExp([...reference].map(escaped).join('[\\s.,-]*'), 'i'));
-  const kept = sentencesOf(reply).filter((sentence) => !spoken.some((pattern) => pattern.test(sentence)));
-  const text = kept.join(' ');
-  if (text === '' || text === sentencesOf(reply).join(' ')) return { reply, corrected: false };
+  const spelled = references.map((reference) => [...reference].map(escaped).join('[\\s.,\\-‑]*'));
+  const spoken = spelled.map((pattern) => new RegExp(pattern, 'i'));
+  // "…, référence A4XXCE", "sous la référence WT9DEW", "your reference is 3PYPJA": the mention, and only it.
+  const mentions = spelled.map(
+    (pattern) =>
+      new RegExp(
+        `(?:,\\s*|\\s+|^)(?:(?:sous|avec|with|under|con|bajo)\\s+)?(?:(?:la|le|votre|your|the|su|el|its)\\s+)?(?:booking\\s+)?(?:référence|reference|referencia|réf\\.?|ref\\.?)(?:\\s+(?:de\\s+(?:la\\s+)?(?:réservation|reserva)|number|número))?(?:\\s+(?:est|is|es|sera|will be))?\\s*:?\\s*(?:«\\s*)?${pattern}(?:\\s*»)?`,
+        'giu',
+      ),
+  );
+  const sentences = sentencesOf(reply);
+  const said = sentences.flatMap((sentence) => {
+    if (!spoken.some((pattern) => pattern.test(sentence))) return [sentence];
+    const without = mentions
+      .reduce((text, mention) => text.replace(mention, ''), sentence)
+      .replace(/\s+([.,!?;:…])/g, '$1')
+      .replace(/^[\s,;:]+/, '')
+      .trim();
+    // What is left is kept when it still says something and no longer reads the reference.
+    const words = without.split(/\s+/).filter((word) => /\p{L}/u.test(word));
+    return words.length >= 3 && !spoken.some((pattern) => pattern.test(without)) ? [without] : [];
+  });
+  const text = said.join(' ');
+  if (text === '' || text === sentences.join(' ')) return { reply, corrected: false };
   return { reply: text, corrected: true };
 }
 
