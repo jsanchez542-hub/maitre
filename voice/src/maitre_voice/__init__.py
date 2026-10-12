@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from maitre-voice!"
+"""Maître's voice agent: answers the restaurant's phone with the same assistant as the web chat."""
