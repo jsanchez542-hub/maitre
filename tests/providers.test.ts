@@ -163,6 +163,23 @@ describe('calling a provider', () => {
     expect(body['provider']).toEqual({ data_collection: 'deny' });
     expect(body['usage']).toEqual({ include: true });
   });
+
+  it('routes a model to the fastest provider, or to the ones named after an @, still keeping no data', async () => {
+    const reply = { status: 200, body: JSON.stringify({ choices: [{ message: { content: 'Bonjour' } }], usage: { prompt_tokens: 10, completion_tokens: 2, cost: 0.0001 } }) };
+    const sentBody = async (model: string) => {
+      const { fetch, sent } = fakeFetch([reply]);
+      await openRouterModel({ apiKey: 'k', model, fetch }).complete(request);
+      return JSON.parse(sent[0]?.init.body ?? '{}') as Record<string, unknown>;
+    };
+    expect(await sentBody('openai/gpt-oss-120b@Cerebras, Groq')).toMatchObject({
+      model: 'openai/gpt-oss-120b',
+      provider: { order: ['Cerebras', 'Groq'], data_collection: 'deny' },
+    });
+    expect(await sentBody('anthropic/claude-haiku-5.5@latency')).toMatchObject({
+      model: 'anthropic/claude-haiku-5.5',
+      provider: { sort: 'latency', data_collection: 'deny' },
+    });
+  });
 });
 
 describe('reply cleaning', () => {

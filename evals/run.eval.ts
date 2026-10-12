@@ -13,7 +13,7 @@ import { MemoryStore } from '../src/store.js';
 import { checkScenario } from './checks.js';
 import { restaurantFingerprint } from './fingerprint.js';
 import { failureLines, SUMMARY_HEADER, summaryRow, type RunMeta, type RunRecord } from './report.js';
-import { guestNumber, NOW, SCENARIOS, type Scenario } from './scenarios.js';
+import { guestNumber, NOW, ON_THE_PHONE, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
  * Runs every scenario against real models through OpenRouter.
@@ -26,6 +26,7 @@ import { guestNumber, NOW, SCENARIOS, type Scenario } from './scenarios.js';
  *   MAITRE_EVAL_RUNS          runs per scenario (default 3; a scenario passes when every run passes)
  *   MAITRE_EVAL_BUDGET_USD    stop starting new runs past this spend (default 2)
  *   MAITRE_EVAL_ONLY          comma-separated scenario ids
+ *   MAITRE_EVAL_SET           "all" (default), or "voice" for the same conversations on the phone
  *   MAITRE_EVAL_CONCURRENCY   conversations at once per model (default 3)
  *
  * Transcripts go to evals/runs/, which git ignores.
@@ -137,7 +138,8 @@ it('runs the evaluation against real models', async () => {
   const budget = Number(setting('MAITRE_EVAL_BUDGET_USD', '2'));
   const concurrency = Number(setting('MAITRE_EVAL_CONCURRENCY', '3'));
   const only = setting('MAITRE_EVAL_ONLY', '').split(',').map((id) => id.trim()).filter(Boolean);
-  const scenarios = only.length ? SCENARIOS.filter((scenario) => only.includes(scenario.id)) : SCENARIOS;
+  const set = setting('MAITRE_EVAL_SET', 'all') === 'voice' ? ON_THE_PHONE : SCENARIOS;
+  const scenarios = only.length ? set.filter((scenario) => only.includes(scenario.id)) : set;
   expect(scenarios.length).toBeGreaterThan(0);
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');

@@ -128,7 +128,11 @@ export function openAIModel(options: OpenAIOptions): LanguageModel {
 
 export interface OpenRouterOptions {
   apiKey: string;
-  /** OpenRouter's model id, such as "anthropic/claude-haiku-5.5". */
+  /**
+   * OpenRouter's model id, such as "anthropic/claude-haiku-5.5". After an "@",
+   * how to route it: "@latency" to the provider answering fastest now, or
+   * "@Cerebras,Groq" to those providers first, in that order.
+   */
   model: string;
   fetch?: Fetch;
   timeoutMs?: number;
@@ -140,11 +144,25 @@ export interface OpenRouterOptions {
   denyDataCollection?: boolean;
 }
 
+/** The routing written after a model id's "@", as OpenRouter's provider preferences. */
+export function openRouterRouting(model: string): { model: string; provider: Record<string, unknown> } {
+  const at = model.indexOf('@');
+  if (at === -1) return { model, provider: {} };
+  const route = model.slice(at + 1).trim();
+  const providers = route
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  return { model: model.slice(0, at), provider: route === 'latency' ? { sort: 'latency' } : providers.length ? { order: providers } : {} };
+}
+
 /** Any model on OpenRouter, through its OpenAI-compatible API, with the exact cost of each call. */
 export function openRouterModel(options: OpenRouterOptions): LanguageModel {
+  const routed = openRouterRouting(options.model);
+  const provider = { ...routed.provider, ...(options.denyDataCollection === false ? {} : { data_collection: 'deny' }) };
   return openAIModel({
     apiKey: options.apiKey,
-    model: options.model,
+    model: routed.model,
     id: `openrouter:${options.model}`,
     baseUrl: 'https://openrouter.ai/api',
     ...(options.fetch ? { fetch: options.fetch } : {}),
@@ -153,7 +171,7 @@ export function openRouterModel(options: OpenRouterOptions): LanguageModel {
     extraHeaders: { 'X-Title': 'Maitre' },
     extraBody: {
       usage: { include: true },
-      ...(options.denyDataCollection === false ? {} : { provider: { data_collection: 'deny' } }),
+      ...(Object.keys(provider).length ? { provider } : {}),
     },
   });
 }

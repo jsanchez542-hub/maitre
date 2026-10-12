@@ -1,5 +1,5 @@
 import type { TurnResult } from '../src/agent/agent.js';
-import { comparable } from '../src/agent/guards.js';
+import { comparable, referencesIn } from '../src/agent/guards.js';
 import type { Language } from '../src/i18n/index.js';
 import type { Booking, CallbackRequest } from '../src/store.js';
 import type { Expectation, Scenario } from './scenarios.js';
@@ -101,6 +101,14 @@ export function universalChecks(scenario: Scenario, outcome: Outcome): Check[] {
       const compact = turn.reply.replace(/[\s.\-  ]/g, '');
       const repeated = compact.includes(national);
       checks.push({ name: `${label} never repeats the guest's number`, ok: !repeated });
+    }
+
+    // On the phone a reference is noise the caller cannot note: none is ever read out.
+    if (scenario.channel === 'voice') {
+      const spoken = referencesIn(outcome.turns.flatMap((each) => each.tools.map((tool) => tool.output))).find((reference) =>
+        new RegExp([...reference].join('[\\s.,-]*'), 'i').test(turn.reply),
+      );
+      checks.push({ name: `${label} reads no booking reference aloud`, ok: !spoken, ...(spoken ? { detail: spoken } : {}) });
     }
   });
   return checks;

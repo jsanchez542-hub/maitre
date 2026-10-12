@@ -442,3 +442,13 @@ export const SCENARIOS: Scenario[] = [
   ),
   ...ON_THE_SITE,
 ];
+
+/**
+ * The same conversations on the phone, with the caller's number from caller ID:
+ * what chooses the model for the voice channel, where every second of silence is
+ * heard (MAITRE_EVAL_SET=voice).
+ */
+export const ON_THE_PHONE: Scenario[] = ON_CHANNELS.map(
+  (scenario): Scenario =>
+    scenario.channel === 'whatsapp' ? { ...scenario, id: `voice-${scenario.id}`, description: `${scenario.description}, on the phone`, channel: 'voice' } : scenario,
+).filter((scenario) => scenario.channel === 'voice');

@@ -37,8 +37,8 @@ export interface RunMeta {
 }
 
 export const SUMMARY_HEADER = [
-  '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | Guard fired | Provider errors | Cost |',
-  '|---|---|---|---|---|---|---|---|',
+  '| Model | Scenarios passed | Runs passed | Turn latency p50 | p95 | First model answer p50 | p95 | Guard fired | Provider errors | Cost |',
+  '|---|---|---|---|---|---|---|---|---|---|',
 ];
 
 export function percentile(values: number[], fraction: number): number {
@@ -62,7 +62,10 @@ export function summaryRow(id: string, records: RunRecord[]): string {
     (sum, record) => sum + record.turns.filter((turn) => turn.errors.length > 0 && turn.outcome !== 'answered').length,
     0,
   );
-  return `| ${id} | ${scenariosPassed}/${byScenario.size} | ${runsPassed}/${records.length} | ${(percentile(latencies, 0.5) / 1000).toFixed(1)} s | ${(percentile(latencies, 0.95) / 1000).toFixed(1)} s | ${guarded}/${turnCount} turns | ${providerFailed}/${turnCount} turns | $${cost.toFixed(3)} |`;
+  // On the phone, the first answer is when the caller hears something: the reply, or the short line said while the tools run.
+  const firstAnswers = records.flatMap((record) => record.turns.flatMap((turn) => (turn.modelMs[0] === undefined ? [] : [turn.modelMs[0]])));
+  const seconds = (values: number[], fraction: number): string => `${(percentile(values, fraction) / 1000).toFixed(1)} s`;
+  return `| ${id} | ${scenariosPassed}/${byScenario.size} | ${runsPassed}/${records.length} | ${seconds(latencies, 0.5)} | ${seconds(latencies, 0.95)} | ${seconds(firstAnswers, 0.5)} | ${seconds(firstAnswers, 0.95)} | ${guarded}/${turnCount} turns | ${providerFailed}/${turnCount} turns | $${cost.toFixed(3)} |`;
 }
 
 /** One line per failed run, with the checks it failed. */
