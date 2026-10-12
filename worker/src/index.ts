@@ -2,6 +2,7 @@ import { isLanguage } from '../../src/i18n/index.js';
 import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
 import { hasBearer, json, problem, readJson } from './http.js';
+import { serveMedia } from './media.js';
 import type { ChatRequest, Restaurant } from './restaurant.js';
 
 export { DemoBudget, DemoRestaurant } from './demo.js';
@@ -67,6 +68,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
   if (parts.length === 1 && parts[0] === 'health' && request.method === 'GET') return json({ ok: true });
+  if (parts[0] === 'media' && parts.length === 2) return serveMedia(request, env, parts[1] ?? '');
   if (parts[0] === 'v1' && parts[1] === 'demo') return demo(request, env, url, parts.slice(2));
   if (parts[0] !== 'v1' || parts[1] !== 'restaurants' || parts.length < 4) return problem(404, 'not_found');
 

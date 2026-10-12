@@ -21,9 +21,12 @@
     "directory": "../web/dist",
     // An unknown address gets the nearest 404.html: under /en/, the English one.
     "not_found_handling": "404-page",
-    // The API and the health check always reach the Worker, whatever the pages hold.
-    "run_worker_first": ["/v1/*", "/health"]
+    // The API, the health check and the demo's films always reach the Worker, whatever the pages hold.
+    "run_worker_first": ["/v1/*", "/health", "/media/*"]
   },
+  // The demo's films and posters, kept out of git and served at /media/ from the same origin.
+  // Names carry a version (merrain-v1-2000k.webm): a new film is a new name, never a replaced file.
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "maitre-media" }],
   "vars": {
     // Every restaurant's data stays in the EU. workerd cannot pin data, so
     // local runs override this with "none" in .dev.vars and the test config.

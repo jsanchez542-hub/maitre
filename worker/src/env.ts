@@ -7,6 +7,8 @@ export interface Env {
   DEMO_RESTAURANTS: DurableObjectNamespace<DemoRestaurant>;
   /** What the public demo has spent, today and this month, and how many restaurants each visitor opened today. */
   DEMO_BUDGET: DurableObjectNamespace<DemoBudget>;
+  /** The demo's films and posters (R2), served at /media/ from the site's own origin. */
+  MEDIA?: R2Bucket;
   /**
    * "eu" keeps every restaurant's data in the European Union. Only local runs
    * set "none", because workerd cannot pin data to a jurisdiction; any other
