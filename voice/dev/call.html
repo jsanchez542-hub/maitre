@@ -100,6 +100,10 @@
         if (track.kind === Track.Kind.Audio) document.body.appendChild(track.attach());
       });
       room.on(RoomEvent.ParticipantConnected, () => say('En ligne avec Merrain.'));
+      // The agent says when the restaurant needs the number: the keypad lights up then.
+      room.on(RoomEvent.ParticipantAttributesChanged, (changed) => {
+        if ('maitre.keypad' in changed) $('keypad').style.outline = changed['maitre.keypad'] === 'open' ? '3px solid #1f5135' : 'none';
+      });
       room.on(RoomEvent.Disconnected, () => {
         say('Appel terminé.');
         $('hangup').disabled = true;

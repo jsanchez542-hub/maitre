@@ -82,6 +82,7 @@ class PhoneCall:
         self._ending = False
         self._keypad = Keypad()
         self._keypad_timer: asyncio.TimerHandle | None = None
+        self._keypad_shown = "closed"
         self._tasks: set[asyncio.Task[None]] = set()
         self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
         self._tts = build_tts(settings.tts, started.language)
@@ -166,6 +167,11 @@ class PhoneCall:
     def _on_answer(self, answer: Answer) -> None:
         if answer.booked:
             logger.info("booked during the call", extra={"bookings": len(answer.booked)})
+        # A browser shows its keypad when the restaurant asks for a number; a phone has one anyway.
+        keypad = "open" if answer.ask_for_phone else "closed"
+        if keypad != self._keypad_shown:
+            self._keypad_shown = keypad
+            self._spawn(self._ctx.room.local_participant.set_attributes({"maitre.keypad": keypad}))
 
     def _on_refusal(self, error: LineError) -> None:
         self._spawn(self.end("time_limit" if error.code == "call_time_limit" else "paused" if error.status in (429, 503) else "error"))

@@ -14,7 +14,7 @@ caller (browser or phone) ──► LiveKit ──► this agent: speech recogni
 ## What a call does
 
 - **Greets** with words written by the code, not the model: the assistant is an AI and the call may be recorded (art. 50 of the EU AI Act). The greeting cannot be interrupted.
-- **Never leaves the caller in silence**: as soon as the model reaches for a tool, the Worker sends a short line ("Je regarde.", "Je regarde la fiche de la cuisine.") that is spoken while the tool and the reply run.
+- **Never leaves the caller in silence**: as soon as the model reaches for a tool, the Worker sends a short line ("Je regarde.", "Je regarde la fiche de la cuisine.") that is spoken while the tool and the reply run. Before that, the caller hears soft typing, as at a real desk.
 - **Takes the phone number from caller ID or the keypad**, never from what speech recognition heard. The browser's keypad sends real DTMF tones, as a phone does.
 - **Never reads a booking reference out**: letters and digits nobody can note while listening.
 - **Follows a caller who switches language**, once a sentence of three words or more is heard in French, English or Spanish.
@@ -50,4 +50,12 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 uv run pytest                        # the line, the keypad and the brain, against a stand-in Worker
 uv run ruff check .
 uv run python bench/line_check.py    # a French booking call against the local Worker and the real model, without LiveKit
+uv run python bench/caller.py        # a real call through LiveKit, made by a program: speech, keypad, timing, the booking checked
+uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to call the local demo restaurant yourself
 ```
+
+The model the phone uses is chosen with the evaluation's phone set (`MAITRE_EVAL_SET=voice`, see `evals/RESULTS.md`, run I).
+
+## Credits
+
+The typing heard while the agent thinks is LiveKit's built-in clip: "keyboard-typing" by Anton, [freesound.org/s/137](https://freesound.org/s/137/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
