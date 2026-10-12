@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { respond, trimTranscript } from '../src/agent/agent.js';
+import { respond, trimTranscript, turnEffects } from '../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../src/agent/model.js';
 import { buildSystemPrompt } from '../src/agent/prompt.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
@@ -119,6 +119,28 @@ describe('a turn of conversation', () => {
     expect(result.costUsd).toBeCloseTo(0.0005, 10);
     expect(result.modelCalls).toBe(2);
     expect(result.modelMs).toHaveLength(2);
+  });
+});
+
+describe('what a turn did', () => {
+  const booking = { reference: 'ACDEFH', date: '2026-10-16', time: '21:30', partySize: 2 };
+
+  it('reads the bookings from the engine’s answers: made, asked for again, or moved', () => {
+    expect(
+      turnEffects([
+        { name: 'find_table', output: { status: 'available', holdId: 'h1' } },
+        { name: 'book_table', output: { status: 'booked', booking } },
+        { name: 'book_table', output: { status: 'duplicate', booking: { ...booking, reference: 'BCDEFG' } } },
+        { name: 'change_booking', output: { status: 'changed', booking: { ...booking, reference: 'CDEFGH', time: '21:00' } } },
+      ]).booked.map((made) => made.reference),
+    ).toEqual(['ACDEFH', 'BCDEFG', 'CDEFGH']);
+  });
+
+  it('says when the team was asked to call back, and when the web chat must show its phone field', () => {
+    expect(turnEffects([{ name: 'hand_over', output: { status: 'recorded', needsPhone: true } }])).toEqual({ booked: [], passedToTeam: true, askForPhone: true });
+    expect(turnEffects([{ name: 'check_dish', output: { status: 'ok', passedToTeam: true } }]).passedToTeam).toBe(true);
+    expect(turnEffects([{ name: 'book_table', output: { status: 'phone_required' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: true });
+    expect(turnEffects([{ name: 'book_table', output: { status: 'hold_expired' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: false });
   });
 });
 

@@ -34,7 +34,7 @@ export const PHONE_ENTERED =
 
 /** What a turn did, read from the engine's answers and never from the reply: what a chat or a dashboard shows besides the words. */
 export interface TurnEffects {
-  /** Bookings made or moved in this turn. */
+  /** Bookings made, moved, or asked for again in this turn. */
   booked: { reference: string; date: string; time: string; partySize: number }[];
   /** A request passed to the team, which will call the guest back. */
   passedToTeam: boolean;
@@ -45,7 +45,10 @@ export interface TurnEffects {
 export function turnEffects(tools: readonly { name: string; output: ToolOutput }[]): TurnEffects {
   const booked: TurnEffects['booked'] = [];
   for (const tool of tools) {
-    const made = (tool.name === 'book_table' && tool.output.status === 'booked') || (tool.name === 'change_booking' && tool.output.status === 'changed');
+    // A guest who asks for the same booking twice gets the one they already have: it is theirs all the same.
+    const made =
+      (tool.name === 'book_table' && (tool.output.status === 'booked' || tool.output.status === 'duplicate')) ||
+      (tool.name === 'change_booking' && tool.output.status === 'changed');
     const booking = tool.output['booking'] as { reference?: unknown; date?: unknown; time?: unknown; partySize?: unknown } | undefined;
     if (made && booking && typeof booking.reference === 'string' && typeof booking.date === 'string' && typeof booking.time === 'string') {
       booked.push({ reference: booking.reference, date: booking.date, time: booking.time, partySize: Number(booking.partySize) });
