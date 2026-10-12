@@ -164,7 +164,7 @@ describe('a call to the restaurant', () => {
     );
     const sent = JSON.parse(requests[1]?.body ?? '{}') as { messages: Message[] };
     expect(sent.messages.filter((message) => message.role === 'assistant').at(-1)?.content).toBe('Nous sommes ouverts du mardi au samedi');
-    expect(sent.messages[0]?.content).toContain('Always reply in English');
+    expect(JSON.stringify(sent.messages[0]?.content)).toContain('Always reply in English');
   });
 
   it('gives the last words of a line that hangs up on its own, and shows the owner each call’s length and pace', async () => {
@@ -239,7 +239,10 @@ async function openSandbox(): Promise<string> {
     body: JSON.stringify({ turnstile: 'a-token-from-the-widget' }),
   });
   expect(response.status).toBe(201);
-  return String(((await response.json()) as Record<string, unknown>)['sandbox']);
+  const opened = (await response.json()) as Record<string, unknown>;
+  // The page learns here whether to show its call button, and on what terms.
+  expect(opened['calls']).toEqual({ perRestaurant: 3, maxSeconds: 240 });
+  return String(opened['sandbox']);
 }
 
 interface Pass {

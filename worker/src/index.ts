@@ -438,5 +438,13 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   if (!sandbox) return problem(503, 'not_configured');
   const state = await sandbox.open();
   if (state.status !== 'ok') return problem(500, 'internal_error');
-  return json({ sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock }, 201);
+  return json({ sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock, calls: callOffer(env) }, 201);
+}
+
+/** Whether the demo can take calls, and on what terms: the page shows its call button only then, never one that would fail. */
+function callOffer(env: Env): { perRestaurant: number; maxSeconds: number } | null {
+  const perRestaurant = Number(env.DEMO_CALLS_PER_SANDBOX);
+  const maxSeconds = Number(env.DEMO_CALL_SECONDS);
+  if (!liveKitProject(env) || !env.AGENT_TOKEN || !(perRestaurant > 0) || !(maxSeconds > 0)) return null;
+  return { perRestaurant, maxSeconds };
 }

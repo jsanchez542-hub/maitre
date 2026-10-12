@@ -77,6 +77,20 @@ describe('OpenAI format', () => {
     expect((body['messages'] as unknown[]).length).toBe(6);
   });
 
+  it('marks the cacheable prefix where the provider must be told: the rules, and the guest’s last message', () => {
+    const messages = toOpenAIBody(request, 'anthropic/test', {}, true)['messages'] as Record<string, unknown>[];
+    expect(messages[0]).toEqual({
+      role: 'system',
+      content: [
+        { type: 'text', text: 'RULES', cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: 'TODAY' },
+      ],
+    });
+    const guests = messages.filter((message) => message['role'] === 'user');
+    expect(typeof guests[0]?.['content']).toBe('string');
+    expect(guests.at(-1)?.['content']).toEqual([{ type: 'text', text: expect.any(String), cache_control: { type: 'ephemeral' } }]);
+  });
+
   it('reads cached tokens, the reported cost and malformed arguments', () => {
     const answer = fromOpenAIAnswer({
       choices: [
@@ -179,6 +193,17 @@ describe('calling a provider', () => {
       model: 'anthropic/claude-haiku-5.5',
       provider: { sort: 'latency', data_collection: 'deny' },
     });
+  });
+
+  it('tells Anthropic’s models where to cache, and leaves the others to cache on their own', async () => {
+    const reply = { status: 200, body: JSON.stringify({ choices: [{ message: { content: 'Bonjour' } }], usage: { prompt_tokens: 10, completion_tokens: 2 } }) };
+    const system = async (model: string) => {
+      const { fetch, sent } = fakeFetch([reply]);
+      await openRouterModel({ apiKey: 'k', model, fetch }).complete(request);
+      return (JSON.parse(sent[0]?.init.body ?? '{}') as { messages: { content: unknown }[] }).messages[0]?.content;
+    };
+    expect(Array.isArray(await system('anthropic/claude-haiku-5.5@latency'))).toBe(true);
+    expect(typeof (await system('google/gemini-3.1-flash-lite'))).toBe('string');
   });
 });
 

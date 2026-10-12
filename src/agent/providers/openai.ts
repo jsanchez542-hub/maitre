@@ -13,18 +13,46 @@ export interface OpenAIOptions {
   extraHeaders?: Record<string, string>;
   /** How the model appears in reports; defaults to "openai:<model>". */
   id?: string;
+  /**
+   * Marks where a prompt prefix may be cached, for providers that need to be
+   * told (Anthropic's models through OpenRouter). OpenAI and Google cache on
+   * their own.
+   */
+  cacheBreakpoints?: boolean;
 }
 
+const EPHEMERAL = { type: 'ephemeral' } as const;
+
 /** The Chat Completions body for a request. Exported so the conversion can be tested without a network. */
-export function toOpenAIBody(request: ModelRequest, model: string, extraBody: Record<string, unknown> = {}): Record<string, unknown> {
+export function toOpenAIBody(
+  request: ModelRequest,
+  model: string,
+  extraBody: Record<string, unknown> = {},
+  cacheBreakpoints = false,
+): Record<string, unknown> {
   // OpenAI caches long prompt prefixes on its own: the stable part goes first
-  // so it is the same from one turn to the next.
+  // so it is the same from one turn to the next. Where the provider must be
+  // told, the tools and the rules are cached up to the stable part, and the
+  // conversation up to the guest's last message, which the next model call of
+  // the same turn starts with.
   const messages: Record<string, unknown>[] = [
-    { role: 'system', content: `${request.system.stable}\n\n${request.system.dynamic}` },
+    cacheBreakpoints
+      ? {
+          role: 'system',
+          content: [
+            { type: 'text', text: request.system.stable, cache_control: EPHEMERAL },
+            { type: 'text', text: request.system.dynamic },
+          ],
+        }
+      : { role: 'system', content: `${request.system.stable}\n\n${request.system.dynamic}` },
   ];
-  for (const entry of request.transcript) {
+  const lastGuest = request.transcript.map((entry) => entry.role).lastIndexOf('user');
+  for (const [index, entry] of request.transcript.entries()) {
     if (entry.role === 'user') {
-      messages.push({ role: 'user', content: entry.text });
+      messages.push({
+        role: 'user',
+        content: cacheBreakpoints && index === lastGuest ? [{ type: 'text', text: entry.text, cache_control: EPHEMERAL }] : entry.text,
+      });
     } else if (entry.role === 'assistant') {
       messages.push({
         role: 'assistant',
@@ -118,7 +146,14 @@ export function openAIModel(options: OpenAIOptions): LanguageModel {
     async complete(request) {
       const answer = await withRetries(
         () =>
-          postJson(fetch, url, headers, toOpenAIBody(request, options.model, options.extraBody), options.timeoutMs ?? 30_000, classify),
+          postJson(
+            fetch,
+            url,
+            headers,
+            toOpenAIBody(request, options.model, options.extraBody, options.cacheBreakpoints ?? false),
+            options.timeoutMs ?? 30_000,
+            classify,
+          ),
         options.maxRetries ?? 2,
       );
       return fromOpenAIAnswer(answer);
@@ -173,5 +208,7 @@ export function openRouterModel(options: OpenRouterOptions): LanguageModel {
       usage: { include: true },
       ...(Object.keys(provider).length ? { provider } : {}),
     },
+    // Anthropic's models cache only where they are told: without it, every call reads the five thousand tokens of rules again.
+    cacheBreakpoints: routed.model.startsWith('anthropic/'),
   });
 }
