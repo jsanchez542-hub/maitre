@@ -9,9 +9,10 @@ import { NOW, SCENARIOS } from './scenarios.js';
 
 /**
  * Writes src/demo/recordings.ts from one model's conversations in a run: for
- * each scenario, the first run that passed every check. The public demo plays
- * them again on the real engine, so it shows real replies of a real model
- * without calling one.
+ * each scenario, the first run that passed every check with no reply corrected
+ * by the guard, or else the first run that passed. The public demo plays them
+ * again on the real engine, so it shows real replies of a real model without
+ * calling one.
  *
  *   MAITRE_EVAL_EXPORT=evals/runs/<stamp>/<model>.json npm run eval:export
  */
@@ -46,7 +47,10 @@ it('exports recorded conversations for the demo', () => {
   const recordings: Recording[] = [];
   const missing: string[] = [];
   for (const scenario of SCENARIOS) {
-    const record = records.find((candidate) => candidate.scenario === scenario.id && candidate.passed);
+    // A reply the guard corrected says the sheet's sentences and then the model's own words, which can
+    // repeat them: when a run passed without it, the demo shows that one.
+    const passing = records.filter((candidate) => candidate.scenario === scenario.id && candidate.passed);
+    const record = passing.find((candidate) => candidate.turns.every((turn) => turn.corrections.length === 0)) ?? passing[0];
     if (!record?.state || scenario.channel === 'staff') {
       missing.push(scenario.id);
       continue;
@@ -63,6 +67,7 @@ it('exports recorded conversations for the demo', () => {
       model,
       turns: record.turns.map((turn) => ({
         guest: turn.guest,
+        ...(turn.fieldPhone ? { fieldPhone: turn.fieldPhone } : {}),
         reply: turn.reply,
         latencyMs: turn.latencyMs,
         ...(turn.costUsd === undefined ? {} : { costUsd: turn.costUsd }),

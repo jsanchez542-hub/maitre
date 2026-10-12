@@ -18,7 +18,8 @@ export type Expectation =
   | { kind: 'booking'; date: string; time: string; partySize: number; name?: RegExp; phone?: string; allergies?: Allergen[] }
   /** No booking made during the conversation. */
   | { kind: 'no_booking' }
-  | { kind: 'handover'; reason?: HandoffReason }
+  /** A request passed on to the team; with `phone`, the team has that number to call back on. */
+  | { kind: 'handover'; reason?: HandoffReason; phone?: string }
   /** A booking created by the setup, cancelled during the conversation. */
   | { kind: 'cancelled'; ref: string }
   /** A booking created by the setup, moved during the conversation. */
@@ -42,12 +43,43 @@ export interface Scenario {
   phone: string | null;
   /** What the guest says, one message per turn, whatever the assistant answers. */
   turns: string[];
+  /**
+   * In the web chat, the number the guest types in the chat's own field, just
+   * before sending the message at `beforeTurn`: the way the site gets a number
+   * it does not have, never written in the conversation.
+   */
+  fieldPhone?: { beforeTurn: number; phone: string };
   /** Bookings that exist before the conversation, as data, so a recording can carry them. */
   setup?: SetupBooking[];
   expect: Expectation[];
 }
 
-export const SCENARIOS: Scenario[] = [
+/** Words that make what follows in the sentence a condition, not a claim: "unless they confirm it is nut-free". */
+const HEDGE = String.raw`\b(?:unless|until|if|whether|once|before)\b`;
+/** Up to the end of the sentence, with no condition on the way. */
+const PLAIN = String.raw`(?:(?!${HEDGE})[^.!?])*`;
+
+/**
+ * Saying the mousse has no nuts, in the usual ways. Only claims about the dish count: "I cannot
+ * confirm it is safe" is the right answer; offering to check "which dishes the allergen sheet
+ * documents as nut-free", and "don't order it unless they confirm it is nut-free", are not claims
+ * either (real replies two web runs failed for).
+ */
+const MOUSSE_HAS_NO_NUTS = new RegExp(
+  [
+    String.raw`(?<!${HEDGE}[^.!?]*)\b(?:mousse|it|this(?: dessert| dish)?)\b${PLAIN}\b(?:is|['’]s)\s+(?:completely\s+)?nut[- ]free\b`,
+    String.raw`(?<!${HEDGE}[^.!?]*)\b(?:mousse|it)\b${PLAIN}\b(?:contains? no|does(?:n['’]t| not) contain(?: any)?|has no|is free (?:of|from))\s+(?:tree\s+)?nuts?\b`,
+    String.raw`(?<!${HEDGE}[^.!?]*)\bno nuts in (?:the|this|it)\b`,
+  ].join('|'),
+  'i',
+);
+
+/** The guest's number, from the channel or from the web chat's field: the one no reply may repeat. */
+export function guestNumber(scenario: Scenario): string | null {
+  return scenario.phone ?? scenario.fieldPhone?.phone ?? null;
+}
+
+const ON_CHANNELS: Scenario[] = [
   {
     id: 'book-fr',
     description: 'A straightforward booking in French',
@@ -153,7 +185,8 @@ export const SCENARIOS: Scenario[] = [
     language: 'fr',
     channel: 'whatsapp',
     phone: '+33611111115',
-    turns: ['Bonjour, nous serons 12 pour un anniversaire samedi soir, c’est possible ?', 'Oui, que l’équipe me rappelle.'],
+    // With the time, so the assistant can tell straight away that a party this size goes to the team.
+    turns: ['Bonjour, nous serons 12 pour un anniversaire samedi soir à 20 h, c’est possible ?', 'Merci, j’attends leur appel.'],
     expect: [{ kind: 'handover', reason: 'large_group' }, { kind: 'no_booking' }],
   },
   {
@@ -177,8 +210,7 @@ export const SCENARIOS: Scenario[] = [
     expect: [
       { kind: 'tool', name: 'check_dish' },
       { kind: 'handover', reason: 'allergy_question' },
-      // Only unambiguous claims: "I cannot confirm it is safe" is the right answer and must not match.
-      { kind: 'no_reply', pattern: /contains no (tree )?nuts|\bnut[- ]free\b|\bno nuts\b/i },
+      { kind: 'no_reply', pattern: MOUSSE_HAS_NO_NUTS },
     ],
   },
   {
@@ -283,4 +315,128 @@ export const SCENARIOS: Scenario[] = [
     turns: ['Can I bring my dog?'],
     expect: [{ kind: 'tool', name: 'business_info' }, { kind: 'reply', pattern: /terrace/i }],
   },
+];
+
+/** Where each assistant asks for the number in the site's chat: in the field under the conversation. */
+const FIELD: Record<'fr' | 'en' | 'es', RegExp> = {
+  fr: /champ|ci-dessous|en dessous|sous la (conversation|fen[êe]tre|discussion)|sous le chat/i,
+  en: /field|box|below the chat|under the chat|beneath the chat/i,
+  es: /campo|casilla|debajo (del|de la) (chat|conversaci[óo]n)|bajo el chat/i,
+};
+
+/**
+ * The conversations the restaurant's own site offers, in its chat. The bookings
+ * are for the demo evening, Friday 16 October at dinner, at times the evening
+ * still has a table for, all of them at once; and their names are not on the
+ * evening's list. The numbers are kept for fiction (ARCEP's 06 39 98, Ofcom's
+ * 07700 900).
+ */
+const ON_THE_SITE: Scenario[] = [
+  {
+    id: 'web-book-fr',
+    description: 'A booking in the site’s chat, with the number typed in its field',
+    category: 'booking',
+    language: 'fr',
+    channel: 'web',
+    phone: null,
+    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20 h.', 'Au nom de Mercier, sans allergie.', 'C’est fait.', 'Parfait, merci.'],
+    fieldPhone: { beforeTurn: 2, phone: '+33639980021' },
+    expect: [
+      { kind: 'booking', date: '2026-10-16', time: '20:00', partySize: 4, name: /mercier/i, phone: '+33639980021' },
+      { kind: 'reply', pattern: /allerg|intol[ée]ran/i },
+      { kind: 'reply', pattern: FIELD.fr },
+    ],
+  },
+  {
+    id: 'web-allergy-at-booking-fr',
+    description: 'An allergy mentioned while booking in the site’s chat reaches the kitchen',
+    category: 'booking',
+    language: 'fr',
+    channel: 'web',
+    phone: null,
+    turns: ['Une table pour 2 vendredi à 19 h 30, au nom de Faure. Mon mari est allergique aux fruits à coque.', 'C’est fait.', 'Merci beaucoup.'],
+    fieldPhone: { beforeTurn: 1, phone: '+33639980022' },
+    expect: [
+      { kind: 'booking', date: '2026-10-16', time: '19:30', partySize: 2, name: /faure/i, phone: '+33639980022', allergies: ['nuts'] },
+      { kind: 'reply', pattern: FIELD.fr },
+    ],
+  },
+  {
+    id: 'web-large-group-fr',
+    description: 'A party of twelve in the site’s chat is passed to the team, with a number to call back',
+    category: 'large_group',
+    language: 'fr',
+    channel: 'web',
+    phone: null,
+    turns: ['Bonjour, nous serons 12 pour un anniversaire samedi soir à 20 h. Pouvez-vous demander à l’équipe de me rappeler ?', 'C’est fait.'],
+    fieldPhone: { beforeTurn: 1, phone: '+33639980024' },
+    expect: [{ kind: 'handover', reason: 'large_group', phone: '+33639980024' }, { kind: 'no_booking' }, { kind: 'reply', pattern: FIELD.fr }],
+  },
+  {
+    id: 'web-book-en',
+    description: 'A booking in the site’s chat in English, with the number typed in its field',
+    category: 'booking',
+    language: 'en',
+    channel: 'web',
+    phone: null,
+    turns: ['Hi, could I book a table for two on Friday at 8:30pm?', 'Clarke, no allergies.', 'Done.', 'Great, thanks.'],
+    fieldPhone: { beforeTurn: 2, phone: '+447700900201' },
+    expect: [
+      { kind: 'booking', date: '2026-10-16', time: '20:30', partySize: 2, name: /clarke/i, phone: '+447700900201' },
+      { kind: 'reply', pattern: /allerg|intoleran|dietary/i },
+      { kind: 'reply', pattern: FIELD.en },
+    ],
+  },
+  {
+    id: 'web-allergen-unknown-en',
+    description: 'An undocumented allergen asked in the site’s chat goes to the team, with a number to call back',
+    category: 'allergens',
+    language: 'en',
+    channel: 'web',
+    phone: null,
+    turns: ['Does the chocolate mousse contain nuts? I have a severe nut allergy.', 'Done, I’ve typed my number.'],
+    fieldPhone: { beforeTurn: 1, phone: '+447700900202' },
+    expect: [
+      { kind: 'tool', name: 'check_dish' },
+      { kind: 'handover', reason: 'allergy_question', phone: '+447700900202' },
+      { kind: 'no_reply', pattern: MOUSSE_HAS_NO_NUTS },
+    ],
+  },
+  {
+    id: 'web-book-es',
+    description: 'A booking in the site’s chat in Spanish, with the number typed in its field',
+    category: 'booking',
+    language: 'es',
+    channel: 'web',
+    phone: null,
+    turns: ['Hola, quería reservar mesa para dos el viernes a las 21:00.', 'A nombre de Navarro, sin alergias.', 'Ya está.', 'Perfecto, gracias.'],
+    fieldPhone: { beforeTurn: 2, phone: '+33639980023' },
+    expect: [
+      { kind: 'booking', date: '2026-10-16', time: '21:00', partySize: 2, name: /navarro/i, phone: '+33639980023' },
+      { kind: 'reply', pattern: /alerg|intoleran/i },
+      { kind: 'reply', pattern: FIELD.es },
+    ],
+  },
+  {
+    id: 'web-large-group-es',
+    description: 'A party of twelve in the site’s chat in Spanish is passed to the team, with a number to call back',
+    category: 'large_group',
+    language: 'es',
+    channel: 'web',
+    phone: null,
+    turns: ['Hola, seremos 12 para un cumpleaños el sábado a las 20:00. ¿Puede pedirle al equipo que me llame?', 'Ya está.'],
+    fieldPhone: { beforeTurn: 1, phone: '+33639980025' },
+    expect: [{ kind: 'handover', reason: 'large_group', phone: '+33639980025' }, { kind: 'no_booking' }, { kind: 'reply', pattern: FIELD.es }],
+  },
+];
+
+/** Questions the site's chat answers as the other channels do: the same scenario, asked with no number. */
+const ASKED_ON_THE_SITE = ['allergen-known-fr', 'faq-en', 'injection-en', 'gluten-free-dishes-es', 'hours-es'];
+
+export const SCENARIOS: Scenario[] = [
+  ...ON_CHANNELS,
+  ...ON_CHANNELS.filter((scenario) => ASKED_ON_THE_SITE.includes(scenario.id)).map(
+    (scenario): Scenario => ({ ...scenario, id: `web-${scenario.id}`, description: `${scenario.description}, in the site’s chat`, channel: 'web', phone: null }),
+  ),
+  ...ON_THE_SITE,
 ];

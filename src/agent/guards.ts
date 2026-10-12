@@ -45,6 +45,56 @@ function restates(sentence: string, exact: string): boolean {
   return covered >= 0.9 && added <= 3;
 }
 
+/** A title that says whether someone is a man or a woman, in the three languages; "M." is French for monsieur. */
+const ONE_TITLE = '(?:[Mm]onsieur|[Mm]adame|[Mm]ademoiselle|Mme|Mlle|Mrs|Mr|Ms|Miss|[Ss]e[ñn]orita|[Ss]e[ñn]ora|[Ss]e[ñn]or|Srta|Sra|Sr|M(?=\\.))\\.?';
+/**
+ * One title, or the model hedging with two ("Mr or Ms", "monsieur ou madame", "señor/señora"),
+ * never inside a word or an abbreviation ("8 P.M. Merci" keeps its M.).
+ */
+const TITLE = `(?<![\\p{L}.\\-])${ONE_TITLE}(?:(?:\\s*/\\s*|\\s+(?:or|ou|o)\\s+)${ONE_TITLE})?`;
+/** A surname as the guest gave it: one or two capitalised words. */
+const NAME = "\\p{Lu}[\\p{L}'’-]*(?: \\p{Lu}[\\p{L}'’-]*)?";
+const VOCATIVE_AT_END = new RegExp(`,\\s*${TITLE}\\s+${NAME}(?=\\s*(?:[.!?,;:…]|$))`, 'gu');
+const VOCATIVE_AT_START = new RegExp(`(^|[.!?]\\s+)${TITLE}\\s+${NAME}\\s*,\\s*(\\p{Ll})`, 'gu');
+const TITLED_NAME = new RegExp(`${TITLE}\\s+(${NAME})`, 'gu');
+
+/**
+ * The guest only ever gives a surname, so a title guesses whether they are a
+ * man or a woman. The prompt says so, and the model still wrote "Your table is
+ * booked, Ms Clarke" or "De nada, señor Navarro" in the web run of 12 October,
+ * once calling "monsieur" a woman who had mentioned her husband. The title and
+ * the name go when they address the guest ("Merci, monsieur Mercier." becomes
+ * "Merci."); anywhere else the title goes and the name stays.
+ */
+export function dropGuessedTitles(reply: string): { reply: string; corrected: boolean } {
+  const text = reply
+    .replace(VOCATIVE_AT_END, '')
+    .replace(VOCATIVE_AT_START, (_match, start: string, first: string) => `${start}${first.toUpperCase()}`)
+    .replace(TITLED_NAME, '$1');
+  return { reply: text, corrected: text !== reply };
+}
+
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Told to use no title, the model sometimes addresses the guest by the bare
+ * surname instead ("Thank you, Clarke.", "De nada, Navarro."), which reads as
+ * curt in every language. The names it booked under go when they address the
+ * guest; "under the name Clarke" and "a nombre de Navarro" stay.
+ */
+export function dropNameVocatives(reply: string, names: readonly string[]): { reply: string; corrected: boolean } {
+  let text = reply;
+  for (const name of new Set(names.map((candidate) => candidate.trim()).filter(Boolean))) {
+    const quoted = escaped(name);
+    text = text
+      .replace(new RegExp(`,\\s*${quoted}(?=\\s*[.!?:;,…]|$)`, 'gu'), '')
+      .replace(new RegExp(`(^|[.!?]\\s+)${quoted}\\s*,\\s*(\\p{Ll})`, 'gu'), (_match, start: string, first: string) => `${start}${first.toUpperCase()}`);
+  }
+  return { reply: text, corrected: text !== reply };
+}
+
 /**
  * Allergen answers must reach the guest word for word. The tool hands the model
  * the sentences to repeat, and the model usually does; when it does not, the

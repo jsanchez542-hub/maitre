@@ -7,7 +7,7 @@ import type { Booking, CallbackRequest } from '../src/store.js';
 import type { ToolOutput } from '../src/tools.js';
 import { checkScenario, type Outcome } from './checks.js';
 import { failureLines, SUMMARY_HEADER, summaryRow, type RunRecord } from './report.js';
-import { SCENARIOS, type Scenario } from './scenarios.js';
+import { guestNumber, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
  * Scores a recorded run again with the scenarios as they are now, without
@@ -38,14 +38,18 @@ function outcomeOf(record: RunRecord, scenario: Scenario, state: NonNullable<Run
     allBookings: state.allBookings as Booking[],
     callbacks: state.callbacks as CallbackRequest[],
     refs: state.refs,
-    phone: scenario.phone,
+    phone: guestNumber(scenario),
   };
 }
 
 function rescore(record: RunRecord): RunRecord {
   if (record.skipped) return record;
   const scenario = SCENARIOS.find((candidate) => candidate.id === record.scenario);
-  const unchanged = scenario && scenario.turns.join('\n') === record.turns.map((turn) => turn.guest).join('\n');
+  const typed = record.turns.findIndex((turn) => turn.fieldPhone);
+  const sameField = scenario?.fieldPhone
+    ? typed === scenario.fieldPhone.beforeTurn && record.turns[typed]?.fieldPhone === scenario.fieldPhone.phone
+    : typed === -1;
+  const unchanged = scenario && sameField && scenario.turns.join('\n') === record.turns.map((turn) => turn.guest).join('\n');
   if (!scenario || !unchanged) return { ...record, passed: false, checks: [], skipped: 'the scenario changed since this run' };
   if (!record.state) return { ...record, passed: false, checks: [], skipped: 'recorded before runs kept their state' };
   const checks = checkScenario(scenario, outcomeOf(record, scenario, record.state));
@@ -55,8 +59,9 @@ function rescore(record: RunRecord): RunRecord {
 it('scores a recorded run again with the current checks', () => {
   const directory = process.env['MAITRE_EVAL_RESCORE']?.trim() ?? '';
   if (!directory || !existsSync(directory)) throw new Error('Set MAITRE_EVAL_RESCORE to a run directory, such as evals/runs/<stamp>');
+  // One file per model; meta.json says what the run was made with.
   const files = readdirSync(directory)
-    .filter((name) => name.endsWith('.json'))
+    .filter((name) => name.endsWith('.json') && name !== 'meta.json')
     .sort();
   expect(files.length).toBeGreaterThan(0);
 

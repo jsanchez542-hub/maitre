@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { respond } from '../src/agent/agent.js';
-import { comparable, enforceAllergenRelay } from '../src/agent/guards.js';
+import { comparable, dropGuessedTitles, dropNameVocatives, enforceAllergenRelay } from '../src/agent/guards.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
 import { guest, harness } from './fixtures.js';
 
@@ -57,5 +57,88 @@ describe('the allergen relay guard', () => {
     expect(result.corrections).toEqual(['allergen_relay']);
     expect(result.reply.startsWith(SENTENCE)).toBe(true);
     expect(result.reply).not.toContain('\n');
+  });
+});
+
+describe('the guessed title guard', () => {
+  it('takes out a title and name that address the guest, whatever the language (real replies from the web run)', () => {
+    const cases: [string, string][] = [
+      ['Merci, monsieur Mercier. Pour finaliser la réservation, saisissez votre numéro.', 'Merci. Pour finaliser la réservation, saisissez votre numéro.'],
+      ['Je vous en prie, madame Faure. Nous serons ravis de vous accueillir.', 'Je vous en prie. Nous serons ravis de vous accueillir.'],
+      // The model hedging with both titles is still a guess, and both go.
+      ['Your table is booked, Mr or Ms Clarke. It is for 2 people on Friday.', 'Your table is booked. It is for 2 people on Friday.'],
+      ['Gracias, señor o señora Navarro.', 'Gracias.'],
+      ['Thank you, Ms Clarke. We look forward to seeing you.', 'Thank you. We look forward to seeing you.'],
+      ['De nada, señor Navarro. Le esperamos el viernes en Merrain.', 'De nada. Le esperamos el viernes en Merrain.'],
+      ['Mr Clarke, your table is ready.', 'Your table is ready.'],
+      ['Merci. Monsieur Mercier, votre table est prête.', 'Merci. Votre table est prête.'],
+      ['We look forward to welcoming Mrs Taylor and her guest.', 'We look forward to welcoming Taylor and her guest.'],
+      // French abbreviates monsieur to "M." (a real reply from the run of 12 October).
+      ['C’est noté, M. Leroy, votre table est réservée pour 21 h 30.', 'C’est noté, votre table est réservée pour 21 h 30.'],
+    ];
+    for (const [reply, expected] of cases) expect(dropGuessedTitles(reply), reply).toEqual({ reply: expected, corrected: true });
+  });
+
+  it('leaves alone a reply with no title before a name, and words that only look like one', () => {
+    for (const reply of [
+      'Votre réservation est confirmée : une table pour 4 personnes le vendredi 16 octobre à 20 h, au nom de Mercier.',
+      'Madame, Monsieur, merci pour votre message.',
+      'Su mesa para dos está reservada a nombre de Navarro.',
+      'Don’t miss the canelés, they come out of the oven at seven.',
+      'Les desserts du Sud-Ouest sont nos préférés.',
+      'Your table is at 8 P.M. Merci for booking with us.',
+    ]) {
+      expect(dropGuessedTitles(reply), reply).toEqual({ reply, corrected: false });
+    }
+  });
+
+  it('runs inside the agent and says so in the turn', async () => {
+    const h = harness();
+    const model = scriptedModel([{ text: 'De nada, señor Navarro. Le esperamos el viernes.' }]);
+    const result = await respond(h.engine, model, guest('s1', '+33639980023', 'es', 'web'), [], 'Gracias.');
+    expect(result.corrections).toEqual(['guessed_title']);
+    expect(result.reply).toBe('De nada. Le esperamos el viernes.');
+  });
+});
+
+describe('the bare name guard', () => {
+  it('takes out the booking name when it addresses the guest (real replies from the web run)', () => {
+    const cases: [string, string][] = [
+      ['Thank you, Clarke. To complete the booking, please enter your phone number in the field.', 'Thank you. To complete the booking, please enter your phone number in the field.'],
+      ['Your table is booked, Clarke: a table for 2 on Friday.', 'Your table is booked: a table for 2 on Friday.'],
+      ['You are welcome, Clarke. See you on Friday.', 'You are welcome. See you on Friday.'],
+      ['De nada, Navarro. Que tenga un buen día.', 'De nada. Que tenga un buen día.'],
+      ['Merci. Mercier, votre table est prête.', 'Merci. Votre table est prête.'],
+    ];
+    for (const [reply, expected] of cases) {
+      expect(dropNameVocatives(reply, ['Clarke', 'Navarro', 'Mercier']), reply).toEqual({ reply: expected, corrected: true });
+    }
+  });
+
+  it('keeps the name where it belongs to the booking', () => {
+    for (const reply of [
+      'It is for 2 people on Friday 16 October at 8:30 pm, under the name Clarke.',
+      'Su reserva está confirmada: una mesa para 2 personas, a nombre de Navarro. La referencia es 34PDUE.',
+      'Une table pour 4 personnes au nom de Mercier, le vendredi 16 octobre à 20 h.',
+    ]) {
+      expect(dropNameVocatives(reply, ['Clarke', 'Navarro', 'Mercier']), reply).toEqual({ reply, corrected: false });
+    }
+    expect(dropNameVocatives('Thank you, Clarke.', [])).toEqual({ reply: 'Thank you, Clarke.', corrected: false });
+  });
+
+  it('runs inside the agent with the name the model booked under', async () => {
+    const h = harness();
+    const model = scriptedModel([
+      { toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '20:30', partySize: 2 } }] },
+      { text: 'A table for 2 on Friday at 8:30 pm is available. May I have the name, and any allergies?' },
+    ]);
+    const first = await respond(h.engine, model, guest('n1', '+447700900201', 'en', 'whatsapp'), [], 'A table for two on Friday at 8:30pm?');
+    const booking = scriptedModel([
+      { toolCalls: [{ name: 'book_table', input: { holdId: String(first.tools[0]?.output['holdId']), guestName: 'Clarke', allergies: [] } }] },
+      { text: 'Thank you, Clarke. Your table is booked for Friday at 8:30 pm.' },
+    ]);
+    const second = await respond(h.engine, booking, guest('n1', '+447700900201', 'en', 'whatsapp'), first.transcript, 'Clarke, no allergies.');
+    expect(second.corrections).toEqual(['name_vocative']);
+    expect(second.reply).toBe('Thank you. Your table is booked for Friday at 8:30 pm.');
   });
 });

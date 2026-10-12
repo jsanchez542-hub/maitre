@@ -1,7 +1,7 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
 import { TOOL_DEFINITIONS, runTool, type ToolOutput } from '../tools.js';
-import { enforceAllergenRelay } from './guards.js';
+import { dropGuessedTitles, dropNameVocatives, enforceAllergenRelay } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
@@ -26,7 +26,7 @@ export interface ToolRecord {
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */
-export type Correction = 'allergen_relay';
+export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative';
 
 export interface TurnResult {
   /** What the guest sees or hears. */
@@ -157,9 +157,28 @@ export async function respond(
     if (response.toolCalls.length === 0) {
       const cleaned = sanitizeReply(response.text, session.channel, session.language);
       if (cleaned === '') return fail(new Error('The model answered with an empty message'));
-      const relay = enforceAllergenRelay(cleaned, tools);
-      if (!relay.corrected) return finish(cleaned, 'answered');
-      return finish(sanitizeReply(relay.reply, session.channel, session.language), 'answered', ['allergen_relay']);
+      const corrections: Correction[] = [];
+      let reply = cleaned;
+      const relay = enforceAllergenRelay(reply, tools);
+      if (relay.corrected) {
+        reply = sanitizeReply(relay.reply, session.channel, session.language);
+        corrections.push('allergen_relay');
+      }
+      const untitled = dropGuessedTitles(reply);
+      if (untitled.corrected) {
+        reply = untitled.reply;
+        corrections.push('guessed_title');
+      }
+      // The names the model booked or held under in this conversation, as its own tool calls gave them.
+      const names = working.flatMap((entry) =>
+        entry.role === 'assistant' ? entry.toolCalls.map((call) => (call.input as Record<string, unknown> | null)?.['guestName']) : [],
+      );
+      const unnamed = dropNameVocatives(reply, names.filter((name): name is string => typeof name === 'string'));
+      if (unnamed.corrected) {
+        reply = unnamed.reply;
+        corrections.push('name_vocative');
+      }
+      return finish(reply, 'answered', corrections);
     }
 
     working.push({ role: 'assistant', text: response.text, toolCalls: response.toolCalls });

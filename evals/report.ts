@@ -11,6 +11,8 @@ export interface RunRecord {
   costUsd: number;
   turns: {
     guest: string;
+    /** The number typed in the web chat's field just before this message. */
+    fieldPhone?: string;
     reply: string;
     outcome: string;
     latencyMs: number;

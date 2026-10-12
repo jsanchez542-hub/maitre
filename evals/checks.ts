@@ -19,7 +19,7 @@ export interface Outcome {
   allBookings: Booking[];
   callbacks: CallbackRequest[];
   refs: Record<string, string>;
-  /** The number the channel gave, if any. */
+  /** The guest's number, from the channel or typed in the web chat's field, if any. */
   phone: string | null;
 }
 
@@ -53,6 +53,9 @@ export function detectLanguage(text: string): Language | undefined {
 
 const LEAKS = /\b(find_table|book_table|check_dish|dishes_without|hand_over|holdId|sayExactly|passedToTeam|needsPhone|internal_error|invalid_input)\b|"status"\s*:/;
 
+/** A title in front of a name: it guesses whether the guest is a man or a woman, which none of them said. */
+const TITLE = /\b(?:[Mm]onsieur|[Mm]adame|[Mm]ademoiselle|Mme|Mlle|M\.|Mr|Mrs|Ms|Miss|[Ss]e[ñn]or|[Ss]e[ñn]ora|[Ss]e[ñn]orita|Sra|Srta|Sr)\.?\s+\p{Lu}/u;
+
 /** Rules every reply of every conversation must follow, whatever the scenario. */
 export function universalChecks(scenario: Scenario, outcome: Outcome): Check[] {
   const checks: Check[] = [];
@@ -80,6 +83,9 @@ export function universalChecks(scenario: Scenario, outcome: Outcome): Check[] {
 
     const styleProblem = /\*\*|^#|^\s*[-*] |[–—]/m.exec(turn.reply);
     checks.push({ name: `${label} is plain text`, ok: !styleProblem, ...(styleProblem ? { detail: styleProblem[0] } : {}) });
+
+    const title = TITLE.exec(turn.reply);
+    checks.push({ name: `${label} guesses no title for the guest`, ok: !title, ...(title ? { detail: title[0] } : {}) });
 
     const detected = detectLanguage(turn.reply);
     if (detected !== undefined) {
@@ -122,7 +128,7 @@ export function expectationCheck(expectation: Expectation, outcome: Outcome): Ch
       if (booking.time !== expectation.time) problems.push(`time ${booking.time}`);
       if (booking.partySize !== expectation.partySize) problems.push(`party of ${booking.partySize}`);
       if (expectation.name && !expectation.name.test(booking.guestName)) problems.push(`name "${booking.guestName}"`);
-      if (expectation.phone && booking.phone !== expectation.phone) problems.push('phone is not the one the channel gave');
+      if (expectation.phone && booking.phone !== expectation.phone) problems.push('phone is not the one the guest gave');
       for (const allergen of expectation.allergies ?? []) {
         if (!booking.allergies.includes(allergen)) problems.push(`allergy ${allergen} not recorded`);
       }
@@ -135,11 +141,14 @@ export function expectationCheck(expectation: Expectation, outcome: Outcome): Ch
         ...(outcome.newBookings.length ? { detail: outcome.newBookings.map(describeBooking).join('; ') } : {}),
       };
     case 'handover': {
-      const matching = outcome.callbacks.filter((callback) => expectation.reason === undefined || callback.reason === expectation.reason);
+      const matching = outcome.callbacks.filter(
+        (callback) => (expectation.reason === undefined || callback.reason === expectation.reason) && (expectation.phone === undefined || callback.phone === expectation.phone),
+      );
+      const shown = (callback: CallbackRequest): string => `${callback.reason}${expectation.phone ? (callback.phone ? ' with a number' : ' with no number') : ''}`;
       return {
-        name: `handed over${expectation.reason ? ` (${expectation.reason})` : ''}`,
+        name: `handed over${expectation.reason ? ` (${expectation.reason})` : ''}${expectation.phone ? ' with the guest’s number' : ''}`,
         ok: matching.length > 0,
-        ...(matching.length ? {} : { detail: `callbacks: ${outcome.callbacks.map((callback) => callback.reason).join(', ') || 'none'}` }),
+        ...(matching.length ? {} : { detail: `callbacks: ${outcome.callbacks.map(shown).join(', ') || 'none'}` }),
       };
     }
     case 'cancelled': {

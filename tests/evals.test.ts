@@ -94,6 +94,39 @@ describe('the evaluation harness', () => {
     expect(failed('Je vous rappelle au 06 11 11 11 11 dès que possible pour confirmer la table.')).toContain('turn 1 never repeats the guest\'s number');
   });
 
+  it('catches every usual way of saying the mousse has no nuts, and nothing else (real replies included)', () => {
+    const mousse = SCENARIOS.find((candidate) => candidate.id === 'allergen-unknown-en') as Scenario;
+    const claims = (reply: string) =>
+      checkScenario(mousse, outcome({ turns: [turn(reply)] })).some((check) => check.name.startsWith('no reply matches') && !check.ok);
+    for (const claim of [
+      'The chocolate mousse is nut-free.',
+      'Good news, it’s nut-free!',
+      'It contains no nuts.',
+      'The mousse doesn’t contain any nuts.',
+      'There are no nuts in the mousse.',
+    ]) {
+      expect(claims(claim), claim).toBe(true);
+    }
+    for (const answer of [
+      'The allergen sheet for “Chocolate mousse” does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.',
+      'I can also check which dishes the kitchen’s allergen sheet documents as nut-free, if that would help.',
+      'Please don’t order it unless they confirm it is nut-free. Your server can also check with the kitchen when you arrive.',
+      'I cannot confirm it is safe for you, so please do not order it until the team has called you back.',
+    ]) {
+      expect(claims(answer), answer).toBe(false);
+    }
+  });
+
+  it('catches a title the guest never gave, and only that (real replies from the web run)', () => {
+    const titled = (reply: string) =>
+      checkScenario(scenario, outcome({ turns: [turn(reply)] })).some((check) => check.name === 'turn 1 guesses no title for the guest' && !check.ok);
+    expect(titled('Merci, monsieur Mercier. Pour finaliser la réservation, saisissez votre numéro dans le champ prévu.')).toBe(true);
+    expect(titled('Your table is booked, Mr or Ms Clarke. It is for 2 people on Friday 16 October at 8:30 pm.')).toBe(true);
+    expect(titled('De nada, señor Navarro. Le esperamos el viernes en Merrain.')).toBe(true);
+    expect(titled('Votre réservation est confirmée : une table pour 4 personnes le vendredi 16 octobre à 20 h, au nom de Mercier.')).toBe(false);
+    expect(titled('Madame, Monsieur, merci pour votre message.')).toBe(false);
+  });
+
   it('tells languages apart only when there is enough to go on', () => {
     expect(detectLanguage('Bonjour, je vous confirme la table pour vendredi soir avec plaisir.')).toBe('fr');
     expect(detectLanguage('Your table for two is booked for Friday at eight in the evening.')).toBe('en');

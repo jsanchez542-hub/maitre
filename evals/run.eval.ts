@@ -13,7 +13,7 @@ import { MemoryStore } from '../src/store.js';
 import { checkScenario } from './checks.js';
 import { restaurantFingerprint } from './fingerprint.js';
 import { failureLines, SUMMARY_HEADER, summaryRow, type RunMeta, type RunRecord } from './report.js';
-import { NOW, SCENARIOS, type Scenario } from './scenarios.js';
+import { guestNumber, NOW, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
  * Runs every scenario against real models through OpenRouter.
@@ -43,7 +43,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
   const engine = new BookingEngine(DEMO_RESTAURANT, store, { now: () => NOW, ids: randomIds });
   const refs = applySetup(engine, scenario.setup ?? []);
   const before = new Set(store.snapshot().bookings.map((booking) => booking.id));
-  const session: Session = {
+  let session: Session = {
     id: `eval-${scenario.id}-${run}`,
     channel: scenario.channel,
     language: scenario.language,
@@ -55,7 +55,13 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
   const turns: TurnResult[] = [];
   const errors: string[][] = [];
   let transcript: TurnResult['transcript'] = [];
-  for (const message of scenario.turns) {
+  for (const [index, message] of scenario.turns.entries()) {
+    // The guest types the number in the web chat's field: the Worker keeps it for the session
+    // and gives it to the requests already passed on to the team, then the next message goes on.
+    if (scenario.fieldPhone?.beforeTurn === index) {
+      session = { ...session, phone: { e164: scenario.fieldPhone.phone, source: 'form' } };
+      engine.addPhoneToCallbacks(session);
+    }
     const seen: string[] = [];
     const result = await respond(engine, model, session, transcript, message, {
       onError: (error) =>
@@ -74,7 +80,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
     allBookings: snapshot.bookings,
     callbacks: snapshot.callbacks,
     refs,
-    phone: scenario.phone,
+    phone: guestNumber(scenario),
   });
   return {
     scenario: scenario.id,
@@ -85,6 +91,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
     costUsd: turns.reduce((sum, turn) => sum + (turn.costUsd ?? 0), 0),
     turns: turns.map((turn, index) => ({
       guest: scenario.turns[index] ?? '',
+      ...(scenario.fieldPhone?.beforeTurn === index ? { fieldPhone: scenario.fieldPhone.phone } : {}),
       reply: turn.reply,
       outcome: turn.outcome,
       latencyMs: turn.latencyMs,

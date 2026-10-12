@@ -24,6 +24,8 @@ export function applySetup(engine: BookingEngine, setup: readonly SetupBooking[]
 
 export interface RecordedTurn {
   guest: string;
+  /** In the web chat, the number the guest typed in the chat's own field just before this message. */
+  fieldPhone?: string;
   /** The model's reply, as the guest saw it. */
   reply: string;
   /** From the guest's message to the reply, as measured when it was recorded. */
@@ -53,7 +55,11 @@ export interface Recording {
 
 export interface ReplayedTurn {
   guest: string;
+  /** The number typed in the web chat's field before this message: the chat shows it being entered first. */
+  fieldPhone?: string;
   reply: string;
+  /** After this reply the web chat shows its phone field, as the site's Worker does when the engine asks for a number. */
+  asksForPhone?: true;
   /** What the engine answered now, on this replay's restaurant. */
   tools: { name: string; input: unknown; output: ToolOutput }[];
   latencyMs: number;
@@ -112,7 +118,7 @@ export class Replay {
   readonly engine: BookingEngine;
   readonly #store = new MemoryStore();
   readonly #recording: Recording;
-  readonly #session: Session;
+  #session: Session;
   readonly #ids = new Map<string, string>();
   #played = 0;
 
@@ -146,6 +152,12 @@ export class Replay {
     const turn = this.#recording.turns[this.#played];
     if (!turn) return undefined;
     this.#played += 1;
+    if (turn.fieldPhone) {
+      // As the Worker does with the number typed in the field: the session keeps it, and the
+      // requests already passed on to the team get it.
+      this.#session = { ...this.#session, phone: { e164: turn.fieldPhone, source: 'form' } };
+      this.engine.addPhoneToCallbacks(this.#session);
+    }
     const tools = turn.tools.map((tool) => {
       const input = translate(tool.input, this.#ids);
       const output = runTool(this.engine, this.#session, tool.name, input);
@@ -163,6 +175,16 @@ export class Replay {
     });
     let reply = turn.reply;
     for (const [recorded, live] of this.#ids) reply = reply.split(recorded).join(live);
-    return { guest: turn.guest, reply, tools, latencyMs: turn.latencyMs, ...(turn.costUsd === undefined ? {} : { costUsd: turn.costUsd }) };
+    const asksForPhone =
+      this.#recording.channel === 'web' && tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true);
+    return {
+      guest: turn.guest,
+      ...(turn.fieldPhone ? { fieldPhone: turn.fieldPhone } : {}),
+      reply,
+      ...(asksForPhone ? { asksForPhone: true as const } : {}),
+      tools,
+      latencyMs: turn.latencyMs,
+      ...(turn.costUsd === undefined ? {} : { costUsd: turn.costUsd }),
+    };
   }
 }

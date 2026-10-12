@@ -25,6 +25,36 @@ describe('a conversation played in the chat', () => {
   });
 });
 
+describe('a conversation played in the site’s chat', () => {
+  const onTheSite = RECORDINGS.filter((recording) => recording.channel === 'web').map((recording) => recordingOutcome(recording.id));
+  const booked = onTheSite.filter((outcome) => outcome.bookings.length > 0);
+
+  it('books for the demo evening, in every language the site speaks', () => {
+    expect(booked.map((outcome) => outcome.recording)).toEqual(['web-book-fr', 'web-allergy-at-booking-fr', 'web-book-en', 'web-book-es']);
+    for (const outcome of booked) expect(outcome.bookings.map((made) => made.date), outcome.recording).toEqual([DEMO_EVENING_DATE]);
+    expect(new Set(booked.map((outcome) => outcome.language))).toEqual(new Set(['fr', 'en', 'es']));
+  });
+
+  it('keeps the number the guest typed in the chat’s field, and the evening books it as the site’s', () => {
+    expect(recordingOutcome('web-book-fr')).toMatchObject({ channel: 'web', phone: '+33639980021', bookings: [{ time: '20:00', partySize: 4, guestName: 'Mercier' }] });
+    const { engine } = demoEvening({ fromChat: [recordingOutcome('web-book-fr')] });
+    expect(engine.serviceDay(DEMO_EVENING_DATE, 'fr').bookings.find((booking) => booking.guestName === 'Mercier')).toMatchObject({ channel: 'web', time: '20:00' });
+  });
+
+  it('fits all at once in the evening, for a visitor who plays every one the site offers', () => {
+    const { engine } = demoEvening({ fromChat: onTheSite });
+    const day = engine.serviceDay(DEMO_EVENING_DATE, 'fr');
+    for (const made of booked.flatMap((outcome) => outcome.bookings)) {
+      expect(day.bookings.find((booking) => booking.guestName === made.guestName && booking.time === made.time)?.table, made.guestName).toBeDefined();
+    }
+  });
+
+  it('brings no name the evening already has', () => {
+    const tonight = new Set(demoEvening().engine.serviceDay(DEMO_EVENING_DATE, 'fr').bookings.map((booking) => booking.guestName));
+    for (const made of booked.flatMap((outcome) => outcome.bookings)) expect(tonight.has(made.guestName), made.guestName).toBe(false);
+  });
+});
+
 describe('the evening with what the chat booked', () => {
   const withBookings: ChatOutcome[] = RECORDINGS.map((recording) => recordingOutcome(recording.id)).filter((outcome) => outcome.bookings.length > 0);
 
@@ -39,6 +69,10 @@ describe('the evening with what the chat booked', () => {
       'closed-day-en',
       'full-fr',
       'dictated-number-fr',
+      'web-book-fr',
+      'web-allergy-at-booking-fr',
+      'web-book-en',
+      'web-book-es',
     ]);
   });
 
@@ -57,13 +91,6 @@ describe('the evening with what the chat booked', () => {
       }
     },
   );
-
-  it('fits every booking conversation at once, for a visitor who plays them all', () => {
-    const { engine } = demoEvening({ fromChat: withBookings });
-    const tonight = withBookings.flatMap((outcome) => outcome.bookings).filter((made) => made.date === DEMO_EVENING_DATE);
-    const day = engine.serviceDay(DEMO_EVENING_DATE, 'fr');
-    for (const made of tonight) expect(day.bookings.some((booking) => booking.guestName === made.guestName && booking.time === made.time)).toBe(true);
-  });
 
   it('is the same evening as before when nothing was played', () => {
     const view = (evening: ReturnType<typeof demoEvening>) => JSON.stringify(evening.engine.serviceDay(DEMO_EVENING_DATE, 'fr'));

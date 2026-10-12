@@ -21,6 +21,7 @@ export interface ChatOutcome {
   at: string;
   channel: Recording['channel'];
   language: Language;
+  /** The guest's number: the channel's, or the one typed in the web chat's field. */
   phone: string | null;
   /**
    * The bookings the conversation made. A conversation that only answers a
@@ -55,5 +56,6 @@ export function recordingOutcome(id: string): ChatOutcome {
         ...(booking.notes ? { notes: booking.notes } : {}),
       }),
     );
-  return { recording: recording.id, at: recording.at, channel: recording.channel, language: recording.language, phone: recording.phone, bookings };
+  const phone = recording.turns.reduce<string | null>((typed, turn) => turn.fieldPhone ?? typed, recording.phone);
+  return { recording: recording.id, at: recording.at, channel: recording.channel, language: recording.language, phone, bookings };
 }

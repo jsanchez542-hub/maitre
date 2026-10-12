@@ -4,9 +4,9 @@ How the model behind Maître was chosen, run by run: what each run measured, wha
 
 ## How a model is evaluated
 
-- **19 conversations written in advance** (`evals/scenarios.ts`), in French, English and Spanish, over WhatsApp, the web chat and the phone as text: bookings, relative dates ("après-demain", "the 24th"), a closed day, a full evening, a party too large to seat, allergen questions the kitchen's sheet answers and one it does not, a phone number dictated aloud, an attempt to override the rules, a cancellation, a change, opening hours and a question the restaurant has answered in writing.
+- **31 conversations written in advance** (`evals/scenarios.ts`; 19 until run G), in French, English and Spanish, over WhatsApp, the web chat and the phone as text: bookings, relative dates ("après-demain", "the 24th"), a closed day, a full evening, a party too large to seat, allergen questions the kitchen's sheet answers and one it does not, a phone number dictated aloud, an attempt to override the rules, a cancellation, a change, opening hours and a question the restaurant has answered in writing. Twelve of them happen in the restaurant website's chat, where the guest types the number in the chat's own field.
 - **"Right" is written as checks on the outcome, never as an opinion:** the booking made (day, time, party size, name, the number the channel gave, the allergies), nothing booked, a request for the team to call back and its reason, a cancellation, a move, a tool used, a reply that must or must not say something.
-- **Every reply of every conversation is checked as well:** the allergen sheet repeated word for word, no internal names, plain text, the guest's language, and never the guest's phone number.
+- **Every reply of every conversation is checked as well:** the allergen sheet repeated word for word, no internal names, plain text, the guest's language, never the guest's phone number, and no title guessed in front of the guest's name.
 - **Each conversation runs three times and passes only if all three pass.** A booking assistant that is right two times out of three is wrong for one guest in three.
 - **Same prompt, tools, restaurant and clock for every model:** Wednesday 14 October 2026, 10:00 in Paris. Models are called through OpenRouter, routed only to providers that neither store nor train on prompts.
 - **Latency** runs from the guest's message to the reply, tool calls included, measured from France. **Cost** is what OpenRouter reports for each call.
@@ -89,7 +89,40 @@ What it found, and what changed:
 
 ### Run F: the chosen model on the final code, for the demo
 
-Claude Haiku 5.5 alone, on commit b85dfe6 with the demo restaurant renamed Merrain: the code after the floor plan was added, and the name the demo shows. Right in all 57 conversations again (19/19), with a p50 of 3.0 s, a p95 of 6.6 s, the guard stepping in on 2 turns of 117, and $0.118 spent. The demo's recorded conversations come from this run.
+Claude Haiku 5.5 alone, on commit b85dfe6 with the demo restaurant renamed Merrain: the code after the floor plan was added, and the name the demo shows. Right in all 57 conversations again (19/19), with a p50 of 3.0 s, a p95 of 6.6 s, the guard stepping in on 2 turns of 117, and $0.118 spent. The demo's recorded conversations came from this run until run G.
+
+### Run G: the site's chat, and the guest's title (12 October)
+
+Claude Haiku 5.5 alone, on 31 scenarios: the 19 before, and 12 in the chat of the restaurant's website (channel `web`), the ones the public demo plays.
+- Four book for the demo evening, Friday 16 October at dinner, at times that evening still has a table for.
+- Two pass a large party to the team, and six are questions.
+- They are in French, English and Spanish.
+
+The web chat brings no number. The assistant asks for it in the chat's own field, the guest types it there (`fieldPhone` in the scenario), and the harness, like the site's Worker, gives it to the session and to the requests already passed to the team. Replays do the same, and say when the chat shows the field.
+
+| Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Cost |
+|---|---|---|---|---|---|---|
+| **Claude Haiku 5.5** | **31/31** | **93/93** | 3.2 s | 6.4 s | 28/195 turns | $0.194 |
+
+That is the last of seven runs of the whole suite that day; two shorter ones repeated a single scenario. On the way:
+
+- **The replies guessed the guest's gender.** Read as a guest would, the first run said "monsieur Mercier", "Mr or Ms Clarke" and "señor Navarro", and once called a woman who had mentioned her husband "monsieur". A new universal check, "guesses no title for the guest", found it in 16 of the 84 comparable conversations when that run was scored again.
+- **The prompt did not fix it.**
+  - With the wrong form as an example, the model started the habit and corrected itself mid-reply: "De nada, señor Navarro… perdón, me he equivocado".
+  - With only right examples, it still put a title in all three English bookings, or wrote around the name: "Thank you, Clarke's table is all set".
+- **So the code keeps it, as with the allergen sheet.**
+  - One guard takes a title and the name out when they address the guest: "Merci, monsieur Mercier." becomes "Merci.".
+  - Another takes out the bare surname the guest booked under: "Thank you, Clarke.".
+  - Both count as corrections, which is why the guard column rose. The prompt is the one of runs E and F.
+- **Two failures were the evaluator's.** The check against saying the mousse has no nuts caught "nut-free" in an offer to check the menu, then in "don't order it unless they confirm it is nut-free". It now counts only claims about the dish, outside a condition, with both replies among its tests, and those runs were scored again.
+- The scripted guest of the large-group scenarios answered "yes, call me back" to a question about the time. The time is now in the first message.
+- `npm run eval:rescore` read `meta.json` as a model's results and stopped. It skips it now.
+- For each scenario, the export takes a run where no reply was corrected, when there is one.
+
+**One slip came back, about once in ten.**
+- In `day-after-tomorrow-fr` the guest gives the name in the first message. Now and then the model still asks about allergies as a yes-or-no question, and the guest's "Oui, parfait" leaves the booking unmade: the failure of run D.
+- It happened in 4 of the 37 runs of that scenario that day, with the title rule or without it (3 of 23 with it, 1 of 14 without), and in none of the 6 of runs E and F.
+- It is the next thing to work on. Meanwhile the demo plays a run where the booking was made.
 
 ## The choice: Claude Haiku 5.5
 
@@ -109,7 +142,7 @@ The model is set in `worker/wrangler.jsonc`. It can be changed there without tou
 
 ## Limits of this evaluation
 
-- Nineteen conversations is a regression suite and a comparison, not a proof. A model that slips once in a hundred conversations still passes all 57 more than half the time.
+- Thirty-one conversations is a regression suite and a comparison, not a proof. A model that slips once in a hundred conversations still passes all 93 about two times in five; run G found a slip of about one in ten only by repeating one scenario.
 - Text only. Speech recognition errors will be measured with the voice channel.
 - Latency was measured from France through OpenRouter, on an ordinary connection; it will differ in production.
 - Models and prices change. These results are from 10 October 2026.
@@ -129,4 +162,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-The six runs and a few test calls cost $4.19 in total. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more: $5.63 in all.

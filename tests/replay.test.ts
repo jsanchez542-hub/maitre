@@ -90,6 +90,42 @@ describe('replaying a recorded conversation', () => {
     expect(() => replay.next()).toThrow(ReplayError);
   });
 
+  it('takes the number the guest typed in the web chat’s field, and says when the chat shows that field', () => {
+    const replay = new Replay(
+      recording({
+        channel: 'web',
+        phone: null,
+        turns: [
+          {
+            guest: 'Une table pour 2 vendredi à 20 h, au nom de Morel.',
+            reply: 'Saisissez votre numéro dans le champ sous la conversation, et je confirme.',
+            latencyMs: 2300,
+            tools: [
+              { name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 2 }, output: { status: 'available', holdId: 'recorded-hold', date: '2026-10-16', time: '20:00', partySize: 2 } },
+              { name: 'book_table', input: { holdId: 'recorded-hold', guestName: 'Morel', allergies: [] }, output: { status: 'phone_required' } },
+            ],
+          },
+          {
+            guest: 'C’est fait.',
+            fieldPhone: '+33639980001',
+            reply: 'C’est réservé au nom de Morel, référence KKKKKK.',
+            latencyMs: 2000,
+            tools: [{ name: 'book_table', input: { holdId: 'recorded-hold', guestName: 'Morel', allergies: [] }, output: { status: 'booked', booking: { reference: 'KKKKKK' } } }],
+          },
+        ],
+      }),
+    );
+    const asked = replay.next();
+    expect(asked).toMatchObject({ asksForPhone: true });
+    expect(asked?.fieldPhone).toBeUndefined();
+    expect(replay.bookings()).toEqual([]);
+
+    const typed = replay.next();
+    expect(typed).toMatchObject({ fieldPhone: '+33639980001' });
+    expect(typed?.asksForPhone).toBeUndefined();
+    expect(replay.bookings()).toMatchObject([{ guestName: 'Morel', channel: 'web', phone: '+33639980001', phoneSource: 'form' }]);
+  });
+
   it('makes the setup bookings through the staff, and refuses one that cannot be made', () => {
     const engine = new BookingEngine(DEMO_RESTAURANT, new MemoryStore(), { now: () => new Date('2026-10-14T08:00:00Z'), ids: sequentialIds() });
     expect(Object.keys(applySetup(engine, [{ ref: 'one', date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Leroy' }]))).toEqual(['one']);
