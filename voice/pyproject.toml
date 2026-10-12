@@ -1,0 +1,40 @@
+[project]
+name = "maitre-voice"
+version = "0.1.0"
+description = "Maître's voice agent: answers the restaurant's phone with the same assistant as the web chat, on LiveKit Agents"
+readme = "README.md"
+authors = [
+    { name = "Miguel Sanchez Torres" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "livekit-agents[cartesia,deepgram,elevenlabs,mistralai,silero,turn-detector]~=1.8",
+    "livekit-plugins-noise-cancellation>=0.3.2",
+    "python-dotenv>=1.2.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-aiohttp>=1.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
+# French typography is deliberate: the typographic apostrophe and the narrow no-break space are what callers' texts use.
+ignore = ["RUF001", "RUF002", "RUF003"]

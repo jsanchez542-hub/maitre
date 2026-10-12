@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Audio rendered by the benchmark and calls recorded by the test caller: generated, and may hold a real voice.
+bench/audio/
+bench/runs/
+calls/

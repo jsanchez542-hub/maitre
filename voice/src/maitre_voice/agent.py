@@ -1,0 +1,270 @@
+"""Maître's voice agent: answers the restaurant's phone with the same assistant as the web chat.
+
+LiveKit sends it a call: from the public demo, where a visitor calls their own
+restaurant from the browser, or on the restaurant's own number. It hears the
+caller, speaks the restaurant's answers, takes the number from the keypad, and
+hangs up when the caller has gone quiet, when the call reaches its longest, or
+when the demo's budget says so.
+
+    uv run python -m maitre_voice.agent dev     # on a developer's machine
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from dataclasses import dataclass
+
+from dotenv import load_dotenv
+from livekit import rtc
+from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, room_io, utils
+from livekit.agents.voice.events import CloseEvent, UserInputTranscribedEvent, UserStateChangedEvent
+from livekit.plugins import noise_cancellation, silero
+
+from .brain import UNREACHABLE, CallState, RestaurantBrain
+from .config import LANGUAGES, Settings
+from .keypad import Keypad
+from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
+from .speech import build_stt, build_tts, ends_turns_itself, follow_language
+
+load_dotenv(".env.local")
+logger = logging.getLogger("maitre.voice")
+settings = Settings.from_env()
+server = AgentServer()
+
+#: Seconds without a key before a number typed without the hash key is sent anyway.
+KEYPAD_PAUSE_SECONDS = 4.0
+#: Words a transcript needs before the conversation follows it into another language: "OK" is not a switch.
+WORDS_TO_SWITCH = 3
+
+
+def prewarm(proc: JobProcess) -> None:
+    proc.userdata["vad"] = silero.VAD.load()
+
+
+server.setup_fnc = prewarm
+
+
+@dataclass(frozen=True)
+class Dispatch:
+    """What the call is: a visitor's demo restaurant, from the pass the Worker signed, or the restaurant's own line."""
+
+    call: Call
+    language: str
+
+    @classmethod
+    def from_job(cls, metadata: str, job_id: str, settings: Settings) -> Dispatch:
+        details: dict[str, str] = {}
+        if metadata:
+            try:
+                parsed = json.loads(metadata)
+                details = parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                details = {}
+        language = details.get("language") if details.get("language") in LANGUAGES else "fr"
+        if details.get("sandbox") and details.get("sessionId"):
+            return cls(Call.demo_sandbox(settings.api_url, str(details["sandbox"]), str(details["sessionId"])), language)
+        # A call to the restaurant's number: the job's id names the conversation.
+        session_id = "call_" + "".join(char if char.isalnum() or char in "-_" else "_" for char in job_id)[:59]
+        return cls(Call.restaurant(settings.api_url, settings.restaurant_id, session_id), language)
+
+
+class PhoneCall:
+    """One call, from the greeting to the hang-up."""
+
+    def __init__(self, ctx: JobContext, line: Line, started: Started, vad: silero.VAD) -> None:
+        self._ctx = ctx
+        self._line = line
+        self._began = time.monotonic()
+        self._ending = False
+        self._keypad = Keypad()
+        self._keypad_timer: asyncio.TimerHandle | None = None
+        self._tasks: set[asyncio.Task[None]] = set()
+        self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
+        self._tts = build_tts(settings.tts, started.language)
+        self.session: AgentSession = AgentSession(
+            stt=build_stt(settings.stt, started.language),
+            tts=self._tts,
+            vad=vad,
+            llm=RestaurantBrain(self._state),
+            turn_handling={
+                **({"turn_detection": "stt"} if ends_turns_itself(settings.stt) else {}),
+                # Never on a phrase the caller has not finished: every turn reaches the restaurant, which may set a table aside.
+                "preemptive_generation": {"enabled": False},
+            },
+            user_away_timeout=settings.silence_seconds,
+        )
+        self._greeting = started.greeting
+
+    async def run(self, caller: rtc.RemoteParticipant) -> None:
+        telephone = caller.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        await self.session.start(
+            Agent(instructions="The restaurant's line answers every turn."),
+            room=self._ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=noise_cancellation.BVCTelephony() if telephone else noise_cancellation.BVC(),
+                ),
+                participant_identity=caller.identity,
+                close_on_disconnect=True,
+            ),
+            # Audio is not kept: the conversation's text is, in the restaurant's own log.
+            record=False,
+        )
+        self.session.on("user_input_transcribed", self._on_transcript)
+        self.session.on("user_state_changed", self._on_user_state)
+        self.session.on("close", self._on_close)
+        self._ctx.room.on("sip_dtmf_received", self._on_key)
+        # The law asks the caller to hear it all: that this is an AI, and that the call may be recorded.
+        self.session.say(self._greeting, allow_interruptions=False)
+        self._spawn(self._watch_the_clock())
+
+    # Events from the call.
+
+    def _on_transcript(self, event: UserInputTranscribedEvent) -> None:
+        language = (event.language or "")[:2].lower()
+        if not event.is_final or language not in LANGUAGES or language == self._state.language:
+            return
+        if len(event.transcript.split()) < WORDS_TO_SWITCH:
+            return
+        self._state.language = language
+        follow_language(self._tts, language)
+
+    def _on_user_state(self, event: UserStateChangedEvent) -> None:
+        if event.new_state == "away":
+            self._spawn(self.end("silence"))
+
+    def _on_close(self, _event: CloseEvent) -> None:
+        if not self._ending:
+            self._spawn(self.end("caller"))
+
+    def _on_key(self, dtmf: rtc.SipDTMF) -> None:
+        if self._keypad_timer:
+            self._keypad_timer.cancel()
+        digits = self._keypad.press(dtmf.digit)
+        if digits:
+            self._spawn(self._send_number(digits))
+        elif self._keypad.typing:
+            self._keypad_timer = asyncio.get_running_loop().call_later(KEYPAD_PAUSE_SECONDS, self._keypad_paused)
+
+    def _keypad_paused(self) -> None:
+        digits = self._keypad.flush()
+        if digits:
+            self._spawn(self._send_number(digits))
+
+    def _on_answer(self, answer: Answer) -> None:
+        if answer.booked:
+            logger.info("booked during the call", extra={"bookings": len(answer.booked)})
+
+    def _on_refusal(self, error: LineError) -> None:
+        self._spawn(self.end("time_limit" if error.code == "call_time_limit" else "paused" if error.status in (429, 503) else "error"))
+
+    # What the agent does on its own.
+
+    async def _send_number(self, digits: str) -> None:
+        """The number from the keypad goes to the restaurant, and its answer is spoken like any other."""
+        turn_id = new_turn_id()
+
+        async def words():
+            try:
+                async for event in self._line.keypad(turn_id, digits):
+                    if isinstance(event, Working):
+                        self._state.working_lines.append(event.say)
+                        yield f"{event.say} "
+                    else:
+                        self._on_answer(event)
+                        yield event.reply
+            except LineError as error:
+                if error.status is not None:
+                    self._on_refusal(error)
+                    return
+                yield UNREACHABLE.get(self._state.language, UNREACHABLE["fr"])
+
+        self.session.say(words())
+
+    async def _watch_the_clock(self) -> None:
+        """A demo call tells the Worker how long it has lasted, which the demo's budget pays for; any call has a longest."""
+        while not self._ending:
+            await asyncio.sleep(settings.usage_every_seconds)
+            seconds = self.seconds
+            if seconds >= settings.max_call_seconds:
+                await self.end("time_limit")
+                return
+            if not self._line.call.demo:
+                continue
+            try:
+                usage = await self._line.usage(seconds)
+            except LineError as error:
+                logger.warning("usage not counted", extra={"error": str(error)})
+                if error.status is not None:
+                    await self.end("paused")
+                    return
+                continue
+            if not usage.carry_on:
+                await self.end(usage.reason or "paused")
+                return
+
+    @property
+    def seconds(self) -> float:
+        return time.monotonic() - self._began
+
+    def voice_to_voice_ms(self) -> list[float]:
+        """For each answer, from the caller's last word to the agent's first, as LiveKit measured it."""
+        measured = []
+        for item in self.session.history.items:
+            if item.type == "message" and item.role == "assistant":
+                latency = item.metrics.get("e2e_latency")
+                if latency is not None:
+                    measured.append(latency * 1000)
+        return measured
+
+    async def end(self, ended_by: EndedBy) -> None:
+        """Logs the call with the restaurant, says the last words when the line hangs up on its own, and hangs up."""
+        if self._ending:
+            return
+        self._ending = True
+        try:
+            last_words = await self._line.end(ended_by, self.seconds, self.voice_to_voice_ms())
+        except LineError as error:
+            logger.warning("the end of the call was not logged", extra={"error": str(error)})
+            last_words = ""
+        if ended_by != "caller":
+            if last_words:
+                try:
+                    await self.session.say(last_words, allow_interruptions=False).wait_for_playout()
+                except RuntimeError:
+                    pass
+            await self._ctx.delete_room()
+
+    def _spawn(self, work) -> None:
+        task = asyncio.ensure_future(work)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+
+@server.rtc_session(agent_name=settings.agent_name)
+async def answer_call(ctx: JobContext) -> None:
+    problems = settings.problems()
+    if problems:
+        logger.error("the voice agent is not configured", extra={"problems": problems})
+        return
+    dispatch = Dispatch.from_job(ctx.job.metadata, ctx.job.id, settings)
+    await ctx.connect()
+    caller = await ctx.wait_for_participant()
+    caller_id = caller.attributes.get("sip.phoneNumber") if caller.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP else None
+    line = Line(utils.http_context.http_session(), dispatch.call, settings.agent_token)
+    try:
+        started = await line.start(dispatch.language, caller_id)
+    except LineError as error:
+        # Without the restaurant there is nothing to answer with: better no call than a made-up one.
+        logger.error("the restaurant did not take the call", extra={"code": error.code, "status": error.status})
+        await ctx.delete_room()
+        return
+    call = PhoneCall(ctx, line, started, ctx.proc.userdata["vad"])
+    await call.run(caller)
+
+
+if __name__ == "__main__":
+    cli.run_app(server)
