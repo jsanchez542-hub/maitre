@@ -100,6 +100,9 @@ function everySentence(language: Language): string[] {
   sentences.push(m.allergenQuestion('Plat', ['nuts']), m.allergenQuestion('Plat', ['milk', 'sesame']));
   for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) sentences.push(m.greeting('Le Bistro', channel));
   sentences.push(m.failureHandedOver(), m.failureRetry(), m.emptyMessage(), m.walkInGuest());
+  for (const errand of ['looking', 'allergens', 'booking', 'other'] as const) sentences.push(m.working(errand));
+  sentences.push(m.keypadUnreadable());
+  for (const reason of ['silence', 'time_limit', 'paused'] as const) sentences.push(m.callEnding(reason));
   return sentences;
 }
 
@@ -114,6 +117,28 @@ describe('the first words of a conversation', () => {
     for (const language of LANGUAGES) {
       for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) {
         expect(messages(language).greeting('Le Bistro', channel)).toContain('Le Bistro');
+      }
+    }
+  });
+});
+
+describe('what the phone line says on its own', () => {
+  it('fills the wait while the tools run with a few words, different for each errand', () => {
+    for (const language of LANGUAGES) {
+      const lines = (['looking', 'allergens', 'booking', 'other'] as const).map((errand) => messages(language).working(errand));
+      expect(new Set(lines).size).toBe(lines.length);
+      // About two seconds of speech at most: a filler, not an answer.
+      for (const line of lines) expect(line.length).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it('asks again for a number the keypad gave unreadable, and says goodbye before it hangs up', () => {
+    expect(messages('fr').keypadUnreadable()).toMatch(/clavier[\s\S]*dièse/);
+    expect(messages('en').keypadUnreadable()).toMatch(/keypad[\s\S]*hash/);
+    expect(messages('es').keypadUnreadable()).toMatch(/teclado[\s\S]*almohadilla/);
+    for (const language of LANGUAGES) {
+      for (const reason of ['silence', 'time_limit', 'paused'] as const) {
+        expect(messages(language).callEnding(reason)).toMatch(/(Au revoir|au revoir|Goodbye|goodbye|Adiós|adiós)\.$/);
       }
     }
   });

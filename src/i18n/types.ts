@@ -52,4 +52,16 @@ export interface Messages {
   emptyMessage(): string;
   /** The name shown for a party seated on the spot when the staff give none. */
   walkInGuest(): string;
+  /** On the phone, while the tools run, so the caller never waits in silence. */
+  working(errand: Errand): string;
+  /** On the phone: the digits typed on the keypad are not a phone number. */
+  keypadUnreadable(): string;
+  /** On the phone: the last words when the line hangs up on its own. */
+  callEnding(reason: CallEnd): string;
 }
+
+/** What the assistant is doing while its tools run, for the short line the phone says meanwhile. */
+export type Errand = 'looking' | 'allergens' | 'booking' | 'other';
+
+/** Why the phone line hangs up on its own: the caller went quiet, the call reached its longest, or the service is paused. */
+export type CallEnd = 'silence' | 'time_limit' | 'paused';

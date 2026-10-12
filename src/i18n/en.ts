@@ -95,4 +95,17 @@ export const en: Messages = {
   walkInGuest() {
     return 'Walk-in guest';
   },
+  working(errand) {
+    return { looking: 'Let me check.', allergens: 'Let me check the kitchen’s sheet.', booking: 'I’ll take care of that.', other: 'One moment.' }[errand];
+  },
+  keypadUnreadable() {
+    return 'I could not read that number. Could you type it again on the keypad, then press the hash key?';
+  },
+  callEnding(reason) {
+    return {
+      silence: 'I can no longer hear you. Feel free to call back. Goodbye.',
+      time_limit: 'I have to end this call, which has reached its maximum length. Thank you for calling, goodbye.',
+      paused: 'I have to end this call: the voice service is unavailable for now. Thank you for calling, goodbye.',
+    }[reason];
+  },
 };

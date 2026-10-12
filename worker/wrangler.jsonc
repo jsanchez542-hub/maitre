@@ -40,9 +40,19 @@
     "DEMO_DAILY_USD": "1",
     "DEMO_MONTHLY_USD": "10",
     "DEMO_SANDBOXES_PER_IP": "5",
-    "DEMO_MESSAGES_PER_SANDBOX": "60"
+    "DEMO_MESSAGES_PER_SANDBOX": "60",
+    // Calls from the demo's browser: a few per restaurant, four minutes each, which is time
+    // enough to book. A minute of voice is counted at what speech recognition, speech
+    // synthesis and LiveKit cost at list price, even while free tiers pay for it, so the
+    // daily and monthly limits above still hold the day they stop.
+    "DEMO_CALLS_PER_SANDBOX": "3",
+    "DEMO_CALL_SECONDS": "240",
+    "DEMO_VOICE_USD_PER_MINUTE": "0.03",
+    // The name the voice agent registers under at LiveKit (voice/).
+    "LIVEKIT_AGENT_NAME": "maitre-voice"
   }
   // Secrets, never in this file: OPENROUTER_API_KEY, AGENT_TOKEN, STAFF_TOKEN,
-  // DEMO_OPENROUTER_API_KEY and TURNSTILE_SECRET, set with `wrangler secret put`
-  // in production and in .dev.vars locally.
+  // DEMO_OPENROUTER_API_KEY, TURNSTILE_SECRET, and the LiveKit project's
+  // LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET, set with
+  // `wrangler secret put` in production and in .dev.vars locally.
 }

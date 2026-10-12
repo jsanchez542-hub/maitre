@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BookingEngine } from '../src/engine.js';
 import { formatPrice } from '../src/menu.js';
 import type { BookingStore } from '../src/store.js';
-import { TOOL_DEFINITIONS, runTool } from '../src/tools.js';
+import { TOOL_DEFINITIONS, errandOf, runTool } from '../src/tools.js';
 import { TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
 
 const THIN = ' ';
@@ -24,6 +24,15 @@ describe('tool definitions', () => {
 
   it('are written without dashes that read as machine text', () => {
     for (const tool of TOOL_DEFINITIONS) expect(JSON.stringify(tool)).not.toMatch(/[–—]/);
+  });
+
+  it('each say what they are about, for the line the phone says while they run', () => {
+    for (const tool of TOOL_DEFINITIONS) expect(['looking', 'allergens', 'booking', 'other'], tool.name).toContain(errandOf([tool.name]));
+    expect(errandOf(['find_table'])).toBe('looking');
+    expect(errandOf(['find_table', 'book_table'])).toBe('booking');
+    expect(errandOf(['get_menu', 'check_dish'])).toBe('allergens');
+    expect(errandOf(['hand_over'])).toBe('other');
+    expect(errandOf(['no_such_tool'])).toBe('other');
   });
 });
 

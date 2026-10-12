@@ -1,9 +1,10 @@
 import { isLanguage } from '../../src/i18n/index.js';
-import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoRestaurant } from './demo.js';
+import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
-import { hasBearer, json, problem, readJson } from './http.js';
+import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
+import { callPass, liveKitProject } from './livekit.js';
 import { serveMedia } from './media.js';
-import type { ChatRequest, Restaurant } from './restaurant.js';
+import type { CallEnd, CallTurn, ChatRequest, Restaurant } from './restaurant.js';
 
 export { DemoBudget, DemoRestaurant } from './demo.js';
 export { Restaurant } from './restaurant.js';
@@ -13,9 +14,15 @@ export { Restaurant } from './restaurant.js';
  *
  *   POST chat                          agent  one turn of a web or WhatsApp conversation
  *   POST sessions/:session/phone       agent  the number typed in the web chat's field
- *   POST tools/:name                   agent  one tool call from the voice agent
+ *   POST calls/:session/start          agent  a phone call begins: { language, callerId? }, answers the greeting
+ *   POST calls/:session/turns          agent  { turnId, message, language, heard? }, answers JSON lines:
+ *                                             a short line to say while the tools run, then the answer
+ *   POST calls/:session/keypad         agent  { turnId, digits } typed by the caller, answered the same way
+ *   POST calls/:session/end            agent  { endedBy, seconds, voiceToVoiceMs }, answers the last words if any
+ *   POST tools/:name                   agent  one tool call from an outside agent that runs its own loop
  *   GET  day?date=&language=           staff  the service of the day
  *   GET  conversations?limit=          staff  the latest turns, with latency and cost
+ *   GET  calls?limit=                  staff  the latest calls, with their length and how fast each answer came
  *   POST staff/bookings                staff  a booking taken by hand or a party on the spot, at a table if given
  *   POST staff/bookings/:ref/cancel    staff
  *   POST staff/bookings/:ref/no-show   staff
@@ -33,9 +40,12 @@ export { Restaurant } from './restaurant.js';
  *   POST sandboxes                                   { turnstile } opens a visitor's own restaurant
  *   POST sandboxes/:sandbox/chat                     { sessionId, message, language } with the real assistant
  *   POST sandboxes/:sandbox/sessions/:session/phone  { phone } typed in the chat's field
+ *   POST sandboxes/:sandbox/calls                    { language } the pass to call the restaurant from the browser
+ *   POST sandboxes/:sandbox/calls/:session/...       agent  start, turns, keypad and end as above, and usage
+ *                                                    { seconds }: the call's length, which the budget pays for
  *   GET  sandboxes/:sandbox/clock                    the evening's time
  *   POST sandboxes/:sandbox/clock                    { minutes } moves it on
- *   GET  sandboxes/:sandbox/day and conversations, POST sandboxes/:sandbox/staff/...  as the staff routes above
+ *   GET  sandboxes/:sandbox/day, conversations and calls, POST sandboxes/:sandbox/staff/...  as the staff routes above
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
  */
@@ -80,6 +90,34 @@ async function route(request: Request, env: Env): Promise<Response> {
   const rest = parts.slice(3);
   const is = matcher(request, rest);
 
+  // A phone call, run by the voice agent on the caller's behalf.
+  if (rest[0] === 'calls' && CALL_STEPS.some((step) => is('POST', 'calls', null, step))) {
+    const denied = await authorized(request, env, 'agent');
+    if (denied) return denied;
+    const body = await readJson(request);
+    if (!body.ok) return body.response;
+    const input = body.value;
+    const sessionId = rest[1] ?? '';
+    switch (rest[2] as CallStep) {
+      case 'start': {
+        const started = await restaurant.startCall({
+          sessionId,
+          language: String(input['language'] ?? ''),
+          ...(typeof input['callerId'] === 'string' ? { callerId: input['callerId'] } : {}),
+        });
+        return json(started, started.status === 'ok' ? 200 : 400);
+      }
+      case 'turns':
+        return callAnswer(await restaurant.callTurn(callTurn(sessionId, input)));
+      case 'keypad':
+        return callAnswer(await restaurant.keypad({ sessionId, turnId: String(input['turnId'] ?? ''), digits: String(input['digits'] ?? '') }));
+      case 'end': {
+        const ended = await restaurant.endCall(callEnd(sessionId, input));
+        return json(ended, ended.status === 'ok' ? 200 : 400);
+      }
+    }
+  }
+
   // Guest-facing routes, called by Maître's own services on the guest's behalf.
   if (is('POST', 'chat') || is('POST', 'sessions', null, 'phone') || is('POST', 'tools', null)) {
     const denied = await authorized(request, env, 'agent');
@@ -122,11 +160,53 @@ async function route(request: Request, env: Env): Promise<Response> {
   return staff(request, url, rest, restaurant);
 }
 
+const CALL_STEPS = ['start', 'turns', 'keypad', 'end'] as const;
+type CallStep = (typeof CALL_STEPS)[number];
+/** A demo call also says how long it has lasted, for the demo's budget. */
+const DEMO_CALL_STEPS = [...CALL_STEPS, 'usage'] as const;
+type DemoCallStep = (typeof DEMO_CALL_STEPS)[number];
+
+function callTurn(sessionId: string, input: Record<string, unknown>): CallTurn {
+  return {
+    sessionId,
+    turnId: String(input['turnId'] ?? ''),
+    message: String(input['message'] ?? ''),
+    language: String(input['language'] ?? ''),
+    ...(typeof input['heard'] === 'string' ? { heard: input['heard'] } : {}),
+  };
+}
+
+function callEnd(sessionId: string, input: Record<string, unknown>): CallEnd {
+  return { sessionId, endedBy: String(input['endedBy'] ?? ''), seconds: Number(input['seconds']), voiceToVoiceMs: input['voiceToVoiceMs'] };
+}
+
+/** A call's turn as HTTP: JSON lines while it runs, or what stopped it, by name, so the line can say the right thing. */
+function callAnswer(result: DemoCallTurn): Response {
+  switch (result.status) {
+    case 'streaming':
+      return jsonLines(result.events);
+    case 'invalid':
+      return json(result, 400);
+    case 'not_configured':
+      return problem(503, 'not_configured');
+    case 'time_limit':
+      return problem(409, 'call_time_limit');
+    case 'rate_limited':
+    case 'sandbox_limit':
+      return problem(429, result.status);
+    case 'not_found':
+      return problem(404, 'not_found');
+    default:
+      return problem(503, 'live_paused');
+  }
+}
+
 function isStaffRoute(request: Request, rest: readonly string[]): boolean {
   const is = matcher(request, rest);
   return (
     is('GET', 'day') ||
     is('GET', 'conversations') ||
+    is('GET', 'calls') ||
     is('POST', 'staff', 'bookings') ||
     STAFF_ACTIONS.some((action) => is('POST', 'staff', 'bookings', null, action)) ||
     is('POST', 'staff', 'callbacks', null, 'done')
@@ -146,6 +226,9 @@ async function staff(
   }
   if (rest[0] === 'conversations') {
     return json(await restaurant.recentTurns(Number(url.searchParams.get('limit') ?? '50')));
+  }
+  if (rest[0] === 'calls') {
+    return json(await restaurant.recentCalls(Number(url.searchParams.get('limit') ?? '50')));
   }
   if (rest.length === 2) {
     const body = await readJson(request);
@@ -213,7 +296,15 @@ async function demo(request: Request, env: Env, url: URL, rest: readonly string[
   if (!SANDBOX_ID.test(sandboxId)) return problem(404, 'not_found');
   const inner = rest.slice(2);
   const at = matcher(request, inner);
-  const known = at('POST', 'chat') || at('POST', 'sessions', null, 'phone') || at('GET', 'clock') || at('POST', 'clock') || isStaffRoute(request, inner);
+  const callStep = DEMO_CALL_STEPS.find((step) => at('POST', 'calls', null, step));
+  const known =
+    at('POST', 'chat') ||
+    at('POST', 'sessions', null, 'phone') ||
+    at('POST', 'calls') ||
+    callStep !== undefined ||
+    at('GET', 'clock') ||
+    at('POST', 'clock') ||
+    isStaffRoute(request, inner);
   if (!known) return problem(405, 'method_or_route_not_allowed');
 
   const sandbox = demoStub(env, sandboxId);
@@ -221,6 +312,9 @@ async function demo(request: Request, env: Env, url: URL, rest: readonly string[
   // An id that was never opened, or a restaurant past its day, is simply not there.
   const state = await sandbox.state();
   if (state.status === 'not_found') return problem(404, 'not_found');
+
+  if (at('POST', 'calls')) return openCall(request, env, sandboxId, sandbox);
+  if (callStep !== undefined) return demoCall(request, env, callStep, inner[1] ?? '', sandbox);
 
   if (at('POST', 'chat')) {
     const body = await readJson(request);
@@ -263,6 +357,68 @@ function demoAnswer(result: Awaited<ReturnType<DemoRestaurant['demoChat']>> | Aw
     default:
       // Past the budget or without the demo's key: the demo says it is paused, it never runs open.
       return problem(503, 'live_paused');
+  }
+}
+
+/**
+ * The pass for a visitor to call their restaurant from the browser, within its
+ * calls and the demo's budget. The voice agent is sent to the room with the
+ * call's id and the restaurant's, in a signed pass the browser cannot change.
+ */
+async function openCall(request: Request, env: Env, sandboxId: string, sandbox: DurableObjectStub<DemoRestaurant>): Promise<Response> {
+  const project = liveKitProject(env);
+  if (!project || !env.AGENT_TOKEN || !env.DEMO_OPENROUTER_API_KEY) return problem(503, 'not_configured');
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+  const language = isLanguage(body.value['language']) ? body.value['language'] : 'fr';
+  const allowed = await sandbox.allowCall();
+  switch (allowed.status) {
+    case 'ok':
+      break;
+    case 'call_limit':
+    case 'rate_limited':
+    case 'sandbox_limit':
+      return problem(429, allowed.status);
+    case 'not_found':
+      return problem(404, 'not_found');
+    default:
+      return problem(503, 'live_paused');
+  }
+  const token = await callPass(project, {
+    room: `demo-${allowed.sessionId}`,
+    identity: `visitor-${allowed.sessionId}`,
+    agentName: env.LIVEKIT_AGENT_NAME,
+    agentMetadata: JSON.stringify({ sandbox: sandboxId, sessionId: allowed.sessionId, language }),
+    // Long enough to join and to reconnect during the call, not to keep.
+    ttlSeconds: allowed.maxSeconds + 120,
+  });
+  return json({ url: project.url, token, sessionId: allowed.sessionId, maxSeconds: allowed.maxSeconds }, 201);
+}
+
+/** The voice agent's side of a demo call, with the agent's token: the visitor's browser never reaches these. */
+async function demoCall(request: Request, env: Env, step: DemoCallStep, sessionId: string, sandbox: DurableObjectStub<DemoRestaurant>): Promise<Response> {
+  const denied = await authorized(request, env, 'agent');
+  if (denied) return denied;
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+  const input = body.value;
+  switch (step) {
+    case 'start': {
+      const started = await sandbox.demoStartCall(sessionId, String(input['language'] ?? ''));
+      return started.status === 'ok' ? json(started) : callAnswer(started);
+    }
+    case 'turns':
+      return callAnswer(await sandbox.demoCallTurn(callTurn(sessionId, input)));
+    case 'keypad':
+      return callAnswer(await sandbox.demoKeypad({ sessionId, turnId: String(input['turnId'] ?? ''), digits: String(input['digits'] ?? '') }));
+    case 'usage': {
+      const usage = await sandbox.demoCallUsage(sessionId, input['seconds']);
+      return usage.status === 'ok' ? json(usage) : callAnswer(usage);
+    }
+    case 'end': {
+      const ended = await sandbox.demoEndCall(callEnd(sessionId, input));
+      return ended.status === 'ok' ? json(ended) : callAnswer(ended);
+    }
   }
 }
 

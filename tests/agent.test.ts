@@ -102,6 +102,27 @@ describe('a turn of conversation', () => {
     expect(result.tools).toHaveLength(3);
   });
 
+  it('tells the phone line which tools are about to run, and a listener that fails changes nothing', async () => {
+    const h = harness();
+    const heard: string[][] = [];
+    const twoSteps = () =>
+      scriptedModel([{ toolCalls: [{ name: 'opening_hours', input: {} }] }, { text: 'Nous sommes ouverts du mardi au samedi.' }]);
+    const caller = guest('v1', '+33612345678', 'fr', 'voice');
+    const result = await respond(h.engine, twoSteps(), caller, [], 'Vous êtes ouverts quand ?', { onToolCalls: (names) => heard.push([...names]) });
+    expect(heard).toEqual([['opening_hours']]);
+    expect(result.reply).toBe('Nous sommes ouverts du mardi au samedi.');
+
+    const errors: unknown[] = [];
+    const despite = await respond(h.engine, twoSteps(), caller, [], 'Vous êtes ouverts quand ?', {
+      onToolCalls: () => {
+        throw new Error('the line hung up');
+      },
+      onError: (error) => errors.push(error),
+    });
+    expect(despite).toMatchObject({ outcome: 'answered', reply: 'Nous sommes ouverts du mardi au samedi.' });
+    expect(errors).toHaveLength(1);
+  });
+
   it('adds up usage and the cost providers report', async () => {
     const h = harness();
     const priced = {

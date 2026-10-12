@@ -1,7 +1,7 @@
 import { ALLERGENS, isAllergen, type Allergen, type DishCategory } from './allergens.js';
 import { DAY_FORMS, parseDay, type DateSpec } from './dates.js';
 import { HANDOFF_REASONS, type BookingEngine, type CallbackResult, type Session } from './engine.js';
-import { localize, messages } from './i18n/index.js';
+import { localize, messages, type Errand } from './i18n/index.js';
 import { checkDish, menuView, safeDishes } from './menu.js';
 import type { Channel } from './store.js';
 
@@ -197,6 +197,27 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     },
   },
 ];
+
+const ERRANDS: Readonly<Record<ToolName, Errand>> = {
+  find_table: 'looking',
+  my_bookings: 'looking',
+  get_menu: 'looking',
+  opening_hours: 'looking',
+  business_info: 'looking',
+  check_dish: 'allergens',
+  dishes_without: 'allergens',
+  book_table: 'booking',
+  cancel_booking: 'booking',
+  change_booking: 'booking',
+  confirm_booking: 'booking',
+  hand_over: 'other',
+};
+
+/** What a batch of tool calls is about, for the line the phone says while they run: the most specific errand wins. */
+export function errandOf(names: readonly string[]): Errand {
+  const errands = names.map((name) => ERRANDS[name as ToolName] ?? 'other');
+  return (['allergens', 'booking', 'looking'] as const).find((errand) => errands.includes(errand)) ?? 'other';
+}
 
 const PHONE_INSTRUCTIONS: Record<Channel, string> = {
   web: 'Ask the guest to type their phone number in the field shown below the chat. Do not ask them to write it in the conversation.',

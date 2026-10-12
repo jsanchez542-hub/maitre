@@ -5,7 +5,7 @@ import { fr } from './fr.js';
 import type { Language, LocalizedText, Messages } from './types.js';
 
 export { LANGUAGES, isLanguage } from './types.js';
-export type { DateParts, Language, LocalizedText, Messages } from './types.js';
+export type { CallEnd, DateParts, Errand, Language, LocalizedText, Messages } from './types.js';
 
 const CATALOGUES: Record<Language, Messages> = { fr, en, es };
 

@@ -14,6 +14,8 @@ export interface AgentOptions {
   onError?: (error: unknown) => void;
   /** Milliseconds, for latency. Injected so tests are predictable. */
   clock?: () => number;
+  /** Hears the tools the model is about to run, before they run: the phone line says a short line meanwhile. */
+  onToolCalls?: (names: readonly string[]) => void;
 }
 
 export interface ToolRecord {
@@ -31,6 +33,10 @@ export interface ToolRecord {
  */
 export const PHONE_ENTERED =
   '[Note from the website, not written by the guest: they have just typed their phone number in the field below the chat. Carry on from where you were.]';
+
+/** The same note on the phone, once the caller has typed their number on the keypad and pressed the hash key. */
+export const KEYPAD_ENTERED =
+  '[Note from the phone line, not said by the caller: they have just typed their phone number on the keypad. Carry on from where you were.]';
 
 /** What a turn did, read from the engine's answers and never from the reply: what a chat or a dashboard shows besides the words. */
 export interface TurnEffects {
@@ -220,6 +226,12 @@ export async function respond(
     }
 
     working.push({ role: 'assistant', text: response.text, toolCalls: response.toolCalls });
+    try {
+      options.onToolCalls?.(response.toolCalls.map((toolCall) => toolCall.name));
+    } catch (error) {
+      // Whoever listens cannot break the turn: the guest still gets the answer.
+      options.onError?.(error);
+    }
     for (const toolCall of response.toolCalls) {
       const toolStarted = clock();
       const output = runTool(engine, session, toolCall.name, toolCall.input, options.onError);

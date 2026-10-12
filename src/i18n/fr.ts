@@ -103,4 +103,17 @@ export const fr: Messages = {
   walkInGuest() {
     return 'Client sur place';
   },
+  working(errand) {
+    return { looking: 'Je regarde.', allergens: 'Je regarde la fiche de la cuisine.', booking: 'Je m’en occupe.', other: 'Un instant.' }[errand];
+  },
+  keypadUnreadable() {
+    return `Je n’ai pas pu lire ce numéro. Pouvez-vous le taper à nouveau sur le clavier, puis la touche dièse${THIN}?`;
+  },
+  callEnding(reason) {
+    return {
+      silence: 'Je ne vous entends plus. N’hésitez pas à rappeler. Au revoir.',
+      time_limit: 'Je dois mettre fin à cet appel, qui a atteint sa durée maximale. Merci d’avoir appelé, au revoir.',
+      paused: `Je dois mettre fin à cet appel${THIN}: le service vocal est momentanément indisponible. Merci d’avoir appelé, au revoir.`,
+    }[reason];
+  },
 };

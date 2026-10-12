@@ -95,4 +95,17 @@ export const es: Messages = {
   walkInGuest() {
     return 'Cliente sin reserva';
   },
+  working(errand) {
+    return { looking: 'Ahora lo miro.', allergens: 'Miro la ficha de la cocina.', booking: 'Ahora mismo me ocupo.', other: 'Un momento.' }[errand];
+  },
+  keypadUnreadable() {
+    return 'No he podido leer ese número. ¿Puede volver a marcarlo en el teclado y pulsar la tecla almohadilla?';
+  },
+  callEnding(reason) {
+    return {
+      silence: 'Ya no le oigo. No dude en volver a llamar. Adiós.',
+      time_limit: 'Tengo que terminar esta llamada, que ha llegado a su duración máxima. Gracias por llamar, adiós.',
+      paused: 'Tengo que terminar esta llamada: el servicio de voz no está disponible en este momento. Gracias por llamar, adiós.',
+    }[reason];
+  },
 };

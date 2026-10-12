@@ -3,7 +3,16 @@ import type { TurnResult } from '../../src/agent/agent.js';
 import { DEMO_EVENING_AT, demoEvening } from '../../src/demo/evening.js';
 import { normalizePhone } from '../../src/phone.js';
 import { budgetStub, type Env } from './env.js';
-import { Restaurant, type ChatResponse, type PhoneResponse } from './restaurant.js';
+import {
+  Restaurant,
+  type CallEnd,
+  type CallStarted,
+  type CallStream,
+  type CallTurn,
+  type ChatResponse,
+  type KeypadEntry,
+  type PhoneResponse,
+} from './restaurant.js';
 
 /**
  * The public demo, live: each visitor opens a restaurant of their own, the
@@ -41,6 +50,10 @@ export function newSandboxId(): string {
 const EXPIRES_AT = 'demo:expiresAt';
 const ADVANCED_MS = 'demo:advancedMs';
 const MESSAGES = 'demo:messages';
+const CALLS_MADE = 'demo:callsMade';
+const CALL = 'demo:call:';
+/** Time to join a call once its pass is given, before the call's own clock starts, in seconds. */
+const JOIN_SECONDS = 60;
 
 export type SandboxState = { status: 'ok'; expiresAt: string; clock: string } | { status: 'not_found' };
 /** Why a demo turn did not run: the restaurant is gone, the visitor writes too fast or has used its messages, or the demo is paused. */
@@ -48,6 +61,18 @@ type Refusal = { status: 'not_found' } | { status: 'rate_limited' } | { status: 
 export type DemoChatResponse = ChatResponse | Refusal;
 export type DemoPhoneResponse = PhoneResponse | Invalid | Refusal;
 type Invalid = { status: 'invalid'; problems: string[] };
+
+/** A call this restaurant allowed: when its pass was given, when the line started it, and how many of its seconds the budget has paid for. */
+interface DemoCall {
+  issuedAt: number;
+  startedAt?: number;
+  billedSeconds: number;
+}
+
+export type CallAllowance = { status: 'ok'; sessionId: string; maxSeconds: number } | Refusal | { status: 'call_limit' };
+export type DemoCallTurn = CallStream | Invalid | Refusal | { status: 'not_configured' } | { status: 'time_limit' };
+/** What the line hears each time it says how long the call has lasted: carry on, or say goodbye and why. */
+export type CallUsage = { status: 'ok'; carryOn: true } | { status: 'ok'; carryOn: false; reason: 'time_limit' | 'paused' };
 
 interface MessageCount {
   total: number;
@@ -137,6 +162,113 @@ export class DemoRestaurant extends Restaurant {
     const refused = await this.#mayTalk();
     if (refused) return refused;
     return this.setPhone(sessionId, phone);
+  }
+
+  /**
+   * A visitor asking to call the restaurant: within this restaurant's calls and
+   * the demo's budget. The answer is the id of the one call it may make, which
+   * the voice agent must then use: a line cannot start a call of its own here.
+   */
+  async allowCall(): Promise<CallAllowance> {
+    if (!this.#open()) return { status: 'not_found' };
+    const maxSeconds = setting(this.env.DEMO_CALL_SECONDS);
+    // Without a price for the voice or a longest call, nobody could say what a call costs: the demo stays paused.
+    if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined) return { status: 'live_paused' };
+    const made = (await this.ctx.storage.get<number>(CALLS_MADE)) ?? 0;
+    if (made >= (setting(this.env.DEMO_CALLS_PER_SANDBOX) ?? 0)) return { status: 'call_limit' };
+    const budget = budgetStub(this.env);
+    if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
+    const sessionId = `call_${newSandboxId()}`;
+    await this.ctx.storage.put({ [CALLS_MADE]: made + 1, [`${CALL}${sessionId}`]: { issuedAt: Date.now(), billedSeconds: 0 } satisfies DemoCall });
+    return { status: 'ok', sessionId, maxSeconds };
+  }
+
+  /** The voice agent starting a call this restaurant allowed, with the greeting it says first. */
+  async demoStartCall(sessionId: string, language: string): Promise<CallStarted | Invalid | Refusal> {
+    if (!this.#open()) return { status: 'not_found' };
+    const call = await this.#call(sessionId);
+    if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (call.startedAt === undefined) await this.ctx.storage.put(`${CALL}${sessionId}`, { ...call, startedAt: Date.now() } satisfies DemoCall);
+    return this.startCall({ sessionId, language });
+  }
+
+  /** One turn of a demo call: a message like any other for this restaurant's limits, and refused once the call has run its time. */
+  async demoCallTurn(request: CallTurn): Promise<DemoCallTurn> {
+    if (!this.#open()) return { status: 'not_found' };
+    const call = await this.#call(request.sessionId);
+    if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (this.#overTime(call, call.billedSeconds)) return { status: 'time_limit' };
+    if (typeof request.message === 'string' && request.message.length > MAX_DEMO_MESSAGE) {
+      return { status: 'invalid', problems: [`message must be at most ${MAX_DEMO_MESSAGE} characters`] };
+    }
+    const refused = await this.#mayTalk();
+    if (refused) return refused;
+    return this.callTurn(request);
+  }
+
+  /** The number typed on the keypad of a demo call, and the turn it sets going, which counts as a message. */
+  async demoKeypad(request: KeypadEntry): Promise<DemoCallTurn> {
+    if (!this.#open()) return { status: 'not_found' };
+    const call = await this.#call(request.sessionId);
+    if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (this.#overTime(call, call.billedSeconds)) return { status: 'time_limit' };
+    const refused = await this.#mayTalk();
+    if (refused) return refused;
+    return this.keypad(request);
+  }
+
+  /**
+   * The line saying how long the call has lasted, every half minute or so. The
+   * demo's budget pays for the voice by the minute, and the call stops at its
+   * longest or as soon as the budget runs out.
+   */
+  async demoCallUsage(sessionId: string, seconds: unknown): Promise<CallUsage | Invalid | Refusal> {
+    if (!this.#open()) return { status: 'not_found' };
+    const call = await this.#call(sessionId);
+    if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0 || seconds > 4 * 3600) {
+      return { status: 'invalid', problems: ['seconds must be the length of the call so far'] };
+    }
+    const billed = await this.#bill(sessionId, call, seconds);
+    if (this.#overTime(billed, seconds)) return { status: 'ok', carryOn: false, reason: 'time_limit' };
+    const budget = budgetStub(this.env);
+    if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'ok', carryOn: false, reason: 'paused' };
+    return { status: 'ok', carryOn: true };
+  }
+
+  /** The end of a demo call: its last seconds paid for, then logged like any call. */
+  async demoEndCall(request: CallEnd): Promise<{ status: 'ok'; say: string } | Invalid | Refusal> {
+    if (!this.#open()) return { status: 'not_found' };
+    const call = await this.#call(request.sessionId);
+    if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (typeof request.seconds === 'number' && Number.isFinite(request.seconds) && request.seconds >= 0 && request.seconds <= 4 * 3600) {
+      await this.#bill(request.sessionId, call, request.seconds);
+    }
+    return this.endCall(request);
+  }
+
+  async #call(sessionId: unknown): Promise<DemoCall | undefined> {
+    if (typeof sessionId !== 'string' || !/^call_[A-Za-z0-9_-]{22}$/.test(sessionId)) return undefined;
+    return this.ctx.storage.get<DemoCall>(`${CALL}${sessionId}`);
+  }
+
+  /** Whether a call has run past its longest: by what the line reports, and by this restaurant's own clock whatever the line says. */
+  #overTime(call: DemoCall, reportedSeconds = 0): boolean {
+    const maxSeconds = setting(this.env.DEMO_CALL_SECONDS);
+    if (!maxSeconds) return true;
+    const since = call.startedAt ?? call.issuedAt + JOIN_SECONDS * 1000;
+    return reportedSeconds >= maxSeconds || Date.now() - since >= maxSeconds * 1000;
+  }
+
+  /** Pays the demo's budget for the seconds of voice not yet paid for. */
+  async #bill(sessionId: string, call: DemoCall, seconds: number): Promise<DemoCall> {
+    const unpaid = seconds - call.billedSeconds;
+    if (unpaid <= 0) return call;
+    const perMinute = setting(this.env.DEMO_VOICE_USD_PER_MINUTE) ?? 0;
+    const billed: DemoCall = { ...call, billedSeconds: seconds };
+    await this.ctx.storage.put(`${CALL}${sessionId}`, billed);
+    if (perMinute > 0) await budgetStub(this.env)?.record((unpaid / 60) * perMinute);
+    return billed;
   }
 
   /** Whether the visitor may have the assistant answer once more: this restaurant's limits, then the demo's budget. */

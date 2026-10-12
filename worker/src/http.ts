@@ -17,6 +17,11 @@ export function problem(status: number, code: string): Response {
   return json({ error: code }, status);
 }
 
+/** A stream of JSON lines: the phone line reads the first one and starts speaking before the last one is written. */
+export function jsonLines(events: ReadableStream<Uint8Array>): Response {
+  return new Response(events, { status: 200, headers: { ...SECURITY_HEADERS, 'content-type': 'application/x-ndjson; charset=utf-8' } });
+}
+
 export type BodyResult = { ok: true; value: Record<string, unknown> } | { ok: false; response: Response };
 
 /** The request body as a JSON object, refusing anything larger than 16 KB without reading past that. */

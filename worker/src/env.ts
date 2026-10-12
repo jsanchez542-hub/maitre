@@ -17,6 +17,8 @@ export interface Env {
   DATA_JURISDICTION: string;
   /** OpenRouter id of the model the assistant uses, chosen with the evaluation. */
   MODEL: string;
+  /** The model for phone calls, when it is not MODEL: chosen with its own test, where every second of silence is heard. */
+  VOICE_MODEL?: string;
   /** Comma-separated restaurant ids this deployment serves. Any other id is "not found". */
   RESTAURANT_IDS: string;
   /** The public demo's spending limits in dollars, a day and a month. Missing or unreadable keeps the demo paused. */
@@ -26,6 +28,13 @@ export interface Env {
   DEMO_SANDBOXES_PER_IP: string;
   /** Messages one demo restaurant takes in its whole life. */
   DEMO_MESSAGES_PER_SANDBOX: string;
+  /** Calls one demo restaurant may make, the longest a demo call lasts in seconds, and what a minute of voice costs the demo's budget. */
+  DEMO_CALLS_PER_SANDBOX: string;
+  DEMO_CALL_SECONDS: string;
+  DEMO_VOICE_USD_PER_MINUTE: string;
+  /** The LiveKit project that carries calls from the browser (wss://…), and the name its voice agent registers under. */
+  LIVEKIT_URL?: string;
+  LIVEKIT_AGENT_NAME: string;
   /** Secrets. Without them the routes that need them answer 503 rather than run open. */
   OPENROUTER_API_KEY?: string;
   /** For the services that talk on the guest's behalf: the web chat backend and the voice agent. */
@@ -36,6 +45,9 @@ export interface Env {
   DEMO_OPENROUTER_API_KEY?: string;
   /** Cloudflare Turnstile's secret, which tells a person opening a demo restaurant from a script. */
   TURNSTILE_SECRET?: string;
+  /** The LiveKit project's key and secret, which sign the pass a browser needs to call. */
+  LIVEKIT_API_KEY?: string;
+  LIVEKIT_API_SECRET?: string;
 }
 
 /** The namespace that keeps its data where the deployment says, or undefined when it does not say. */
