@@ -124,6 +124,16 @@ That is the last of seven runs of the whole suite that day; two shorter ones rep
 - It happened in 4 of the 37 runs of that scenario that day, with the title rule or without it (3 of 23 with it, 1 of 14 without), and in none of the 6 of runs E and F.
 - It is the next thing to work on. Meanwhile the demo plays a run where the booking was made.
 
+### Run H: the number carries the turn on (12 October, night)
+
+In the web chat, the phone field now sets the turn going by itself. The code hands the model a note that the guest has typed their number (`PHONE_ENTERED`), and the booking or the request goes through in the same answer, with nothing more for the guest to write. The Worker does the same once the number arrives, and its answers now say what the turn did, read from the engine: the bookings made or moved, a request passed to the team, the field to show. The seven site conversations with the field lost their "C'est fait", "Done" and "Ya está".
+
+| Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Cost |
+|---|---|---|---|---|---|---|
+| **Claude Haiku 5.5** | **31/31** | **93/93** | 3.0 s | 6.6 s | 29/195 turns | $0.197 |
+
+The demo's recorded conversations come from this run.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -162,4 +172,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more: $5.63 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20: $5.83 in all.

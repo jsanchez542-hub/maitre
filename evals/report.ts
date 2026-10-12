@@ -10,8 +10,9 @@ export interface RunRecord {
   checks: Check[];
   costUsd: number;
   turns: {
-    guest: string;
-    /** The number typed in the web chat's field just before this message. */
+    /** What the guest wrote; missing on the turn the number typed in the web chat's field set going. */
+    guest?: string;
+    /** The number typed in the web chat's field, which this turn followed. */
     fieldPhone?: string;
     reply: string;
     outcome: string;

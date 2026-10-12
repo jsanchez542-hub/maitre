@@ -23,8 +23,9 @@ export function applySetup(engine: BookingEngine, setup: readonly SetupBooking[]
 }
 
 export interface RecordedTurn {
-  guest: string;
-  /** In the web chat, the number the guest typed in the chat's own field just before this message. */
+  /** What the guest wrote. Missing on the turn that followed the number typed in the web chat's field: the guest wrote nothing. */
+  guest?: string;
+  /** In the web chat, the number the guest typed in the chat's own field, which set this turn going. */
   fieldPhone?: string;
   /** The model's reply, as the guest saw it. */
   reply: string;
@@ -54,8 +55,9 @@ export interface Recording {
 }
 
 export interface ReplayedTurn {
-  guest: string;
-  /** The number typed in the web chat's field before this message: the chat shows it being entered first. */
+  /** What the guest wrote; missing when the turn followed the number typed in the web chat's field. */
+  guest?: string;
+  /** The number typed in the web chat's field, which set this turn going: the chat shows it being entered, then the reply. */
   fieldPhone?: string;
   reply: string;
   /** After this reply the web chat shows its phone field, as the site's Worker does when the engine asks for a number. */
@@ -183,7 +185,7 @@ export class Replay {
     const asksForPhone =
       this.#recording.channel === 'web' && tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true);
     return {
-      guest: turn.guest,
+      ...(turn.guest === undefined ? {} : { guest: turn.guest }),
       ...(turn.fieldPhone ? { fieldPhone: turn.fieldPhone } : {}),
       reply,
       ...(asksForPhone ? { asksForPhone: true as const } : {}),

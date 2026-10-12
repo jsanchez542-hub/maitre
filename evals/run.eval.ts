@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { respond, type TurnResult } from '../src/agent/agent.js';
+import { PHONE_ENTERED, respond, type TurnResult } from '../src/agent/agent.js';
 import { openRouterModel } from '../src/agent/providers/openai.js';
 import { ModelError, type LanguageModel } from '../src/agent/model.js';
 import { applySetup } from '../src/demo/replay.js';
@@ -52,24 +52,31 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
       : {}),
   };
 
+  /** Each turn: what the guest wrote, or the number they typed in the web chat's field, which wrote nothing. */
+  const played: { guest?: string; fieldPhone?: string }[] = [];
   const turns: TurnResult[] = [];
   const errors: string[][] = [];
   let transcript: TurnResult['transcript'] = [];
-  for (const [index, message] of scenario.turns.entries()) {
-    // The guest types the number in the web chat's field: the Worker keeps it for the session
-    // and gives it to the requests already passed on to the team, then the next message goes on.
-    if (scenario.fieldPhone?.beforeTurn === index) {
-      session = { ...session, phone: { e164: scenario.fieldPhone.phone, source: 'form' } };
-      engine.addPhoneToCallbacks(session);
-    }
+  const take = async (message: string, by: { guest?: string; fieldPhone?: string }): Promise<void> => {
     const seen: string[] = [];
     const result = await respond(engine, model, session, transcript, message, {
       onError: (error) =>
         seen.push(error instanceof ModelError ? `${error.kind} ${error.status ?? ''}`.trim() : error instanceof Error ? error.message.slice(0, 80) : 'error'),
     });
+    played.push(by);
     turns.push(result);
     errors.push(seen);
     transcript = result.transcript;
+  };
+  for (const [index, message] of scenario.turns.entries()) {
+    await take(message, { guest: message });
+    // The guest types the number in the web chat's field. As the Worker does, the session keeps it,
+    // the requests already passed on to the team get it, and the code carries the turn on.
+    if (scenario.fieldPhone?.afterTurn === index) {
+      session = { ...session, phone: { e164: scenario.fieldPhone.phone, source: 'form' } };
+      engine.addPhoneToCallbacks(session);
+      await take(PHONE_ENTERED, { fieldPhone: scenario.fieldPhone.phone });
+    }
   }
 
   const snapshot = store.snapshot();
@@ -90,8 +97,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
     checks,
     costUsd: turns.reduce((sum, turn) => sum + (turn.costUsd ?? 0), 0),
     turns: turns.map((turn, index) => ({
-      guest: scenario.turns[index] ?? '',
-      ...(scenario.fieldPhone?.beforeTurn === index ? { fieldPhone: scenario.fieldPhone.phone } : {}),
+      ...played[index],
       reply: turn.reply,
       outcome: turn.outcome,
       latencyMs: turn.latencyMs,

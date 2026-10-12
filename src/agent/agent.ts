@@ -23,6 +23,41 @@ export interface ToolRecord {
   ms: number;
 }
 
+/**
+ * What the code tells the model once the guest has typed their number in the
+ * web chat's own field, so the turn goes on without the guest having to write
+ * "done". The guest never writes this and never sees it: the chat shows the
+ * number sent, then the reply.
+ */
+export const PHONE_ENTERED =
+  '[Note from the website, not written by the guest: they have just typed their phone number in the field below the chat. Carry on from where you were.]';
+
+/** What a turn did, read from the engine's answers and never from the reply: what a chat or a dashboard shows besides the words. */
+export interface TurnEffects {
+  /** Bookings made or moved in this turn. */
+  booked: { reference: string; date: string; time: string; partySize: number }[];
+  /** A request passed to the team, which will call the guest back. */
+  passedToTeam: boolean;
+  /** The web chat should now show its phone field. */
+  askForPhone: boolean;
+}
+
+export function turnEffects(tools: readonly { name: string; output: ToolOutput }[]): TurnEffects {
+  const booked: TurnEffects['booked'] = [];
+  for (const tool of tools) {
+    const made = (tool.name === 'book_table' && tool.output.status === 'booked') || (tool.name === 'change_booking' && tool.output.status === 'changed');
+    const booking = tool.output['booking'] as { reference?: unknown; date?: unknown; time?: unknown; partySize?: unknown } | undefined;
+    if (made && booking && typeof booking.reference === 'string' && typeof booking.date === 'string' && typeof booking.time === 'string') {
+      booked.push({ reference: booking.reference, date: booking.date, time: booking.time, partySize: Number(booking.partySize) });
+    }
+  }
+  return {
+    booked,
+    passedToTeam: tools.some((tool) => (tool.name === 'hand_over' && tool.output.status === 'recorded') || tool.output['passedToTeam'] === true),
+    askForPhone: tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true),
+  };
+}
+
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */

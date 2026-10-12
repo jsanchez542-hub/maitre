@@ -106,7 +106,7 @@ describe('replaying a recorded conversation', () => {
             ],
           },
           {
-            guest: 'C’est fait.',
+            // The number typed in the field set this turn going: the guest wrote nothing.
             fieldPhone: '+33639980001',
             reply: 'C’est réservé au nom de Morel, référence KKKKKK.',
             latencyMs: 2000,
@@ -122,6 +122,7 @@ describe('replaying a recorded conversation', () => {
 
     const typed = replay.next();
     expect(typed).toMatchObject({ fieldPhone: '+33639980001' });
+    expect(typed?.guest).toBeUndefined();
     expect(typed?.asksForPhone).toBeUndefined();
     expect(replay.bookings()).toMatchObject([{ guestName: 'Morel', channel: 'web', phone: '+33639980001', phoneSource: 'form' }]);
   });

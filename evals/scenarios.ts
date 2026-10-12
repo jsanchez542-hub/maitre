@@ -44,11 +44,13 @@ export interface Scenario {
   /** What the guest says, one message per turn, whatever the assistant answers. */
   turns: string[];
   /**
-   * In the web chat, the number the guest types in the chat's own field, just
-   * before sending the message at `beforeTurn`: the way the site gets a number
-   * it does not have, never written in the conversation.
+   * In the web chat, the number the guest types in the chat's own field once
+   * the assistant has answered the message at `afterTurn`: the way the site
+   * gets a number it does not have, never written in the conversation. The
+   * code then carries the turn on with the website's note, as the Worker does,
+   * and the guest writes nothing.
    */
-  fieldPhone?: { beforeTurn: number; phone: string };
+  fieldPhone?: { afterTurn: number; phone: string };
   /** Bookings that exist before the conversation, as data, so a recording can carry them. */
   setup?: SetupBooking[];
   expect: Expectation[];
@@ -339,8 +341,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'fr',
     channel: 'web',
     phone: null,
-    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20 h.', 'Au nom de Mercier, sans allergie.', 'C’est fait.', 'Parfait, merci.'],
-    fieldPhone: { beforeTurn: 2, phone: '+33639980021' },
+    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20 h.', 'Au nom de Mercier, sans allergie.', 'Parfait, merci.'],
+    fieldPhone: { afterTurn: 1, phone: '+33639980021' },
     expect: [
       { kind: 'booking', date: '2026-10-16', time: '20:00', partySize: 4, name: /mercier/i, phone: '+33639980021' },
       { kind: 'reply', pattern: /allerg|intol[ée]ran/i },
@@ -354,8 +356,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'fr',
     channel: 'web',
     phone: null,
-    turns: ['Une table pour 2 vendredi à 19 h 30, au nom de Faure. Mon mari est allergique aux fruits à coque.', 'C’est fait.', 'Merci beaucoup.'],
-    fieldPhone: { beforeTurn: 1, phone: '+33639980022' },
+    turns: ['Une table pour 2 vendredi à 19 h 30, au nom de Faure. Mon mari est allergique aux fruits à coque.', 'Merci beaucoup.'],
+    fieldPhone: { afterTurn: 0, phone: '+33639980022' },
     expect: [
       { kind: 'booking', date: '2026-10-16', time: '19:30', partySize: 2, name: /faure/i, phone: '+33639980022', allergies: ['nuts'] },
       { kind: 'reply', pattern: FIELD.fr },
@@ -368,8 +370,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'fr',
     channel: 'web',
     phone: null,
-    turns: ['Bonjour, nous serons 12 pour un anniversaire samedi soir à 20 h. Pouvez-vous demander à l’équipe de me rappeler ?', 'C’est fait.'],
-    fieldPhone: { beforeTurn: 1, phone: '+33639980024' },
+    turns: ['Bonjour, nous serons 12 pour un anniversaire samedi soir à 20 h. Pouvez-vous demander à l’équipe de me rappeler ?'],
+    fieldPhone: { afterTurn: 0, phone: '+33639980024' },
     expect: [{ kind: 'handover', reason: 'large_group', phone: '+33639980024' }, { kind: 'no_booking' }, { kind: 'reply', pattern: FIELD.fr }],
   },
   {
@@ -379,8 +381,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'en',
     channel: 'web',
     phone: null,
-    turns: ['Hi, could I book a table for two on Friday at 8:30pm?', 'Clarke, no allergies.', 'Done.', 'Great, thanks.'],
-    fieldPhone: { beforeTurn: 2, phone: '+447700900201' },
+    turns: ['Hi, could I book a table for two on Friday at 8:30pm?', 'Clarke, no allergies.', 'Great, thanks.'],
+    fieldPhone: { afterTurn: 1, phone: '+447700900201' },
     expect: [
       { kind: 'booking', date: '2026-10-16', time: '20:30', partySize: 2, name: /clarke/i, phone: '+447700900201' },
       { kind: 'reply', pattern: /allerg|intoleran|dietary/i },
@@ -394,8 +396,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'en',
     channel: 'web',
     phone: null,
-    turns: ['Does the chocolate mousse contain nuts? I have a severe nut allergy.', 'Done, I’ve typed my number.'],
-    fieldPhone: { beforeTurn: 1, phone: '+447700900202' },
+    turns: ['Does the chocolate mousse contain nuts? I have a severe nut allergy.'],
+    fieldPhone: { afterTurn: 0, phone: '+447700900202' },
     expect: [
       { kind: 'tool', name: 'check_dish' },
       { kind: 'handover', reason: 'allergy_question', phone: '+447700900202' },
@@ -409,8 +411,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'es',
     channel: 'web',
     phone: null,
-    turns: ['Hola, quería reservar mesa para dos el viernes a las 21:00.', 'A nombre de Navarro, sin alergias.', 'Ya está.', 'Perfecto, gracias.'],
-    fieldPhone: { beforeTurn: 2, phone: '+33639980023' },
+    turns: ['Hola, quería reservar mesa para dos el viernes a las 21:00.', 'A nombre de Navarro, sin alergias.', 'Perfecto, gracias.'],
+    fieldPhone: { afterTurn: 1, phone: '+33639980023' },
     expect: [
       { kind: 'booking', date: '2026-10-16', time: '21:00', partySize: 2, name: /navarro/i, phone: '+33639980023' },
       { kind: 'reply', pattern: /alerg|intoleran/i },
@@ -424,8 +426,8 @@ const ON_THE_SITE: Scenario[] = [
     language: 'es',
     channel: 'web',
     phone: null,
-    turns: ['Hola, seremos 12 para un cumpleaños el sábado a las 20:00. ¿Puede pedirle al equipo que me llame?', 'Ya está.'],
-    fieldPhone: { beforeTurn: 1, phone: '+33639980025' },
+    turns: ['Hola, seremos 12 para un cumpleaños el sábado a las 20:00. ¿Puede pedirle al equipo que me llame?'],
+    fieldPhone: { afterTurn: 0, phone: '+33639980025' },
     expect: [{ kind: 'handover', reason: 'large_group', phone: '+33639980025' }, { kind: 'no_booking' }, { kind: 'reply', pattern: FIELD.es }],
   },
 ];

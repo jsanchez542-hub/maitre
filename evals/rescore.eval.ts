@@ -45,11 +45,13 @@ function outcomeOf(record: RunRecord, scenario: Scenario, state: NonNullable<Run
 function rescore(record: RunRecord): RunRecord {
   if (record.skipped) return record;
   const scenario = SCENARIOS.find((candidate) => candidate.id === record.scenario);
+  // The number typed in the field follows the guest's message at `afterTurn`, as its own turn.
   const typed = record.turns.findIndex((turn) => turn.fieldPhone);
   const sameField = scenario?.fieldPhone
-    ? typed === scenario.fieldPhone.beforeTurn && record.turns[typed]?.fieldPhone === scenario.fieldPhone.phone
+    ? typed === scenario.fieldPhone.afterTurn + 1 && record.turns[typed]?.fieldPhone === scenario.fieldPhone.phone
     : typed === -1;
-  const unchanged = scenario && sameField && scenario.turns.join('\n') === record.turns.map((turn) => turn.guest).join('\n');
+  const written = record.turns.filter((turn) => turn.guest !== undefined).map((turn) => turn.guest);
+  const unchanged = scenario && sameField && scenario.turns.join('\n') === written.join('\n');
   if (!scenario || !unchanged) return { ...record, passed: false, checks: [], skipped: 'the scenario changed since this run' };
   if (!record.state) return { ...record, passed: false, checks: [], skipped: 'recorded before runs kept their state' };
   const checks = checkScenario(scenario, outcomeOf(record, scenario, record.state));

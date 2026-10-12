@@ -66,7 +66,7 @@ it('exports recorded conversations for the demo', () => {
       refs: record.state.refs,
       model,
       turns: record.turns.map((turn) => ({
-        guest: turn.guest,
+        ...(turn.guest === undefined ? {} : { guest: turn.guest }),
         ...(turn.fieldPhone ? { fieldPhone: turn.fieldPhone } : {}),
         reply: turn.reply,
         latencyMs: turn.latencyMs,
