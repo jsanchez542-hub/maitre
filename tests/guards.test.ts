@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { respond } from '../src/agent/agent.js';
-import { comparable, dropGuessedTitles, dropNameVocatives, enforceAllergenRelay } from '../src/agent/guards.js';
+import { comparable, dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, referencesIn } from '../src/agent/guards.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
 import { guest, harness } from './fixtures.js';
 
@@ -140,5 +140,58 @@ describe('the bare name guard', () => {
     const second = await respond(h.engine, booking, guest('n1', '+447700900201', 'en', 'whatsapp'), first.transcript, 'Clarke, no allergies.');
     expect(second.corrections).toEqual(['name_vocative']);
     expect(second.reply).toBe('Thank you. Your table is booked for Friday at 8:30 pm.');
+  });
+});
+
+describe('the spoken reference guard', () => {
+  it('takes out the sentences that read a reference on the phone, spelled or not (the first live call)', () => {
+    const reply =
+      'Votre réservation est confirmée, au nom de Dupont : une table pour quatre personnes le vendredi 16 octobre à 20 h. Votre référence est 3PYPJA. Puis-je vous aider pour autre chose ?';
+    expect(dropSpokenReferences(reply, ['3PYPJA'])).toEqual({
+      reply: 'Votre réservation est confirmée, au nom de Dupont : une table pour quatre personnes le vendredi 16 octobre à 20 h. Puis-je vous aider pour autre chose ?',
+      corrected: true,
+    });
+    expect(dropSpokenReferences('Noted. Your reference is 3, P, Y, P, J, A. Goodbye.', ['3PYPJA']).reply).toBe('Noted. Goodbye.');
+  });
+
+  it('leaves a reply without a reference, and one that would be left empty', () => {
+    expect(dropSpokenReferences('C’est réservé pour vendredi.', ['3PYPJA'])).toEqual({ reply: 'C’est réservé pour vendredi.', corrected: false });
+    expect(dropSpokenReferences('Référence 3PYPJA.', ['3PYPJA'])).toEqual({ reply: 'Référence 3PYPJA.', corrected: false });
+    expect(dropSpokenReferences('Référence 3PYPJA.', [])).toEqual({ reply: 'Référence 3PYPJA.', corrected: false });
+  });
+
+  it('finds references wherever the tools put them', () => {
+    expect(
+      referencesIn([
+        { status: 'booked', booking: { reference: 'ACDEFH', date: '2026-10-16' } },
+        { status: 'ok', bookings: [{ reference: 'BCDEFG' }, { reference: 'not a code' }] },
+        { status: 'ok' },
+      ]),
+    ).toEqual(['ACDEFH', 'BCDEFG']);
+  });
+
+  it('runs inside the agent on the phone only: the web chat shows its reference', async () => {
+    const book = (channel: 'voice' | 'web') => {
+      const h = harness();
+      return respond(
+        h.engine,
+        scriptedModel((request, call) => {
+          const outputs = request.transcript.flatMap((entry) => (entry.role === 'tool' ? [entry.output] : []));
+          if (call === 0) return { toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 2 } }] };
+          if (call === 1) return { toolCalls: [{ name: 'book_table', input: { holdId: outputs[0]?.['holdId'], guestName: 'Dupont', allergies: [] } }] };
+          const made = outputs.at(-1)?.['booking'] as { reference: string };
+          return { text: `C’est réservé pour vendredi à 20 h. Votre référence est ${made.reference}.` };
+        }),
+        guest('r1', '+33612345678', 'fr', channel),
+        [],
+        'Une table pour deux vendredi à 20 h au nom de Dupont, sans allergie',
+      );
+    };
+    const voice = await book('voice');
+    expect(voice.corrections).toEqual(['spoken_reference']);
+    expect(voice.reply).toBe('C’est réservé pour vendredi à 20 h.');
+    const web = await book('web');
+    expect(web.corrections).toEqual([]);
+    expect(web.reply).toMatch(/Votre référence est [A-Z0-9]{6}/);
   });
 });

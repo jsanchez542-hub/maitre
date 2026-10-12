@@ -95,6 +95,38 @@ export function dropNameVocatives(reply: string, names: readonly string[]): { re
   return { reply: text, corrected: text !== reply };
 }
 
+/** Every booking reference in the tools' answers, wherever it sits in them. */
+export function referencesIn(outputs: readonly unknown[]): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') {
+      for (const [key, inner] of Object.entries(value)) {
+        if (key === 'reference' && typeof inner === 'string' && /^[A-Z0-9]{4,12}$/.test(inner)) found.add(inner);
+        else visit(inner);
+      }
+    }
+  };
+  outputs.forEach(visit);
+  return [...found];
+}
+
+/**
+ * On the phone a booking reference is noise: letters and digits the caller
+ * cannot write down while listening, and that speech synthesis reads badly.
+ * The prompt says so, and the model still said "Votre référence est 3PYPJA."
+ * in the first live call. The sentences that read one out go, spelled or not;
+ * a reply that would be left empty is kept as it was.
+ */
+export function dropSpokenReferences(reply: string, references: readonly string[]): { reply: string; corrected: boolean } {
+  if (references.length === 0) return { reply, corrected: false };
+  const spoken = references.map((reference) => new RegExp([...reference].map(escaped).join('[\\s.,-]*'), 'i'));
+  const kept = sentencesOf(reply).filter((sentence) => !spoken.some((pattern) => pattern.test(sentence)));
+  const text = kept.join(' ');
+  if (text === '' || text === sentencesOf(reply).join(' ')) return { reply, corrected: false };
+  return { reply: text, corrected: true };
+}
+
 /**
  * Allergen answers must reach the guest word for word. The tool hands the model
  * the sentences to repeat, and the model usually does; when it does not, the

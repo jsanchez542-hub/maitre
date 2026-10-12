@@ -1,7 +1,7 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
 import { TOOL_DEFINITIONS, runTool, type ToolOutput } from '../tools.js';
-import { dropGuessedTitles, dropNameVocatives, enforceAllergenRelay } from './guards.js';
+import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
@@ -70,7 +70,7 @@ export function turnEffects(tools: readonly { name: string; output: ToolOutput }
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */
-export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative';
+export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference';
 
 export interface TurnResult {
   /** What the guest sees or hears. */
@@ -221,6 +221,15 @@ export async function respond(
       if (unnamed.corrected) {
         reply = unnamed.reply;
         corrections.push('name_vocative');
+      }
+      if (session.channel === 'voice') {
+        // Any reference the conversation has seen, this turn's or an earlier one's.
+        const references = referencesIn(working.flatMap((entry) => (entry.role === 'tool' ? [entry.output] : [])));
+        const unread = dropSpokenReferences(reply, references);
+        if (unread.corrected) {
+          reply = unread.reply;
+          corrections.push('spoken_reference');
+        }
       }
       return finish(reply, 'answered', corrections);
     }
