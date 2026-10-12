@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, room_io, utils
+from livekit.agents.voice.background_audio import AudioConfig, BackgroundAudioPlayer, BuiltinAudioClip
 from livekit.agents.voice.events import CloseEvent, UserInputTranscribedEvent, UserStateChangedEvent
 from livekit.plugins import noise_cancellation, silero
 
@@ -117,6 +118,14 @@ class PhoneCall:
         self.session.on("user_state_changed", self._on_user_state)
         self.session.on("close", self._on_close)
         self._ctx.room.on("sip_dtmf_received", self._on_key)
+        if settings.thinking_sound:
+            # While the restaurant works out its answer, the caller hears someone typing, as at a real desk, not silence.
+            await BackgroundAudioPlayer(
+                thinking_sound=[
+                    AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING, volume=0.45, fade_in=0.15, fade_out=0.25),
+                    AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.4, fade_in=0.15, fade_out=0.25),
+                ],
+            ).start(room=self._ctx.room, agent_session=self.session)
         # The law asks the caller to hear it all: that this is an AI, and that the call may be recorded.
         self.session.say(self._greeting, allow_interruptions=False)
         self._spawn(self._watch_the_clock())

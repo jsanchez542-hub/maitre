@@ -26,6 +26,8 @@ class Settings:
     max_call_seconds: float
     #: How often a demo call tells the Worker how long it has lasted, for the demo's budget.
     usage_every_seconds: float
+    #: Soft typing while the restaurant works out its answer, instead of silence.
+    thinking_sound: bool
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -41,6 +43,7 @@ class Settings:
             silence_seconds=float(values.get("VOICE_SILENCE_SECONDS", "20")),
             max_call_seconds=float(values.get("VOICE_MAX_CALL_SECONDS", "900")),
             usage_every_seconds=float(values.get("VOICE_USAGE_EVERY_SECONDS", "30")),
+            thinking_sound=values.get("VOICE_THINKING_SOUND", "on") != "off",
         )
 
     def problems(self) -> list[str]:
