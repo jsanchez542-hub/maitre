@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maître · appel local</title>
+<style>
+  :root { --ink: #111; --paper: #f6f6f4; --muted: #666; --line: #d8d8d4; --accent: #1f5135; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.note { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  button, select { font: inherit; padding: 10px 16px; border: 1px solid var(--ink); background: #fff; color: var(--ink); border-radius: 0; cursor: pointer; }
+  button.primary { background: var(--ink); color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  #status { font-weight: 600; min-height: 1.5em; }
+  #captions { background: #fff; border: 1px solid var(--line); min-height: 220px; max-height: 50vh; overflow-y: auto; padding: 12px; margin: 16px 0; }
+  #captions .agent { margin: 0 0 8px; }
+  #captions .caller { margin: 0 0 8px; color: var(--accent); text-align: right; }
+  #captions .partial { opacity: .55; }
+  #keypad { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; }
+  #keypad button { padding: 12px 0; }
+  #day { font-size: 14px; white-space: pre-wrap; background: #fff; border: 1px solid var(--line); padding: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Appeler Merrain, en local</h1>
+  <p class="note">Banc d'essai du développeur : le vrai agent vocal, le vrai moteur et le vrai modèle, sur le Worker local. La page de la démo publique est dans web/.</p>
+
+  <div class="row">
+    <select id="language" aria-label="Langue de l'appel">
+      <option value="fr">Français</option>
+      <option value="en">English</option>
+      <option value="es">Español</option>
+    </select>
+    <button id="call" class="primary">Appeler le restaurant</button>
+    <button id="hangup" disabled>Raccrocher</button>
+  </div>
+  <div id="status" role="status" aria-live="polite">Prêt.</div>
+
+  <div id="captions" aria-live="polite" aria-label="Sous-titres de l'appel"></div>
+
+  <p class="note">Clavier : votre numéro, puis # (le numéro ne passe jamais par la voix).</p>
+  <div id="keypad" aria-label="Clavier du téléphone"></div>
+
+  <h2 style="font-size:16px;margin-top:28px">La soirée du restaurant après l'appel</h2>
+  <div id="day">Aucun appel encore.</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.4/dist/livekit-client.umd.js"></script>
+<script>
+  const { Room, RoomEvent, Track } = LivekitClient;
+  const $ = (id) => document.getElementById(id);
+  const say = (text) => ($('status').textContent = text);
+  let room = null;
+  let sandbox = null;
+  const segments = new Map();
+
+  async function api(path, body) {
+    const response = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    return payload;
+  }
+
+  function caption(id, who, text, final) {
+    let line = segments.get(id);
+    if (!line) {
+      line = document.createElement('p');
+      line.className = who;
+      $('captions').appendChild(line);
+      segments.set(id, line);
+    }
+    line.textContent = (who === 'agent' ? 'Merrain : ' : 'Vous : ') + text;
+    line.classList.toggle('partial', !final);
+    $('captions').scrollTop = $('captions').scrollHeight;
+  }
+
+  async function showDay() {
+    if (!sandbox) return;
+    const day = await api(`/v1/demo/sandboxes/${sandbox}/day?date=2026-10-16&language=${$('language').value}`);
+    const voice = day.bookings.filter((booking) => booking.channel === 'voice');
+    const calls = await api(`/v1/demo/sandboxes/${sandbox}/calls`);
+    $('day').textContent =
+      (voice.length ? voice.map((b) => `${b.time} · ${b.partySize} couverts · ${b.guestName} · ${b.phone ?? 'sans numéro'} · réf. ${b.reference}`).join('\n') : 'Aucune réservation prise au téléphone.') +
+      '\n\n' + calls.map((c) => `Appel ${c.sessionId.slice(-6)} : ${c.seconds ?? '…'} s, fin : ${c.endedBy ?? 'en cours'}, réponses en ${(c.voiceToVoiceMs || []).map((ms) => (ms / 1000).toFixed(1) + ' s').join(', ') || '…'}`).join('\n');
+  }
+
+  async function call() {
+    $('call').disabled = true;
+    try {
+      say('Ouverture du restaurant de démonstration…');
+      if (!sandbox) sandbox = (await api('/v1/demo/sandboxes', { turnstile: 'local-test-token' })).sandbox;
+      say('Demande de la ligne…');
+      const pass = await api(`/v1/demo/sandboxes/${sandbox}/calls`, { language: $('language').value });
+      room = new Room({ adaptiveStream: true, dynacast: true });
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) document.body.appendChild(track.attach());
+      });
+      room.on(RoomEvent.ParticipantConnected, () => say('En ligne avec Merrain.'));
+      room.on(RoomEvent.Disconnected, () => {
+        say('Appel terminé.');
+        $('hangup').disabled = true;
+        $('call').disabled = false;
+        setTimeout(showDay, 1500);
+      });
+      room.registerTextStreamHandler('lk.transcription', async (reader, participant) => {
+        const who = participant.identity === room.localParticipant.identity ? 'caller' : 'agent';
+        const id = reader.info.attributes?.['lk.segment_id'] || reader.info.id;
+        const final = reader.info.attributes?.['lk.transcription_final'] === 'true';
+        let text = '';
+        for await (const chunk of reader) {
+          text += chunk;
+          caption(id, who, text, final);
+        }
+        caption(id, who, text, true);
+      });
+      say('Connexion…');
+      await room.connect(pass.url, pass.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      say(`Ça sonne… (${Math.round(pass.maxSeconds / 60)} minutes au plus)`);
+      $('hangup').disabled = false;
+    } catch (error) {
+      say(`Impossible d'appeler : ${error.message}`);
+      $('call').disabled = false;
+    }
+  }
+
+  const DTMF = { '*': 10, '#': 11 };
+  for (const key of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']) {
+    const button = document.createElement('button');
+    button.textContent = key;
+    button.addEventListener('click', () => room?.localParticipant.publishDtmf(DTMF[key] ?? Number(key), key));
+    $('keypad').appendChild(button);
+  }
+  $('call').addEventListener('click', call);
+  $('hangup').addEventListener('click', () => room?.disconnect());
+</script>
+</body>
+</html>
