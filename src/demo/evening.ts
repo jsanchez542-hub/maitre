@@ -1,7 +1,7 @@
 import { BookingEngine, type Session } from '../engine.js';
 import type { Language } from '../i18n/index.js';
 import { REFERENCE_ALPHABET, REFERENCE_LENGTH, type IdSource } from '../ids.js';
-import { MemoryStore } from '../store.js';
+import { MemoryStore, type BookingStore } from '../store.js';
 import { runTool } from '../tools.js';
 import type { ChatOutcome } from './chat.js';
 import { DEMO_RESTAURANT } from './restaurant.js';
@@ -25,6 +25,12 @@ export interface DemoEveningOptions {
    * operations as any guest's, so they are on the plan of the evening.
    */
   fromChat?: readonly ChatOutcome[];
+  /**
+   * Where the evening is written: in memory by default, or a store that keeps
+   * it, such as the database of a visitor's own restaurant on the server, whose
+   * engine then takes the evening over from 20:05.
+   */
+  store?: BookingStore;
 }
 
 /** The week of the evening starts here: the conversations played in the chat came before. */
@@ -110,7 +116,7 @@ const DINNER: readonly DinnerBooking[] = [
  */
 export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
   let now = new Date(WEEK_STARTS);
-  const engine = new BookingEngine(DEMO_RESTAURANT, new MemoryStore(), { now: () => now, ids: seededIds(16_10_2026) });
+  const engine = new BookingEngine(DEMO_RESTAURANT, options.store ?? new MemoryStore(), { now: () => now, ids: seededIds(16_10_2026) });
   const at = (time: string, date = FRIDAY): void => {
     now = paris(date, time);
   };

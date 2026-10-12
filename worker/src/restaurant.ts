@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
-import { respond, type TurnResult } from '../../src/agent/agent.js';
-import { ModelError } from '../../src/agent/model.js';
+import { PHONE_ENTERED, respond, turnEffects, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
+import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import {
@@ -33,16 +33,17 @@ export interface ChatRequest {
   phone?: string;
 }
 
-export type ChatResponse =
-  | {
-      status: 'ok';
-      reply: string;
-      outcome: string;
-      /** The web chat should now show its phone field. */
-      askForPhone: boolean;
-    }
-  | { status: 'invalid'; problems: string[] }
-  | { status: 'not_configured' };
+/**
+ * An answered turn: the reply, and what the turn did, read from the engine's
+ * answers (bookings made or moved, a request passed to the team, the phone
+ * field to show), so a chat can show a booking card without reading the reply.
+ */
+export type ChatAnswer = { status: 'ok'; reply: string; outcome: string } & TurnEffects;
+
+export type ChatResponse = ChatAnswer | { status: 'invalid'; problems: string[] } | { status: 'not_configured' };
+
+/** The number kept, and the turn it set going when the model key is there. */
+export type PhoneResponse = ({ status: 'ok'; phone: string } & Partial<Omit<ChatAnswer, 'status'>>) | (ChatAnswer & { phone: string });
 
 /** A tool call from the voice agent, which runs its own conversation loop. */
 export interface ToolRequest {
@@ -58,6 +59,11 @@ export interface ToolRequest {
 
 type Invalid = { status: 'invalid'; problems: string[] };
 
+/** The language the dashboard asked for, or the restaurant's own when it asked for none it speaks. */
+function dashboardLanguage(language: unknown): Language | undefined {
+  return isLanguage(language) ? language : undefined;
+}
+
 /** A failure in words that are safe to log: never a key, a number or a message from a guest. */
 function describe(error: unknown): string {
   if (error instanceof ModelError) return `model ${error.kind}${error.status ? ` ${error.status}` : ''}`;
@@ -72,17 +78,30 @@ function describe(error: unknown): string {
  */
 export class Restaurant extends DurableObject<Env> {
   readonly #engine: BookingEngine;
-  readonly #store: SqlStore;
+  protected readonly store: SqlStore;
   readonly #conversations: Conversations;
   /** Turns of one conversation run in order, even when a guest sends two messages while the model is thinking. */
   readonly #queues = new Map<string, Promise<unknown>>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.#store = new SqlStore(ctx.storage);
+    this.store = new SqlStore(ctx.storage);
     this.#conversations = new Conversations(ctx.storage.sql);
-    this.#engine = new BookingEngine(DEMO_RESTAURANT, this.#store, { now: () => new Date(), ids: randomIds });
+    this.#engine = new BookingEngine(DEMO_RESTAURANT, this.store, { now: () => this.now(), ids: randomIds });
   }
+
+  /** The restaurant's clock: the real one, except in a demo restaurant, whose evening keeps its own time. */
+  protected now(): Date {
+    return new Date();
+  }
+
+  /** The OpenRouter key the assistant answers with. The public demo has a key of its own, with its own spending limit. */
+  protected modelKey(): string | undefined {
+    return this.env.OPENROUTER_API_KEY;
+  }
+
+  /** Called after every answered turn, with what it cost: the public demo counts its spending here. */
+  protected async turnCompleted(_result: TurnResult): Promise<void> {}
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const problems: string[] = [];
@@ -98,7 +117,7 @@ export class Restaurant extends DurableObject<Env> {
       if (!whatsappPhone) problems.push('a WhatsApp conversation needs the sender’s number');
     }
     if (problems.length > 0) return { status: 'invalid', problems };
-    const apiKey = this.env.OPENROUTER_API_KEY;
+    const apiKey = this.modelKey();
     if (!apiKey) return { status: 'not_configured' };
     const language = request.language as Language;
 
@@ -113,45 +132,56 @@ export class Restaurant extends DurableObject<Env> {
         language,
         ...(phone && source ? { phone: { e164: phone, source } } : {}),
       };
-      const model = openRouterModel({ apiKey, model: this.env.MODEL });
-      const result = await respond(this.#engine, model, session, stored?.transcript ?? [], request.message, {
-        onError: (error) => console.error('Maître turn failed:', describe(error)),
-      });
-      const now = new Date().toISOString();
-      this.#conversations.save({
-        id: session.id,
-        channel: session.channel,
-        language,
-        ...(phone ? { phone } : {}),
-        ...(source ? { phoneSource: source } : {}),
-        transcript: result.transcript,
-        updatedAt: now,
-      });
-      this.#conversations.log(this.#turnLog(session, request.message, result, now));
-      await this.#keepTidy();
-      return {
-        status: 'ok',
-        reply: result.reply,
-        outcome: result.outcome,
-        askForPhone: result.tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true),
-      };
+      return this.#turn(session, stored?.transcript ?? [], request.message, apiKey);
     });
   }
 
-  /** The number typed in the web chat's own field, never one written in the conversation. */
-  async setPhone(sessionId: string, phone: string): Promise<{ status: 'ok'; phone: string } | Invalid> {
+  /**
+   * The number typed in the web chat's own field, never one written in the
+   * conversation. The turn then goes on by itself, as if the guest had said
+   * "done": the booking waiting for the number is made, or the request passed
+   * to the team gets it, and the answer says so. Without a model key the
+   * number is only kept.
+   */
+  async setPhone(sessionId: string, phone: string): Promise<PhoneResponse | Invalid> {
     if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return { status: 'invalid', problems: ['unknown session'] };
     const e164 = typeof phone === 'string' ? normalizePhone(phone) : undefined;
     if (!e164) return { status: 'invalid', problems: ['the number cannot be read: write it like 06 12 34 56 78 or +44 7700 900123'] };
-    return this.#serial(sessionId, async () => {
+    return this.#serial(sessionId, async (): Promise<PhoneResponse | Invalid> => {
       const stored = this.#conversations.get(sessionId);
-      if (!stored) return { status: 'invalid', problems: ['unknown session'] } as Invalid;
-      if (stored.channel !== 'web') return { status: 'invalid', problems: ['only the web chat takes a number from its form'] } as Invalid;
+      if (!stored) return { status: 'invalid', problems: ['unknown session'] };
+      if (stored.channel !== 'web') return { status: 'invalid', problems: ['only the web chat takes a number from its form'] };
       this.#conversations.save({ ...stored, phone: e164, phoneSource: 'form', updatedAt: new Date().toISOString() });
+      const session: Session = { id: sessionId, channel: 'web', language: stored.language, phone: { e164, source: 'form' } };
       // The team may already have been asked to call back, before the number was known.
-      this.#engine.addPhoneToCallbacks({ id: sessionId, channel: 'web', language: stored.language, phone: { e164, source: 'form' } });
-      return { status: 'ok' as const, phone: formatPhone(e164) };
+      this.#engine.addPhoneToCallbacks(session);
+      const apiKey = this.modelKey();
+      if (!apiKey) return { status: 'ok', phone: formatPhone(e164) };
+      const turn = await this.#turn(session, stored.transcript, PHONE_ENTERED, apiKey);
+      return { ...turn, phone: formatPhone(e164) };
     });
+  }
+
+  /** One turn with the model, kept in the conversation and in the log the owner reads. */
+  async #turn(session: Session, transcript: TranscriptEntry[], message: string, apiKey: string): Promise<ChatAnswer> {
+    const model = openRouterModel({ apiKey, model: this.env.MODEL });
+    const result = await respond(this.#engine, model, session, transcript, message, {
+      onError: (error) => console.error('Maître turn failed:', describe(error)),
+    });
+    const now = new Date().toISOString();
+    this.#conversations.save({
+      id: session.id,
+      channel: session.channel,
+      language: session.language,
+      ...(session.phone ? { phone: session.phone.e164, phoneSource: session.phone.source } : {}),
+      transcript: result.transcript,
+      updatedAt: now,
+    });
+    const typedPhone = message === PHONE_ENTERED;
+    this.#conversations.log({ ...this.#turnLog(session, typedPhone ? '' : message, result, now), ...(typedPhone ? { phoneEntered: true as const } : {}) });
+    await this.turnCompleted(result);
+    await this.#keepTidy();
+    return { status: 'ok', reply: result.reply, outcome: result.outcome, ...turnEffects(result.tools) };
   }
 
   /** One tool call for the voice agent, with the number from the phone network or the keypad. */
@@ -180,32 +210,33 @@ export class Restaurant extends DurableObject<Env> {
     }
   }
 
+  // The staff actions answer in the dashboard's language: the booking they return, and the times offered when one fails.
   async staffBook(request: StaffBookRequest): Promise<StaffBookResult> {
     return this.#engine.staffBook(request);
   }
 
-  async staffCancel(reference: string): Promise<StaffActionResult> {
-    return this.#engine.staffCancel(reference);
+  async staffCancel(reference: string, language?: string): Promise<StaffActionResult> {
+    return this.#engine.staffCancel(reference, dashboardLanguage(language));
   }
 
-  async markNoShow(reference: string): Promise<StaffActionResult> {
-    return this.#engine.markNoShow(reference);
+  async markNoShow(reference: string, language?: string): Promise<StaffActionResult> {
+    return this.#engine.markNoShow(reference, dashboardLanguage(language));
   }
 
-  async markArrived(reference: string): Promise<StaffActionResult> {
-    return this.#engine.markArrived(reference);
+  async markArrived(reference: string, language?: string): Promise<StaffActionResult> {
+    return this.#engine.markArrived(reference, dashboardLanguage(language));
   }
 
-  async seat(reference: string, table?: string): Promise<TableActionResult> {
-    return this.#engine.seat(reference, table);
+  async seat(reference: string, table?: string, language?: string): Promise<TableActionResult> {
+    return this.#engine.seat(reference, table, dashboardLanguage(language));
   }
 
-  async markLeft(reference: string): Promise<StaffActionResult> {
-    return this.#engine.markLeft(reference);
+  async markLeft(reference: string, language?: string): Promise<StaffActionResult> {
+    return this.#engine.markLeft(reference, dashboardLanguage(language));
   }
 
-  async moveTable(reference: string, table: string): Promise<TableActionResult> {
-    return this.#engine.moveTable(reference, table);
+  async moveTable(reference: string, table: string, language?: string): Promise<TableActionResult> {
+    return this.#engine.moveTable(reference, table, dashboardLanguage(language));
   }
 
   async completeCallback(id: string): Promise<{ status: 'done' } | { status: 'not_found' }> {
@@ -225,7 +256,7 @@ export class Restaurant extends DurableObject<Env> {
     this.#engine.purgeExpiredHolds();
     this.#engine.purgeOlderThan(RETENTION_DAYS);
     this.#conversations.purgeBefore(new Date(Date.now() - RETENTION_DAYS * DAY_MS).toISOString());
-    const next = this.#store.hasHolds() ? DEMO_RESTAURANT.holdMinutes * 60_000 : DAY_MS;
+    const next = this.store.hasHolds() ? DEMO_RESTAURANT.holdMinutes * 60_000 : DAY_MS;
     await this.ctx.storage.setAlarm(Date.now() + next);
   }
 

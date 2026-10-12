@@ -173,7 +173,7 @@ describe('the front door', () => {
 });
 
 describe('conversations', () => {
-  it('takes a web booking over three messages, with the number from the chat’s own field', async () => {
+  it('takes a web booking over two messages and the number typed in the chat’s own field, which carries the turn on', async () => {
     const friday = nextWeek('friday');
     const requests = fakeOpenRouter([
       call('find_table', { day: 'friday next week', time: '20:00', partySize: 4 }),
@@ -186,35 +186,39 @@ describe('conversations', () => {
     const session = { sessionId: 'web-session-0001', channel: 'web', language: 'fr' };
 
     const first = await chat({ ...session, message: 'Bonsoir, une table pour 4 vendredi prochain à 20 h' });
-    expect(first).toMatchObject({ code: 200, answer: { status: 'ok', askForPhone: false } });
+    expect(first).toMatchObject({ code: 200, answer: { status: 'ok', askForPhone: false, booked: [], passedToTeam: false } });
     const second = await chat({ ...session, message: 'Dupont, pas d’allergies' });
-    expect(second.answer).toMatchObject({ status: 'ok', askForPhone: true });
+    expect(second.answer).toMatchObject({ status: 'ok', askForPhone: true, booked: [] });
 
+    // The guest types the number and sends it: the booking is made in the same answer, with no "done" to write.
     const typed = await SELF.fetch(`${BASE}/sessions/web-session-0001/phone`, {
       method: 'POST',
       headers: AGENT,
       body: JSON.stringify({ phone: '06 55 55 55 55' }),
     });
-    expect(await typed.json()).toEqual({ status: 'ok', phone: '+33 6 55 55 55 55' });
-
-    const third = await chat({ ...session, message: 'C’est fait' });
-    expect(third.answer.status).toBe('ok');
-    expect(third.answer.reply).not.toMatch(/\*\*|—/);
+    const answer = (await typed.json()) as ChatAnswer & { phone: string; booked: { reference: string; date: string; time: string; partySize: number }[] };
+    expect(answer).toMatchObject({ status: 'ok', phone: '+33 6 55 55 55 55', askForPhone: false, passedToTeam: false });
+    expect(answer.booked).toEqual([{ reference: expect.any(String), date: friday, time: '20:00', partySize: 4 }]);
+    expect(answer.reply).not.toMatch(/\*\*|—/);
 
     const day = await staffDay(friday);
     expect(day.bookings).toHaveLength(1);
     expect(day.bookings[0]).toMatchObject({ guestName: 'Dupont', channel: 'web', phoneSource: 'form', phone: '+33 6 55 55 55 55' });
+    expect(day.bookings[0]?.['reference']).toBe(answer.booked[0]?.reference);
 
     const turns = (await (await SELF.fetch(`${BASE}/conversations?limit=10`, { headers: STAFF })).json()) as {
       tools: object[];
       costUsd: number;
       guest: string;
+      phoneEntered?: boolean;
     }[];
     expect(turns.map((turn) => turn.tools)).toEqual([
       [{ name: 'book_table', status: 'booked' }],
       [{ name: 'book_table', status: 'phone_required' }],
       [{ name: 'find_table', status: 'available' }],
     ]);
+    // The owner reads the turn the number set going as that, not as something the guest wrote.
+    expect(turns[0]).toMatchObject({ guest: '', phoneEntered: true });
     for (const turn of turns) expect(turn.costUsd).toBeCloseTo(0.0008, 10);
 
     expect(requests).toHaveLength(6);
@@ -224,6 +228,8 @@ describe('conversations', () => {
       // The model never sees the guest's number, whichever way it was written.
       expect(request.body).not.toMatch(/55\D?55\D?55\D?55/);
     }
+    // What it sees instead is the website's note, which no guest can send in its place.
+    expect(requests[4]?.body).toContain('Note from the website, not written by the guest');
   });
 
   it('takes a WhatsApp booking with the number WhatsApp vouches for, and keeps the session on that channel', async () => {

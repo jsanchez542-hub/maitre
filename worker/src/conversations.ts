@@ -25,7 +25,10 @@ export interface TurnLog {
   sessionId: string;
   channel: Channel;
   language: Language;
+  /** What the guest wrote; empty on the turn that followed the number typed in the web chat's field. */
   guest: string;
+  /** The turn the code started once the guest typed their number in the web chat's field. */
+  phoneEntered?: true;
   reply: string;
   outcome: string;
   latencyMs: number;

@@ -5,9 +5,17 @@
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
   "durable_objects": {
-    "bindings": [{ "name": "RESTAURANTS", "class_name": "Restaurant" }]
+    "bindings": [
+      { "name": "RESTAURANTS", "class_name": "Restaurant" },
+      // The public demo: a restaurant of its own for each visitor, and the one place its spending is kept.
+      { "name": "DEMO_RESTAURANTS", "class_name": "DemoRestaurant" },
+      { "name": "DEMO_BUDGET", "class_name": "DemoBudget" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Restaurant"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Restaurant"] },
+    { "tag": "v2", "new_sqlite_classes": ["DemoRestaurant", "DemoBudget"] }
+  ],
   // The demo and dashboard pages, built by web/ (npm run build there) before a deploy.
   "assets": {
     "directory": "../web/dist",
@@ -22,8 +30,16 @@
     "DATA_JURISDICTION": "eu",
     // Chosen with the evaluation (evals/RESULTS.md).
     "MODEL": "anthropic/claude-haiku-5.5",
-    "RESTAURANT_IDS": "demo"
+    "RESTAURANT_IDS": "demo",
+    // The public demo's limits. A conversation costs about $0.002, so a dollar a day is some
+    // 500 conversations; past a limit the demo pauses and says so. Its own OpenRouter key
+    // carries a credit limit too, set at OpenRouter: a second ceiling if this count were wrong.
+    "DEMO_DAILY_USD": "1",
+    "DEMO_MONTHLY_USD": "10",
+    "DEMO_SANDBOXES_PER_IP": "5",
+    "DEMO_MESSAGES_PER_SANDBOX": "60"
   }
-  // Secrets, never in this file: OPENROUTER_API_KEY, AGENT_TOKEN and STAFF_TOKEN,
-  // set with `wrangler secret put` in production and in .dev.vars locally.
+  // Secrets, never in this file: OPENROUTER_API_KEY, AGENT_TOKEN, STAFF_TOKEN,
+  // DEMO_OPENROUTER_API_KEY and TURNSTILE_SECRET, set with `wrangler secret put`
+  // in production and in .dev.vars locally.
 }

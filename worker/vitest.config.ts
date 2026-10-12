@@ -14,6 +14,8 @@ export default defineConfig({
           AGENT_TOKEN: 'test-agent-token',
           STAFF_TOKEN: 'test-staff-token',
           OPENROUTER_API_KEY: 'test-openrouter-key',
+          DEMO_OPENROUTER_API_KEY: 'test-demo-openrouter-key',
+          TURNSTILE_SECRET: 'test-turnstile-secret',
         },
         outboundService: () => new Response('The network is off in tests.', { status: 503 }),
       },
