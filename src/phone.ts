@@ -39,12 +39,17 @@ export function normalizePhone(input: string): string | undefined {
   return isE164(compact) ? compact : undefined;
 }
 
-/** "+33 6 12 34 56 78" for a French number, the E.164 form otherwise. */
+/**
+ * A number as people write it where it comes from: "+33 6 12 34 56 78" in France, "+44 7700 900123"
+ * for a British mobile, "+34 600 000 103" in Spain, the E.164 form otherwise.
+ */
 export function formatPhone(e164: string): string {
   if (e164.startsWith('+33') && e164.length === 12) {
     const national = e164.slice(3);
     return `+33 ${national[0]} ${national.slice(1, 3)} ${national.slice(3, 5)} ${national.slice(5, 7)} ${national.slice(7, 9)}`;
   }
+  if (e164.startsWith('+447') && e164.length === 13) return `+44 ${e164.slice(3, 7)} ${e164.slice(7)}`;
+  if (e164.startsWith('+34') && e164.length === 12) return `+34 ${e164.slice(3, 6)} ${e164.slice(6, 9)} ${e164.slice(9)}`;
   return e164;
 }
 

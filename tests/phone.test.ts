@@ -19,9 +19,13 @@ describe('phone numbers', () => {
     }
   });
 
-  it('formats French numbers for people and validates E.164', () => {
+  it('formats numbers the way people write them where they come from, and validates E.164', () => {
     expect(formatPhone('+33612345678')).toBe('+33 6 12 34 56 78');
-    expect(formatPhone('+447700900123')).toBe('+447700900123');
+    expect(formatPhone('+447700900123')).toBe('+44 7700 900123');
+    expect(formatPhone('+34600000103')).toBe('+34 600 000 103');
+    // A British landline, or a country the code does not know, stays in E.164.
+    expect(formatPhone('+442079460958')).toBe('+442079460958');
+    expect(formatPhone('+12025550123')).toBe('+12025550123');
     expect(isE164('+33612345678')).toBe(true);
     expect(isE164('0612345678')).toBe(false);
   });
