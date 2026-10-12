@@ -135,6 +135,22 @@ function fakeFetch(answers: { status: number; body: string; headers?: Record<str
 const OK_ANTHROPIC = JSON.stringify({ content: [{ type: 'text', text: 'Bonjour' }], usage: { input_tokens: 10, output_tokens: 2 } });
 
 describe('calling a provider', () => {
+  it('gives up on an answer whose headers came and whose body never does (a call hung 451 s on 12 October)', async () => {
+    let calls = 0;
+    const stalled: Fetch = async () => {
+      calls += 1;
+      return { ok: true, status: 200, headers: { get: () => null }, text: () => new Promise<string>(() => undefined) };
+    };
+    const model = openRouterModel({ apiKey: 'k', model: 'anthropic/claude-haiku-5.5', fetch: stalled, timeoutMs: 50, maxRetries: 1 });
+    const started = Date.now();
+    const error = (await model.complete(request).catch((caught: unknown) => caught)) as ModelError;
+    expect(error).toBeInstanceOf(ModelError);
+    expect(error.kind).toBe('timeout');
+    // Asked twice, each time cut at its limit, instead of waiting for the connection to die.
+    expect(calls).toBe(2);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it('retries when the provider is overloaded, then answers', async () => {
     const { fetch, sent } = fakeFetch([
       { status: 529, body: '{"error":{"message":"Overloaded"}}', headers: { 'retry-after': '0' } },

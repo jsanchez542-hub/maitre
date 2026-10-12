@@ -62,6 +62,7 @@ export async function postJson(
     }, timeoutMs);
   });
   let response: HttpResponse;
+  let text: string;
   try {
     response = await Promise.race([
       fetch(url, {
@@ -72,6 +73,9 @@ export async function postJson(
       }),
       timeout,
     ]);
+    // The time limit covers the whole answer, not only its headers: OpenRouter sends those at once,
+    // and a provider that then stalls once kept a model call waiting seven and a half minutes.
+    text = await Promise.race([response.text(), timeout]);
   } catch (error) {
     if (error instanceof ModelError) throw error;
     throw new ModelError('network', 'The provider could not be reached');
@@ -79,7 +83,6 @@ export async function postJson(
     web.clearTimeout?.(timer);
   }
 
-  const text = await response.text();
   if (!response.ok) {
     const retryAfter = Number(response.headers.get('retry-after'));
     throw new ModelError(

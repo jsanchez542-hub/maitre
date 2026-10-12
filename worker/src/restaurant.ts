@@ -27,6 +27,12 @@ const DAY_MS = 86_400_000;
 const MAX_SPOKEN = 2000;
 /** The longest call the log believes, in seconds: anything above is a broken clock, not a call. */
 const MAX_CALL_SECONDS = 4 * 3600;
+/**
+ * How long one model call may take on the phone before it is asked again, once.
+ * The phone set's slowest first answer was 2.2 s at the 95th percentile; past
+ * this, the provider has stalled and the caller would be waiting on nothing.
+ */
+const VOICE_MODEL_TIMEOUT_MS = 8_000;
 
 export interface ChatRequest {
   sessionId: string;
@@ -237,9 +243,10 @@ export class Restaurant extends DurableObject<Env> {
 
   /** One turn with the model, kept in the conversation and in the log the owner reads. */
   async #turn(session: Session, transcript: TranscriptEntry[], message: string, apiKey: string, hooks: TurnHooks = {}): Promise<ChatAnswer> {
-    // The phone may use a faster model than the chat: every second of silence is heard.
-    const modelId = session.channel === 'voice' && this.env.VOICE_MODEL ? this.env.VOICE_MODEL : this.env.MODEL;
-    const model = openRouterModel({ apiKey, model: modelId });
+    // The phone may use a faster model than the chat, and waits less for a stalled one: a caller is on the line.
+    const voice = session.channel === 'voice';
+    const modelId = voice && this.env.VOICE_MODEL ? this.env.VOICE_MODEL : this.env.MODEL;
+    const model = openRouterModel({ apiKey, model: modelId, ...(voice ? { timeoutMs: VOICE_MODEL_TIMEOUT_MS, maxRetries: 1 } : {}) });
     const result = await respond(this.#engine, model, session, transcript, message, {
       onError: (error) => console.error('Maître turn failed:', describe(error)),
       ...(hooks.onToolCalls ? { onToolCalls: hooks.onToolCalls } : {}),
