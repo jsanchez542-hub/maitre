@@ -3,6 +3,7 @@ import type { Language } from '../i18n/index.js';
 import { REFERENCE_ALPHABET, REFERENCE_LENGTH, type IdSource } from '../ids.js';
 import { MemoryStore } from '../store.js';
 import { runTool } from '../tools.js';
+import type { ChatOutcome } from './chat.js';
 import { DEMO_RESTAURANT } from './restaurant.js';
 
 /** The day of the demo's dashboard. */
@@ -16,6 +17,18 @@ export interface DemoEvening {
   /** The restaurant's clock. The dashboard can move it on, to show the evening going on. */
   clock: { now(): Date; set(instant: Date): void };
 }
+
+export interface DemoEveningOptions {
+  /**
+   * The conversations the visitor has played in the chat, from `recordingOutcome`.
+   * Their bookings are made when the conversation took place, through the same
+   * operations as any guest's, so they are on the plan of the evening.
+   */
+  fromChat?: readonly ChatOutcome[];
+}
+
+/** The week of the evening starts here: the conversations played in the chat came before. */
+const WEEK_STARTS = '2026-10-14T09:00:00.000Z';
 
 type GuestChannel = 'voice' | 'whatsapp' | 'web';
 
@@ -95,8 +108,8 @@ const DINNER: readonly DinnerBooking[] = [
  * history entry is one the engine produced, and the evening is the same on
  * every load. All names and numbers are invented.
  */
-export function demoEvening(): DemoEvening {
-  let now = paris('2026-10-14', '11:00');
+export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
+  let now = new Date(WEEK_STARTS);
   const engine = new BookingEngine(DEMO_RESTAURANT, new MemoryStore(), { now: () => now, ids: seededIds(16_10_2026) });
   const at = (time: string, date = FRIDAY): void => {
     now = paris(date, time);
@@ -135,7 +148,32 @@ export function demoEvening(): DemoEvening {
     return booked.booking.reference;
   };
 
+  // Wednesday morning: the conversations the visitor played in the chat, when they took place.
+  const played = [...(options.fromChat ?? [])].sort((a, b) => a.at.localeCompare(b.at));
+  for (const outcome of played) {
+    if (outcome.at >= WEEK_STARTS) throw new RangeError(`The conversation "${outcome.recording}" took place after the evening's week began`);
+    now = new Date(outcome.at);
+    const session: Session = {
+      id: `chat-${outcome.recording}`,
+      channel: outcome.channel,
+      language: outcome.language,
+      ...(outcome.phone ? { phone: { e164: outcome.phone, source: PHONE_SOURCES[outcome.channel] } } : {}),
+    };
+    for (const made of outcome.bookings) {
+      const found = engine.findTable(session, { date: { kind: 'date', date: made.date }, time: made.time, partySize: made.partySize });
+      if (found.status !== 'available') {
+        throw new Error(`The booking from the conversation "${outcome.recording}" does not fit in the demo evening: ${found.status}`);
+      }
+      ok(
+        engine.book(session, { holdId: found.holdId, guestName: made.guestName, allergies: made.allergies, ...(made.notes ? { notes: made.notes } : {}) }),
+        'booked',
+        `book ${made.guestName} from the chat`,
+      );
+    }
+  }
+
   // Wednesday: the week's bookings come in.
+  now = new Date(WEEK_STARTS);
   const references = new Map<string, string>();
   const sessions = new Map<string, Session>();
   for (const [time, partySize, channel, name] of LUNCH) references.set(name, book(guest(channel), time, partySize, name));

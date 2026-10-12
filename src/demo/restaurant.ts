@@ -76,6 +76,13 @@ export const DEMO_MENU: Dish[] = [
 
 const text = (fr: string, en: string, es: string) => ({ fr, en, es });
 
+/**
+ * Where the restaurant's website says it is. A neighbourhood and no street number, so it can
+ * never be a real business's address, and no phone or e-mail that would not answer. It stays out
+ * of the agent's configuration: what the agent knows, and the recordings' fingerprint, do not change.
+ */
+export const DEMO_VENUE = { area: 'Quartier des Grands-Hommes', city: 'Bordeaux' } as const;
+
 export const DEMO_RESTAURANT: BusinessConfig = {
   id: 'demo',
   name: 'Merrain',
