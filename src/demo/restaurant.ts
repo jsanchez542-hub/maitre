@@ -102,29 +102,38 @@ export const DEMO_RESTAURANT: BusinessConfig = {
     { id: 't4', seats: 4, count: 5 },
     { id: 't6', seats: 6, count: 2 },
   ],
-  // The room as the design draws it: round tables for two along the top, square
-  // tables for four in the middle, the two long tables for six at the back.
+  // A Bordeaux bistrot, in percent of the room with the street windows along the top:
+  // a banquette down the left wall with the tables for two, the long tables and one
+  // more for two at the windows, the tables for four staggered in the middle, the bar
+  // down the right wall, the kitchen and the door on the bottom wall. The web draws
+  // the walls, the banquette, the bar and its stools around these points.
   floor: {
+    zones: [
+      { id: 'banquette', name: text('Banquette', 'Banquette', 'Banqueta') },
+      { id: 'window', name: text('Fenêtre', 'Window', 'Ventana') },
+      { id: 'room', name: text('Salle', 'Main room', 'Sala') },
+    ],
     tables: [
-      { number: '1', group: 't2', shape: 'round', x: 14, y: 15 },
-      { number: '2', group: 't2', shape: 'round', x: 38, y: 15 },
-      { number: '3', group: 't2', shape: 'round', x: 62, y: 15 },
-      { number: '4', group: 't2', shape: 'round', x: 86, y: 15 },
-      { number: '5', group: 't2', shape: 'round', x: 14, y: 38 },
-      { number: '6', group: 't2', shape: 'round', x: 38, y: 38 },
-      { number: '7', group: 't4', shape: 'square', x: 64, y: 38 },
-      { number: '8', group: 't4', shape: 'square', x: 86, y: 38 },
-      { number: '9', group: 't4', shape: 'square', x: 14, y: 64 },
-      { number: '10', group: 't4', shape: 'square', x: 38, y: 64 },
-      { number: '11', group: 't4', shape: 'square', x: 64, y: 64 },
-      { number: '12', group: 't6', shape: 'rect', x: 26, y: 87 },
-      { number: '13', group: 't6', shape: 'rect', x: 70, y: 87 },
+      { number: '1', group: 't2', shape: 'round', x: 11, y: 28, zone: 'banquette' },
+      { number: '2', group: 't2', shape: 'round', x: 11, y: 40, zone: 'banquette' },
+      { number: '3', group: 't2', shape: 'round', x: 11, y: 52, zone: 'banquette' },
+      { number: '4', group: 't2', shape: 'round', x: 11, y: 64, zone: 'banquette' },
+      { number: '5', group: 't2', shape: 'round', x: 11, y: 76, zone: 'banquette' },
+      { number: '6', group: 't2', shape: 'round', x: 78, y: 13, zone: 'window' },
+      { number: '7', group: 't4', shape: 'square', x: 32, y: 40, zone: 'room' },
+      { number: '8', group: 't4', shape: 'square', x: 51, y: 40, zone: 'room' },
+      { number: '9', group: 't4', shape: 'square', x: 32, y: 64, zone: 'room' },
+      { number: '10', group: 't4', shape: 'square', x: 51, y: 64, zone: 'room' },
+      { number: '11', group: 't4', shape: 'square', x: 68, y: 52, zone: 'room' },
+      { number: '12', group: 't6', shape: 'rect', x: 29, y: 13, zone: 'window' },
+      { number: '13', group: 't6', shape: 'rect', x: 54, y: 13, zone: 'window' },
     ],
   },
-  // Invented, like everything else in this restaurant.
+  // Invented, like everything else in this restaurant. One section per side of the room,
+  // with about as many seats each: Léa has the banquette and the windows, Hugo the middle.
   waiters: [
-    { id: 'lea', name: 'Léa', tables: ['1', '2', '3', '4', '5', '6'], services: ['dinner'] },
-    { id: 'hugo', name: 'Hugo', tables: ['7', '8', '9', '10', '11', '12', '13'], services: ['dinner'] },
+    { id: 'lea', name: 'Léa', tables: ['1', '2', '3', '4', '5', '6', '12', '13'], services: ['dinner'] },
+    { id: 'hugo', name: 'Hugo', tables: ['7', '8', '9', '10', '11'], services: ['dinner'] },
   ],
   maxEmptySeats: 2,
   stays: [

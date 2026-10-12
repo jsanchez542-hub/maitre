@@ -167,7 +167,8 @@ describe('the service of the day', () => {
     const lunch = day.room.filter((point) => point.service === 'lunch');
     expect([lunch[0]?.time, lunch.at(-1)?.time, lunch.every((point) => point.covers === 0)]).toEqual(['12:00', '13:30', true]);
 
-    expect(day.holds).toEqual([{ time: '21:30', partySize: 6, tableGroup: 't6', table: 't6-1', expiresAt: '2026-10-16T18:12:00.000Z' }]);
+    // A held table says which service it falls in, as the slots do, so the dashboard need not work it out from the time.
+    expect(day.holds).toEqual([{ time: '21:30', service: 'dinner', partySize: 6, tableGroup: 't6', table: 't6-1', expiresAt: '2026-10-16T18:12:00.000Z' }]);
     expect(day.bookings.map((booking) => [booking.time, booking.status])).toEqual([
       ['20:07', 'confirmed'],
       ['21:00', 'booked'],

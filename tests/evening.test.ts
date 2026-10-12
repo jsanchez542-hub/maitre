@@ -28,7 +28,14 @@ describe('the demo evening', () => {
     // Every party still to come or at the table has a table on the plan.
     const ongoing = day.bookings.filter((booking) => booking.stage !== 'cancelled' && booking.stage !== 'left');
     expect(ongoing.every((booking) => booking.table !== undefined)).toBe(true);
-    expect(day.holds).toMatchObject([{ time: '21:15', partySize: 4, expiresAt: '2026-10-16T18:08:00.000Z' }]);
+    expect(day.holds).toMatchObject([{ time: '21:15', service: 'dinner', partySize: 4, expiresAt: '2026-10-16T18:08:00.000Z' }]);
+    // The room of the plan: every table in a named zone, and each waiter's section on one side of it.
+    expect(new Set(day.floor.map((table) => table.zone))).toEqual(new Set(['banquette', 'window', 'room']));
+    expect(day.zones.map((zone) => zone.name)).toEqual(['Banquette', 'Fenêtre', 'Salle']);
+    expect(day.sections.map((section) => [section.waiterName, section.tables.length])).toEqual([
+      ['Léa', 8],
+      ['Hugo', 5],
+    ]);
     expect(day.holds[0]?.table).toBeDefined();
     expect(day.callbacks.list.map((callback) => [callback.reason, callback.channel])).toEqual([
       ['large_group', 'voice'],

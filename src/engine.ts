@@ -241,7 +241,7 @@ export interface ServiceDay {
   /** In order of arrival, cancelled ones included. */
   bookings: StaffBookingView[];
   /** Tables set aside while a guest finishes booking, at the table the plan would give them. */
-  holds: { time: PlainTime; partySize: number; tableGroup: string; table?: string; expiresAt: string }[];
+  holds: { time: PlainTime; service: string; partySize: number; tableGroup: string; table?: string; expiresAt: string }[];
   totals: { bookings: number; covers: number; withAllergies: number; walkIns: number; cancelled: number; noShows: number };
   /** Open requests to call back, whatever their day. */
   callbacks: { open: number; largeGroups: number; list: CallbackView[] };
@@ -829,6 +829,7 @@ export class BookingEngine {
           const table = unplaced.get(`hold ${hold.id}`);
           return {
             time: hold.time,
+            service: sittingAt(this.#config, date, hold.time)?.service ?? '',
             partySize: hold.partySize,
             tableGroup: hold.tableGroup,
             ...(table === undefined ? {} : { table }),

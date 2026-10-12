@@ -357,7 +357,7 @@ describe('the floor', () => {
     const day = await staffDay(friday);
     expect(day.bookings.map((booking) => booking['table'])).toEqual(['1', '2']);
     expect(day.floor).toHaveLength(13);
-    expect(day.floor[11]).toMatchObject({ number: '12', group: 't6', shape: 'rect', x: 26, y: 87 });
+    expect(day.floor[11]).toMatchObject({ number: '12', group: 't6', shape: 'rect', x: 29, y: 13, zone: 'window' });
     expect(day.sections.map((section) => [section.service, section.waiterName])).toEqual([
       ['dinner', 'Léa'],
       ['dinner', 'Hugo'],
