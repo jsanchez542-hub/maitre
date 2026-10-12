@@ -14,10 +14,11 @@ describe('a conversation played in the chat', () => {
     expect(recordingOutcome('allergy-at-booking-fr').bookings).toMatchObject([{ guestName: 'Rousseau', allergies: ['nuts'] }]);
   });
 
-  it('leaves nothing when it ends without a new booking', () => {
+  it('leaves no booking when it ends without one, and the request it passed to the team', () => {
     // A request passed on to the team, and a cancellation of a booking the conversation started with.
-    expect(recordingOutcome('large-group-fr').bookings).toEqual([]);
-    expect(recordingOutcome('cancel-fr').bookings).toEqual([]);
+    expect(recordingOutcome('large-group-fr')).toMatchObject({ bookings: [], callbacks: [{ reason: 'large_group' }] });
+    expect(recordingOutcome('cancel-fr')).toMatchObject({ bookings: [], callbacks: [] });
+    expect(recordingOutcome('book-fr').callbacks).toEqual([]);
   });
 
   it('says so when there is no such conversation', () => {
@@ -46,6 +47,22 @@ describe('a conversation played in the site’s chat', () => {
     const day = engine.serviceDay(DEMO_EVENING_DATE, 'fr');
     for (const made of booked.flatMap((outcome) => outcome.bookings)) {
       expect(day.bookings.find((booking) => booking.guestName === made.guestName && booking.time === made.time)?.table, made.guestName).toBeDefined();
+    }
+  });
+
+  it('passes a request to the team with the number typed in the field, among the evening’s calls to return', () => {
+    const calls = (evening: ReturnType<typeof demoEvening>) => evening.engine.serviceDay(DEMO_EVENING_DATE, 'fr').callbacks;
+    const before = calls(demoEvening());
+    for (const [id, reason, phone] of [
+      ['web-large-group-fr', 'large_group', '+33639980024'],
+      ['web-large-group-es', 'large_group', '+33639980025'],
+      ['web-allergen-unknown-en', 'allergy_question', '+447700900202'],
+    ] as const) {
+      const outcome = recordingOutcome(id);
+      expect(outcome, id).toMatchObject({ phone, bookings: [], callbacks: [{ reason }] });
+      const after = calls(demoEvening({ fromChat: [outcome] }));
+      expect(after.open, id).toBe(before.open + 1);
+      expect(after.list.some((callback) => callback.reason === reason && callback.channel === 'web' && callback.phone !== undefined), id).toBe(true);
     }
   });
 

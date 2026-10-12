@@ -170,6 +170,10 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
         `book ${made.guestName} from the chat`,
       );
     }
+    // And the requests it passed to the team, with the number the guest gave: calls to return tonight.
+    for (const passed of outcome.callbacks) {
+      ok(engine.requestCallback(session, passed), 'recorded', `pass on the request from the conversation "${outcome.recording}"`);
+    }
   }
 
   // Wednesday: the week's bookings come in.

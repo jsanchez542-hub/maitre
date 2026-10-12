@@ -2,7 +2,7 @@ import type { BusinessConfig } from '../config.js';
 import { BookingEngine, normalizeReference, type Session, type StaffBookRequest } from '../engine.js';
 import type { Language } from '../i18n/index.js';
 import { randomIds } from '../ids.js';
-import { MemoryStore, type Booking, type PhoneSource } from '../store.js';
+import { MemoryStore, type Booking, type CallbackRequest, type PhoneSource } from '../store.js';
 import { runTool, type ToolOutput } from '../tools.js';
 import { DEMO_RESTAURANT } from './restaurant.js';
 
@@ -145,6 +145,11 @@ export class Replay {
   /** Every booking of this replay's restaurant, those it started with included. */
   bookings(): Booking[] {
     return this.#store.snapshot().bookings;
+  }
+
+  /** The requests passed to the team in this replay's restaurant, with the number the guest gave if any. */
+  callbacks(): CallbackRequest[] {
+    return this.#store.snapshot().callbacks;
   }
 
   /** Plays the next turn, or returns undefined once the conversation is over. */
