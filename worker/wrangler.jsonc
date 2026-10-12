@@ -31,8 +31,9 @@
     // Every restaurant's data stays in the EU. workerd cannot pin data, so
     // local runs override this with "none" in .dev.vars and the test config.
     "DATA_JURISDICTION": "eu",
-    // Chosen with the evaluation (evals/RESULTS.md).
-    "MODEL": "anthropic/claude-haiku-5.5",
+    // Chosen with the evaluation (evals/RESULTS.md, runs E, I and J), for the chat and the phone:
+    // after the "@", OpenRouter sends each call to whichever of the model's providers answers fastest.
+    "MODEL": "anthropic/claude-haiku-5.5@latency",
     "RESTAURANT_IDS": "demo",
     // The public demo's limits. A conversation costs about $0.002, so a dollar a day is some
     // 500 conversations; past a limit the demo pauses and says so. Its own OpenRouter key

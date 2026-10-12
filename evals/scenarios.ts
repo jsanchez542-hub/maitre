@@ -181,6 +181,21 @@ const ON_CHANNELS: Scenario[] = [
     expect: [{ kind: 'booking', date: '2026-10-16', time: '21:30', partySize: 2, name: /leroy/i }],
   },
   {
+    id: 'unclear-choice-fr',
+    description: 'Offered two times, the guest says yes without choosing: one yes-or-no question about the first, then the booking',
+    category: 'alternatives',
+    language: 'fr',
+    channel: 'whatsapp',
+    phone: '+33611111131',
+    // Found in the design review of 12 October: the assistant asked the same question six times, then "répondez 1".
+    setup: Array.from({ length: 11 }, (_, index) => ({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: `Client ${index + 1}` })),
+    turns: ['Bonsoir, une table pour 2 vendredi à 20 h, s’il vous plaît.', 'Oui, je confirme.', 'Oui, très bien.', 'Au nom de Leroy, pas d’allergie.'],
+    expect: [
+      { kind: 'booking', date: '2026-10-16', time: '21:30', partySize: 2, name: /leroy/i },
+      { kind: 'no_reply', pattern: /(r[ée]pon(dez|dre)|tapez|[ée]crivez|answer|reply|type)\s+(par\s+|with\s+|with the number\s+)?(«\s*)?(1|2|un|deux|one|two)\b/i },
+    ],
+  },
+  {
     id: 'large-group-fr',
     description: 'A party of twelve is passed to the team, never squeezed in',
     category: 'large_group',

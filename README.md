@@ -36,6 +36,7 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 | `src/demo/` | The invented restaurant of the demo and the evaluation, and the replay of recorded conversations on the real engine |
 | `evals/` | The evaluation against real models: the conversations, their checks, scoring a recorded run again and exporting it for the demo |
 | `worker/` | The Cloudflare Worker: one Durable Object per restaurant, kept in the EU, with its HTTP API |
+| `voice/` | The voice agent, on LiveKit Agents (Python): it hears and speaks, and every turn is answered by the restaurant's Durable Object, as the chat's are |
 | `web/` | The public demo and the dashboard: static pages in French, English and Spanish that run the engine in the visitor's browser |
 
 The engine has no dependency on Node or on a browser: the same code runs on a server, in a Cloudflare Worker and in a web page.

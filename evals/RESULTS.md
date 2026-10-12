@@ -134,6 +134,43 @@ In the web chat, the phone field now sets the turn going by itself. The code han
 
 The demo's recorded conversations come from this run.
 
+### Run I: the same conversations on the phone (12 October, night)
+
+The phone needs its own choice: the caller hears every second of silence. `MAITRE_EVAL_SET=voice` plays the eighteen conversations that do not need the web chat on the voice channel, with the number from caller ID, and every reply must also read no booking reference aloud. The summary gains a column: when the model first answers, which on the phone is when the caller hears something, the reply or the short line said while the tools run. Commit e38f58e.
+
+| Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|
+| **Claude Haiku 5.5, fastest provider** (`@latency`) | **18/18** | **54/54** | 2.3 s | 5.7 s | 1.2 s | 2.2 s | $0.113 |
+| Claude Haiku 5.5 | 18/18 | 54/54 | 2.8 s | 6.7 s | 1.5 s | 2.5 s | $0.113 |
+| GPT-5.6 Luna | 17/18 | 53/54 | 3.3 s | 5.7 s | 2.0 s | 2.7 s | $0.027 |
+| Gemini 3.1 Flash Lite | 16/18 | 52/54 | 1.6 s | 2.4 s | 0.8 s | 1.3 s | $0.134 |
+| Mistral Medium 3.1 | 12/18 | 37/54 | 1.5 s | 2.9 s | 0.7 s | 2.7 s | $0.049 |
+| gpt-oss-120b on Groq | 9/18 | 44/54 | 1.1 s | 2.1 s | 0.5 s | 0.9 s | $0.074 |
+
+- **Routing alone saves a fifth.** The same model sent to whichever of its providers answers fastest at the time starts speaking 0.25 s sooner at the median, with the same answers.
+- **gpt-oss-120b on Groq is three times as fast and unusable.** Some replies were its own reasoning, in English, in the middle of a French call ("We see the assistant responded incorrectly with garbled output…"), or trailed off into "Oops… …".
+- **Mistral Medium 3.1** read booking references aloud inside the confirmation, which the guard then missed (fixed in 5d96f0d: it now takes out the mention and keeps the confirmation; with it, Mistral would have passed 15 of 18). It also lost 9 turns to its provider.
+- **Gemini 3.1 Flash Lite** is the fast candidate that stays: one real slip in 54 conversations (it asked about allergies after the guest had given everything, the known slip of run G) and one reply a strict check refused ("My instructions are to assist guests…", which reveals nothing).
+
+The phone keeps Claude Haiku 5.5, routed to its fastest provider: the only model right in every conversation. The rest of the wait is the code's to cut.
+
+### Run J: the rules cached, a choice asked once, and a stall cut short (12 October, night)
+
+Three changes, each found by looking at a run:
+
+- **The rules were never cached.** Every model call sent about five thousand tokens of rules and tools, and Anthropic's models through OpenRouter cache only where they are told. The prompt now marks the stable part and the guest's last message (fd033d9). On the phone set a conversation costs a third of what it did.
+- **A yes that chooses nothing.** The design review found the assistant asking "which of the two?" six times to a guest who kept answering "oui, je confirme", and finally asking for "1". The prompt now says to ask once, as a yes-or-no question, whether the first time suits them, never to ask for a number and never a third time. New conversation `unclear-choice-fr`, with its phone twin.
+- **A stalled provider.** In the full run below, three model calls took 451 seconds each: the 30-second limit stopped at the response's headers, which OpenRouter sends at once. It now covers the whole answer, and the phone gets 8 seconds and one retry (eefe791).
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| Phone | Claude Haiku 5.5 `@latency` | 19/19 | 57/57 | 2.3 s | 5.0 s | 1.3 s | 2.2 s | $0.036 |
+| All channels | Claude Haiku 5.5 `@latency` | 31/32 | 94/96 | 1.9 s | 4.8 s | 0.9 s | 2.1 s | $0.098 |
+
+The one scenario that failed, `closed-day-en`, failed twice on the stalled calls, never on an answer. With the fix, it and `unclear-choice-fr` were run again: 6 runs of 6.
+
+Chat and phone now use `anthropic/claude-haiku-5.5@latency` (`worker/wrangler.jsonc`): the same model, sent to whichever of its providers answers fastest.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -172,4 +209,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20: $5.83 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51 and run J $0.14: $6.48 in all.
