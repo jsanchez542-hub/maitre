@@ -5,4 +5,4 @@ export type { DemoEvening, DemoEveningOptions } from './evening.js';
 export { RECORDED_WITH, RECORDINGS } from './recordings.js';
 export { applySetup, Replay, ReplayError } from './replay.js';
 export type { RecordedTurn, Recording, ReplayedTurn, SetupBooking } from './replay.js';
-export { DEMO_MENU, DEMO_RESTAURANT, DEMO_VENUE } from './restaurant.js';
+export { DEMO_CELLAR, DEMO_MENU, DEMO_RESTAURANT, DEMO_VENUE } from './restaurant.js';

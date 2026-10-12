@@ -83,6 +83,43 @@ const text = (fr: string, en: string, es: string) => ({ fr, en, es });
  */
 export const DEMO_VENUE = { area: 'Quartier des Grands-Hommes', city: 'Bordeaux' } as const;
 
+/**
+ * The cellar as the restaurant's website lists it: Bordeaux appellations, the places the wines
+ * come from, and never estates, so the demo names no real producer. Like the address, it stays
+ * out of the agent's configuration; the day the agent should talk about wine, it goes in there
+ * and the conversations are recorded again.
+ */
+export const DEMO_CELLAR: readonly string[] = [
+  'Médoc',
+  'Haut-Médoc',
+  'Saint-Estèphe',
+  'Pauillac',
+  'Saint-Julien',
+  'Margaux',
+  'Listrac-Médoc',
+  'Moulis-en-Médoc',
+  'Pessac-Léognan',
+  'Graves',
+  'Cérons',
+  'Barsac',
+  'Sauternes',
+  'Loupiac',
+  'Sainte-Croix-du-Mont',
+  'Cadillac Côtes de Bordeaux',
+  'Entre-Deux-Mers',
+  'Saint-Émilion',
+  'Pomerol',
+  'Lalande-de-Pomerol',
+  'Fronsac',
+  'Canon-Fronsac',
+  'Castillon Côtes de Bordeaux',
+  'Francs Côtes de Bordeaux',
+  'Côtes de Bourg',
+  'Blaye Côtes de Bordeaux',
+  'Bordeaux Supérieur',
+  'Crémant de Bordeaux',
+];
+
 export const DEMO_RESTAURANT: BusinessConfig = {
   id: 'demo',
   name: 'Merrain',
