@@ -190,9 +190,12 @@ describe('the transcript', () => {
 });
 
 describe('the system prompt', () => {
-  it('gives today’s date and time at the restaurant, and keeps the rules in the cacheable part', () => {
+  it('gives today’s date and the time at the restaurant, and keeps the rules in the cacheable part', () => {
     const prompt = buildSystemPrompt(TEST_CONFIG, 'fr', 'voice', new Date('2026-10-14T08:00:00Z'));
-    expect(prompt.dynamic).toContain('Today is Wednesday 14 October (2026-10-14) and it is 10 am at the restaurant (Europe/Paris).');
+    expect(prompt.dynamic).toContain('Today is Wednesday 14 October (2026-10-14) at the restaurant (Europe/Paris).');
+    // The time changes every minute: it is said after the guest's last message, never before the cached conversation.
+    expect(prompt.dynamic).not.toContain('10 am');
+    expect(prompt.now).toBe('[Note from the system, not from the guest: it is 10 am at the restaurant now.]');
     expect(prompt.dynamic).toContain('intelligence artificielle');
     expect(prompt.stable).toContain('Always reply in French, addressing the guest as "vous"');
     expect(prompt.stable).toContain('Never say a table is free unless find_table returned status "available"');
@@ -205,10 +208,13 @@ describe('the system prompt', () => {
     expect(prompt.stable).toContain('- chocolate-mousse = Mousse de chocolate');
   });
 
-  it('is identical from one turn to the next except for the clock', () => {
+  it('is identical from one turn to the next except for the clock, and from one minute to the next except for the time', () => {
     const a = buildSystemPrompt(TEST_CONFIG, 'en', 'web', new Date('2026-10-14T08:00:00Z'));
     const b = buildSystemPrompt(TEST_CONFIG, 'en', 'web', new Date('2026-10-15T19:30:00Z'));
     expect(a.stable).toBe(b.stable);
     expect(a.dynamic).not.toBe(b.dynamic);
+    const later = buildSystemPrompt(TEST_CONFIG, 'en', 'web', new Date('2026-10-14T08:07:00Z'));
+    expect(later.dynamic).toBe(a.dynamic);
+    expect(later.now).not.toBe(a.now);
   });
 });

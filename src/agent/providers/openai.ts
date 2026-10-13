@@ -1,5 +1,5 @@
 import { postJson, runtimeFetch, withRetries, type Fetch } from '../http.js';
-import { ModelError, type LanguageModel, type ModelErrorKind, type ModelRequest, type ModelResponse, type ToolCall } from '../model.js';
+import { ModelError, previousReply, type LanguageModel, type ModelErrorKind, type ModelRequest, type ModelResponse, type ToolCall } from '../model.js';
 
 export interface OpenAIOptions {
   apiKey: string;
@@ -31,10 +31,12 @@ export function toOpenAIBody(
   cacheBreakpoints = false,
 ): Record<string, unknown> {
   // OpenAI caches long prompt prefixes on its own: the stable part goes first
-  // so it is the same from one turn to the next. Where the provider must be
-  // told, the tools and the rules are cached up to the stable part, and the
-  // conversation up to the guest's last message, which the next model call of
-  // the same turn starts with.
+  // so it is the same from one turn to the next, and the time, which changes
+  // every minute, goes last, after the guest's last message. Where the provider
+  // must be told, three prefixes are cached: the tools and the rules; the
+  // conversation up to the reply that ended the turn before, which the next
+  // turn starts with; and the whole request up to the time, which the next
+  // model call of the same turn starts with.
   const messages: Record<string, unknown>[] = [
     cacheBreakpoints
       ? {
@@ -47,16 +49,27 @@ export function toOpenAIBody(
       : { role: 'system', content: `${request.system.stable}\n\n${request.system.dynamic}` },
   ];
   const lastGuest = request.transcript.map((entry) => entry.role).lastIndexOf('user');
+  const lastReply = previousReply(request.transcript, lastGuest);
   for (const [index, entry] of request.transcript.entries()) {
     if (entry.role === 'user') {
+      const now = index === lastGuest ? request.system.now : '';
       messages.push({
         role: 'user',
-        content: cacheBreakpoints && index === lastGuest ? [{ type: 'text', text: entry.text, cache_control: EPHEMERAL }] : entry.text,
+        content:
+          now === ''
+            ? entry.text
+            : cacheBreakpoints
+              ? [
+                  { type: 'text', text: entry.text },
+                  { type: 'text', text: now, cache_control: EPHEMERAL },
+                ]
+              : `${entry.text}\n\n${now}`,
       });
     } else if (entry.role === 'assistant') {
       messages.push({
         role: 'assistant',
-        content: entry.text.trim() === '' ? null : entry.text,
+        content:
+          entry.text.trim() === '' ? null : cacheBreakpoints && index === lastReply ? [{ type: 'text', text: entry.text, cache_control: EPHEMERAL }] : entry.text,
         ...(entry.toolCalls.length === 0
           ? {}
           : {
@@ -84,6 +97,8 @@ export function toOpenAIBody(
 }
 
 interface OpenAIAnswer {
+  /** OpenRouter only: the provider that served the call. */
+  provider?: unknown;
   choices?: {
     message?: {
       content?: unknown;
@@ -126,6 +141,7 @@ export function fromOpenAIAnswer(answer: unknown): ModelResponse {
       outputTokens: usage.completion_tokens ?? 0,
     },
     ...(typeof usage.cost === 'number' && Number.isFinite(usage.cost) ? { costUsd: usage.cost } : {}),
+    ...(typeof (answer as OpenAIAnswer).provider === 'string' && (answer as OpenAIAnswer).provider !== '' ? { servedBy: (answer as OpenAIAnswer).provider as string } : {}),
   };
 }
 

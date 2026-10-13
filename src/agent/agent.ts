@@ -93,6 +93,8 @@ export interface TurnResult {
   latencyMs: number;
   /** Time spent waiting for the model alone, per call. */
   modelMs: number[];
+  /** Who served each model call, when a router chose: a provider that changes loses the prompt cache. */
+  servedBy?: string[];
   outcome: TurnOutcome;
   /** Rules the code had to enforce in this turn: how far the model can be trusted on its own. */
   corrections: Correction[];
@@ -155,6 +157,7 @@ export async function respond(
     unanswered?.role === 'user' ? [...earlier.slice(0, -1), { role: 'user', text: `${unanswered.text} ${text}` }] : [...earlier, { role: 'user', text }];
   const tools: ToolRecord[] = [];
   const modelMs: number[] = [];
+  const servedBy: string[] = [];
   let usage: Usage = NO_USAGE;
   let costUsd: number | undefined = 0;
   const system = buildSystemPrompt(engine.config, session.language, session.channel, engine.now());
@@ -171,6 +174,7 @@ export async function respond(
       modelCalls: modelMs.length,
       latencyMs: clock() - started,
       modelMs,
+      ...(servedBy.length > 0 ? { servedBy } : {}),
       outcome,
       corrections,
     };
@@ -207,6 +211,7 @@ export async function respond(
       return fail(error);
     }
     modelMs.push(clock() - before);
+    if (response.servedBy) servedBy.push(response.servedBy);
     usage = addUsage(usage, response.usage);
     costUsd = costUsd === undefined || response.costUsd === undefined ? undefined : costUsd + response.costUsd;
 

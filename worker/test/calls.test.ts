@@ -163,7 +163,8 @@ describe('a call to the restaurant', () => {
       await step('call-voice-0004', 'turns', { turnId: 'turn-cut-0002', message: 'And on Sundays?', language: 'en', heard: 'Nous sommes ouverts du mardi au samedi' }),
     );
     const sent = JSON.parse(requests[1]?.body ?? '{}') as { messages: Message[] };
-    expect(sent.messages.filter((message) => message.role === 'assistant').at(-1)?.content).toBe('Nous sommes ouverts du mardi au samedi');
+    // Exactly what was heard, as the whole text of the reply: the cache breakpoint puts it in a block of its own.
+    expect(JSON.stringify(sent.messages.filter((message) => message.role === 'assistant').at(-1)?.content)).toContain('"text":"Nous sommes ouverts du mardi au samedi"');
     expect(JSON.stringify(sent.messages[0]?.content)).toContain('Always reply in English');
   });
 

@@ -19,7 +19,7 @@ const transcript: TranscriptEntry[] = [
 ];
 
 const request: ModelRequest = {
-  system: { stable: 'RULES', dynamic: 'TODAY' },
+  system: { stable: 'RULES', dynamic: 'TODAY', now: 'NOW' },
   transcript,
   tools: TOOL_DEFINITIONS.slice(0, 1),
   maxOutputTokens: 500,
@@ -34,7 +34,12 @@ describe('Anthropic format', () => {
     ]);
     const messages = body['messages'] as { role: string; content: { type: string }[] }[];
     expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
-    expect(messages[0]?.content).toHaveLength(2);
+    // The two guest messages, then the time, after the last one: it changes every minute, so it never comes before what is cached.
+    expect(messages[0]?.content).toEqual([
+      { type: 'text', text: 'Une table pour 4 vendredi ?' },
+      { type: 'text', text: 'À 20 h' },
+      { type: 'text', text: 'NOW', cache_control: { type: 'ephemeral' } },
+    ]);
     expect(messages[1]?.content.map((block) => block.type)).toEqual(['tool_use']);
     expect(messages[2]?.content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'call-1' });
     expect(body['tools']).toEqual([
@@ -65,6 +70,7 @@ describe('OpenAI format', () => {
     const body = toOpenAIBody(request, 'gpt-test', { usage: { include: true } });
     const messages = body['messages'] as Record<string, unknown>[];
     expect(messages[0]).toEqual({ role: 'system', content: 'RULES\n\nTODAY' });
+    expect(messages[2]).toEqual({ role: 'user', content: 'À 20 h\n\nNOW' });
     expect(messages.map((message) => message['role'])).toEqual(['system', 'user', 'user', 'assistant', 'tool', 'assistant']);
     expect(messages[3]).toMatchObject({ content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'find_table' } }] });
     expect(messages[4]).toEqual({ role: 'tool', tool_call_id: 'call-1', content: '{"status":"available","holdId":"h1"}' });
@@ -88,7 +94,28 @@ describe('OpenAI format', () => {
     });
     const guests = messages.filter((message) => message['role'] === 'user');
     expect(typeof guests[0]?.['content']).toBe('string');
-    expect(guests.at(-1)?.['content']).toEqual([{ type: 'text', text: expect.any(String), cache_control: { type: 'ephemeral' } }]);
+    expect(guests.at(-1)?.['content']).toEqual([
+      { type: 'text', text: 'À 20 h' },
+      { type: 'text', text: 'NOW', cache_control: { type: 'ephemeral' } },
+    ]);
+  });
+
+  it('caches the conversation up to the reply that ended the turn before, which the next turn starts with', () => {
+    const next: ModelRequest = { ...request, transcript: [...transcript, { role: 'user', text: 'Dupont' }] };
+    const messages = toOpenAIBody(next, 'anthropic/test', {}, true)['messages'] as Record<string, unknown>[];
+    expect(messages.at(-2)).toEqual({ role: 'assistant', content: [{ type: 'text', text: 'C’est noté. À quel nom ?', cache_control: { type: 'ephemeral' } }] });
+    expect(messages.at(-1)).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Dupont' },
+        { type: 'text', text: 'NOW', cache_control: { type: 'ephemeral' } },
+      ],
+    });
+    // Three breakpoints in all, within the four Anthropic allows.
+    expect(JSON.stringify(messages).match(/cache_control/g)).toHaveLength(3);
+    const anthropic = toAnthropicBody(next, 'claude-test')['messages'] as { role: string; content: Record<string, unknown>[] }[];
+    expect(anthropic.at(-2)?.content.at(-1)).toEqual({ type: 'text', text: 'C’est noté. À quel nom ?', cache_control: { type: 'ephemeral' } });
+    expect(anthropic.at(-1)?.content.at(-1)).toEqual({ type: 'text', text: 'NOW', cache_control: { type: 'ephemeral' } });
   });
 
   it('reads cached tokens, the reported cost and malformed arguments', () => {
@@ -105,6 +132,7 @@ describe('OpenAI format', () => {
         },
       ],
       usage: { prompt_tokens: 3000, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 2500 }, cost: 0.00042 },
+      provider: 'Amazon Bedrock',
     });
     expect(answer.toolCalls).toEqual([
       { id: 'a', name: 'find_table', input: { time: '20:00' } },
@@ -112,6 +140,7 @@ describe('OpenAI format', () => {
     ]);
     expect(answer.usage).toEqual({ inputTokens: 500, cacheWriteTokens: 0, cachedInputTokens: 2500, outputTokens: 40 });
     expect(answer.costUsd).toBe(0.00042);
+    expect(answer.servedBy).toBe('Amazon Bedrock');
   });
 });
 

@@ -42,9 +42,27 @@ export function addUsage(a: Usage, b: Usage): Usage {
  * Split in two so providers can cache the long part: the rules and the business
  * do not change between turns, today's date and time do.
  */
+/**
+ * The reply that ended the turn before the guest's last message, or -1. The
+ * conversation up to it stays the same in the next turn: a cache breakpoint
+ * there lets the next turn read it instead of paying for it again.
+ */
+export function previousReply(transcript: readonly TranscriptEntry[], lastGuest: number): number {
+  const before = transcript[lastGuest - 1];
+  return lastGuest > 0 && before?.role === 'assistant' && before.toolCalls.length === 0 && before.text.trim() !== '' ? lastGuest - 1 : -1;
+}
+
 export interface SystemPrompt {
+  /** The rules, the tools' guidance and the menu: the same all day, and cached. */
   stable: string;
+  /** Today's date and the greeting: the same for the whole conversation. */
   dynamic: string;
+  /**
+   * The time at the restaurant, said after the guest's last message. In the
+   * system prompt, a part that changed every minute came before the whole
+   * conversation, and a minute later none of its cached prefix could be used.
+   */
+  now: string;
 }
 
 export interface ModelRequest {
@@ -60,6 +78,8 @@ export interface ModelResponse {
   usage: Usage;
   /** What the call cost in US dollars, when the provider reports it (OpenRouter does). */
   costUsd?: number;
+  /** Who served the call, when a router chose: OpenRouter names the provider, such as "Anthropic" or "Amazon Bedrock". */
+  servedBy?: string;
 }
 
 export interface LanguageModel {

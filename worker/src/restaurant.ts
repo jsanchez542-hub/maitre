@@ -597,6 +597,8 @@ export class Restaurant extends DurableObject<Env> {
       outcome: result.outcome,
       latencyMs: result.latencyMs,
       modelCalls: result.modelCalls,
+      modelMs: result.modelMs.map((ms) => Math.round(ms)),
+      ...(result.servedBy ? { servedBy: result.servedBy } : {}),
       usage: result.usage,
       ...(result.costUsd === undefined ? {} : { costUsd: result.costUsd }),
       tools: result.tools.map((tool) => ({ name: tool.name, status: String(tool.output.status) })),

@@ -1,5 +1,7 @@
 import { postJson, runtimeFetch, withRetries, type Fetch } from '../http.js';
-import { ModelError, type LanguageModel, type ModelErrorKind, type ModelRequest, type ModelResponse, type ToolCall } from '../model.js';
+import { ModelError, previousReply, type LanguageModel, type ModelErrorKind, type ModelRequest, type ModelResponse, type ToolCall } from '../model.js';
+
+const EPHEMERAL = { type: 'ephemeral' } as const;
 
 export interface AnthropicOptions {
   apiKey: string;
@@ -33,12 +35,17 @@ export function toAnthropicBody(request: ModelRequest, model: string): Record<st
     else messages.push({ role, content: blocks });
   };
 
-  for (const entry of request.transcript) {
+  // As in the OpenAI format: the time goes after the guest's last message, and the conversation is cached up to
+  // the reply that ended the turn before and up to the time.
+  const lastGuest = request.transcript.map((entry) => entry.role).lastIndexOf('user');
+  const lastReply = previousReply(request.transcript, lastGuest);
+  for (const [index, entry] of request.transcript.entries()) {
     if (entry.role === 'user') {
-      push('user', [{ type: 'text', text: entry.text }]);
+      const now = index === lastGuest ? request.system.now : '';
+      push('user', [{ type: 'text', text: entry.text }, ...(now === '' ? [] : [{ type: 'text' as const, text: now, cache_control: EPHEMERAL }])]);
     } else if (entry.role === 'assistant') {
       push('assistant', [
-        ...(entry.text.trim() === '' ? [] : [{ type: 'text' as const, text: entry.text }]),
+        ...(entry.text.trim() === '' ? [] : [{ type: 'text' as const, text: entry.text, ...(index === lastReply ? { cache_control: EPHEMERAL } : {}) }]),
         ...entry.toolCalls.map((call) => ({ type: 'tool_use' as const, id: call.id, name: call.name, input: call.input ?? {} })),
       ]);
     } else {
@@ -57,9 +64,9 @@ export function toAnthropicBody(request: ModelRequest, model: string): Record<st
     model,
     max_tokens: request.maxOutputTokens,
     // The breakpoint on the stable block caches the tools and the rules, which
-    // come before it in the prompt. Today's date and time follow, uncached.
+    // come before it in the prompt. Today's date and the greeting follow.
     system: [
-      { type: 'text', text: request.system.stable, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: request.system.stable, cache_control: EPHEMERAL },
       { type: 'text', text: request.system.dynamic },
     ],
     tools: request.tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.inputSchema })),

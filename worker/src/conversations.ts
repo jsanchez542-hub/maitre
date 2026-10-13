@@ -60,6 +60,10 @@ export interface TurnLog {
   outcome: string;
   latencyMs: number;
   modelCalls: number;
+  /** Time spent waiting for the model alone, per call. */
+  modelMs?: number[];
+  /** Who served each model call: a provider that changes loses the prompt cache, and the call is slower. */
+  servedBy?: string[];
   usage: Usage;
   costUsd?: number;
   /** Tool names and their status only: the full outputs stay out of the log. */
