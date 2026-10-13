@@ -171,6 +171,17 @@ The one scenario that failed, `closed-day-en`, failed twice on the stalled calls
 
 Chat and phone now use `anthropic/claude-haiku-5.5@latency` (`worker/wrangler.jsonc`): the same model, sent to whichever of its providers answers fastest.
 
+### Run K: a yes that the rest of the sentence takes back (13 October)
+
+The design review asked "Bonsoir, vous êtes ouverts dimanche soir ?" and got "Oui, nous sommes ouverts dimanche 18 octobre, mais uniquement pour le déjeuner", twice. The "oui" is the answer the guest hears; the evening is closed. `hours-es` let the same thing through in Spanish, because its check looked for a "no" anywhere in the reply. The prompt now says to answer exactly what was asked first, and to start with no when closed at the time asked about. New conversation `closed-evening-fr`, and `hours-es` now refuses a reply that opens with "sí".
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| All channels | Claude Haiku 5.5 `@latency` | 32/33 | 98/99 | 2.5 s | 5.4 s | 1.3 s | 2.6 s | $0.063 |
+| Phone | Claude Haiku 5.5 `@latency` | 20/20 | 60/60 | 2.4 s | 5.6 s | 1.3 s | 2.6 s | $0.037 |
+
+All three answers now open with "Non, le dimanche 18 octobre nous ne sommes ouverts que le midi…". The one failure is the slip described in run G, in `day-after-tomorrow-fr`: given the name unasked, the model still asked about allergies as a yes-or-no question, and the guest's "Oui, parfait" left the booking unmade. It is the next thing to work on.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -209,4 +220,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51 and run J $0.14: $6.48 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14 and run K $0.10: $6.58 in all.

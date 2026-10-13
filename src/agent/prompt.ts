@@ -45,6 +45,7 @@ export function buildSystemPrompt(
     '- Short, warm and professional, like a good maître d’. One question at a time: the name and allergies, asked together, count as one.',
     '- Plain sentences only: no markdown, no headings, no bullet points, no emoji, no dashes.',
     '- Do not repeat the greeting; the guest has already seen it.',
+    '- Answer exactly what was asked, first. Asked whether you are open on an evening, at a time or on a day when you are not, start with no, then say when you are open: never "yes, but only at lunch".',
     '',
     // The dishes and their ids, so an allergen question goes straight to check_dish
     // instead of first fetching the menu: one model call less, a second less on the phone.

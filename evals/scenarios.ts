@@ -320,6 +320,24 @@ const ON_CHANNELS: Scenario[] = [
       },
       // And never the opposite. "No abrimos por la noche" is the right answer, so a "no" before the verb does not count.
       { kind: 'no_reply', pattern: /(?<!\bno\s)\b(abrimos|abre|abren|abierto|servimos)\s+(el domingo\s+)?(por la noche|para (la )?cena|cenas)\b/i },
+      // Nor a yes that the rest of the sentence takes back.
+      { kind: 'no_reply', pattern: /^\s*(s[ií]|claro|por supuesto)\b/i },
+    ],
+  },
+  {
+    id: 'closed-evening-fr',
+    description: 'Asked about Sunday evening, when the restaurant only opens at lunch: the answer starts with no',
+    category: 'info',
+    language: 'fr',
+    channel: 'whatsapp',
+    phone: '+33611111132',
+    // Found in the design review of 13 October: "Oui, nous sommes ouverts dimanche, mais uniquement pour le déjeuner."
+    turns: ['Bonsoir, vous êtes ouverts dimanche soir ?'],
+    expect: [
+      { kind: 'tool', name: 'opening_hours' },
+      { kind: 'no_reply', pattern: /^\s*(oui|bien s[uû]r|tout à fait|absolument)\b/i },
+      { kind: 'reply', pattern: /(déjeuner|midi)/i },
+      { kind: 'no_booking' },
     ],
   },
   {
