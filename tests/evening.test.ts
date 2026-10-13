@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_EVENING_AT, DEMO_EVENING_DATE, demoEvening } from '../src/demo/evening.js';
+import { zonedInstant } from '../src/calendar.js';
+import type { ChatOutcome } from '../src/demo/chat.js';
+import { DEMO_EVENING_AT, DEMO_EVENING_DATE, demoEvening, demoSuggestion, serviceDayAt } from '../src/demo/evening.js';
 
 describe('the demo evening', () => {
   it('is Friday dinner at 20:05, made by the engine’s own operations', () => {
@@ -41,6 +43,7 @@ describe('the demo evening', () => {
       ['large_group', 'voice'],
       ['allergy_question', 'whatsapp'],
     ]);
+    expect(day.callbacks.list[0]?.summary).toBe('Groupe de 9 pour un anniversaire, samedi 17 octobre au soir.');
     // The evening's curve goes on after the last bookable time, 21:30, until the last two tables
     // leave at 23:00. The table held at 21:15 is nobody yet: it counts once the guest has booked.
     const dinner = day.room.filter((point) => point.service === 'dinner');
@@ -62,5 +65,89 @@ describe('the demo evening', () => {
     const petit = engine.serviceDay(DEMO_EVENING_DATE, 'fr').bookings.find((booking) => booking.guestName === 'Petit');
     expect(engine.seat(petit?.reference ?? '')).toMatchObject({ status: 'done', booking: { stage: 'seated' } });
     expect(engine.serviceDay(DEMO_EVENING_DATE, 'fr').holds).toEqual([]);
+  });
+});
+
+describe('the demo restaurant at the real time', () => {
+  // 1 November 2026 is a Sunday, in winter time: Merrain serves lunch only on Sundays and is closed on Mondays.
+  const paris = (date: string, time: string) => zonedInstant(date, time, 'Europe/Paris');
+  const stages = (evening: ReturnType<typeof demoEvening>) => {
+    const service = evening.engine.serviceDay(evening.day, 'fr');
+    return { service, stage: (name: string) => service.bookings.find((booking) => booking.guestName === name) };
+  };
+
+  it('is about today while a service goes on, and about the next day it opens otherwise', () => {
+    expect(serviceDayAt(paris('2026-11-03', '10:00'))).toBe('2026-11-03');
+    expect(serviceDayAt(paris('2026-11-03', '23:30'))).toBe('2026-11-03');
+    expect(serviceDayAt(paris('2026-11-03', '23:45'))).toBe('2026-11-04');
+    expect(serviceDayAt(paris('2026-11-01', '11:00'))).toBe('2026-11-01');
+    expect(serviceDayAt(paris('2026-11-01', '17:00'))).toBe('2026-11-03');
+    expect(serviceDayAt(paris('2026-11-02', '15:00'))).toBe('2026-11-03');
+  });
+
+  it('has done by the morning what came the days before, and nothing of the day itself', () => {
+    const now = paris('2026-11-03', '10:00');
+    const evening = demoEvening({ now });
+    expect(evening.day).toBe('2026-11-03');
+    expect(evening.clock.now()).toEqual(now);
+    const { service, stage } = stages(evening);
+    expect(service.bookings.every((booking) => booking.stage === 'expected')).toBe(true);
+    // Moved and confirmed the day before; Fournier confirms at 10:20, Bonnet cancels at 18:40.
+    expect(stage('Roux')).toMatchObject({ time: '20:30', status: 'confirmed' });
+    expect(stage('Fournier')).toMatchObject({ status: 'booked' });
+    expect(stage('Bonnet')).toMatchObject({ status: 'booked' });
+    expect(service.callbacks.list).toEqual([]);
+    expect(service.holds).toEqual([]);
+  });
+
+  it('is the recorded evening at its own instant, without the table someone was booking then', () => {
+    const { service, stage } = stages(demoEvening({ now: new Date(DEMO_EVENING_AT) }));
+    for (const name of ['Martin', 'Lefèvre', 'Dubois', 'Garcia', 'Client sur place']) expect(stage(name)).toMatchObject({ stage: 'seated' });
+    expect(stage('Moreau')).toMatchObject({ stage: 'arrived' });
+    expect(stage('Petit')).toMatchObject({ stage: 'expected' });
+    expect(service.callbacks.list[0]?.summary).toBe('Groupe de 9 pour un anniversaire, samedi 17 octobre au soir.');
+    expect(service.holds).toEqual([]);
+  });
+
+  it('goes on through the evening: the late party sits down, and the tables empty', () => {
+    const { service, stage } = stages(demoEvening({ now: paris('2026-11-03', '23:00') }));
+    for (const name of ['Martin', 'Moreau', 'Petit', 'Fournier', 'Client sur place']) expect(stage(name)).toMatchObject({ stage: 'left' });
+    for (const name of ['Girard', 'Lambert']) expect(stage(name)).toMatchObject({ stage: 'seated' });
+    expect(service.bookings.filter((booking) => booking.service === 'déjeuner').every((booking) => booking.stage === 'left')).toBe(true);
+  });
+
+  it('opens on the next service on its day off, with nothing of it done yet', () => {
+    const evening = demoEvening({ now: paris('2026-11-02', '15:00') });
+    expect(evening.day).toBe('2026-11-03');
+    const { service, stage } = stages(evening);
+    // The day before's change and reminders come at 18:30 and 19:10: not yet.
+    expect(stage('Roux')).toMatchObject({ time: '20:00', status: 'booked' });
+    expect(service.bookings.every((booking) => booking.stage === 'expected')).toBe(true);
+  });
+
+  it('serves lunch alone on a Sunday', () => {
+    const { service } = stages(demoEvening({ now: paris('2026-11-01', '12:25') }));
+    expect(service.bookings.every((booking) => booking.service === 'déjeuner')).toBe(true);
+    const seated = service.bookings.filter((booking) => booking.stage === 'seated').map((booking) => booking.guestName);
+    expect(seated.sort()).toEqual(['Bertrand', 'David', 'Laurent', 'Michel']);
+  });
+
+  it('suggests a dinner a guest could still book: tonight until 19:30, then the next evening it opens', () => {
+    expect(demoSuggestion(paris('2026-11-03', '10:00'))).toEqual({ date: '2026-11-03', time: '20:30', partySize: 2 });
+    expect(demoSuggestion(paris('2026-11-03', '19:30'))).toEqual({ date: '2026-11-03', time: '20:30', partySize: 2 });
+    expect(demoSuggestion(paris('2026-11-03', '19:31')).date).toBe('2026-11-04');
+    // Saturday night: Sunday serves lunch only and Monday is closed.
+    expect(demoSuggestion(paris('2026-10-31', '22:00')).date).toBe('2026-11-03');
+    // The seeded evening has a table for two at 20:30.
+    const evening = demoEvening({ now: paris('2026-11-03', '10:00') });
+    const found = evening.engine.findTable(
+      { id: 'visitor', channel: 'web', language: 'fr' },
+      { date: { kind: 'date', date: '2026-11-03' }, time: '20:30', partySize: 2 },
+    );
+    expect(found.status).toBe('available');
+  });
+
+  it('keeps the conversations played in the chat to the recorded evening', () => {
+    expect(() => demoEvening({ now: paris('2026-11-03', '10:00'), fromChat: [{} as ChatOutcome] })).toThrow(RangeError);
   });
 });

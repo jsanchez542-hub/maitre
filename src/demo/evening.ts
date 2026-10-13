@@ -1,20 +1,25 @@
+import { addDays, localNow, toMinutes, zonedInstant, type PlainDate } from '../calendar.js';
+import type { BusinessConfig } from '../config.js';
 import { BookingEngine, type Session } from '../engine.js';
-import type { Language } from '../i18n/index.js';
+import { formatDate, type Language } from '../i18n/index.js';
 import { REFERENCE_ALPHABET, REFERENCE_LENGTH, type IdSource } from '../ids.js';
+import { sittingsOn } from '../schedule.js';
 import { MemoryStore, type BookingStore } from '../store.js';
 import { runTool } from '../tools.js';
 import type { ChatOutcome } from './chat.js';
 import { DEMO_RESTAURANT } from './restaurant.js';
 
-/** The day of the demo's dashboard. */
+/** The day of the recorded evening, where the recordings took place. */
 export const DEMO_EVENING_DATE = '2026-10-16';
 
-/** Friday 16 October 2026 at 20:05 in Paris, in the middle of dinner. */
+/** Friday 16 October 2026 at 20:05 in Paris, in the middle of dinner: the recorded evening. */
 export const DEMO_EVENING_AT = '2026-10-16T18:05:00.000Z';
 
 export interface DemoEvening {
   engine: BookingEngine;
-  /** The restaurant's clock. The dashboard can move it on, to show the evening going on. */
+  /** The day of the service the evening is about: the dashboard opens on it. */
+  day: PlainDate;
+  /** The restaurant's clock. */
   clock: { now(): Date; set(instant: Date): void };
 }
 
@@ -22,28 +27,79 @@ export interface DemoEveningOptions {
   /**
    * The conversations the visitor has played in the chat, from `recordingOutcome`.
    * Their bookings are made when the conversation took place, through the same
-   * operations as any guest's, so they are on the plan of the evening.
+   * operations as any guest's, so they are on the plan of the evening. They
+   * belong to the recorded evening.
    */
   fromChat?: readonly ChatOutcome[];
   /**
    * Where the evening is written: in memory by default, or a store that keeps
    * it, such as the database of a visitor's own restaurant on the server, whose
-   * engine then takes the evening over from 20:05.
+   * engine then takes the restaurant over.
    */
   store?: BookingStore;
+  /**
+   * The restaurant lives at this instant, as a real one does: its service is
+   * seeded around it, with what came before it done and what comes after it
+   * still to come. Without it, the evening is the recorded one, Friday 16
+   * October at 20:05.
+   */
+  now?: Date;
 }
 
-/** The week of the evening starts here: the conversations played in the chat came before. */
-const WEEK_STARTS = '2026-10-14T09:00:00.000Z';
+/** How long a service goes on after its last seating: the last tables are still at dinner. */
+const SERVICE_TAIL_MINUTES = 120;
+
+/**
+ * The day of the service a restaurant is about at an instant: today while one
+ * of today's services is still going on, otherwise the next day it opens. At
+ * 23:45, or on its day off, a restaurant's book is about its next service.
+ */
+export function serviceDayAt(instant: Date, config: BusinessConfig = DEMO_RESTAURANT): PlainDate {
+  const local = localNow(instant, config.timeZone);
+  for (let ahead = 0; ahead <= 14; ahead += 1) {
+    const date = addDays(local.date, ahead);
+    const sittings = sittingsOn(config, date);
+    if (sittings.length === 0) continue;
+    if (ahead > 0) return date;
+    const lastSeating = Math.max(...sittings.map((sitting) => toMinutes(sitting.lastSeating)));
+    if (toMinutes(local.time) <= lastSeating + SERVICE_TAIL_MINUTES) return date;
+  }
+  return local.date;
+}
+
+/** A request a visitor can start the conversation with: a table that a guest could book now. */
+export interface DemoSuggestion {
+  date: PlainDate;
+  time: string;
+  partySize: number;
+}
+
+/** The time of the suggested table: the middle of dinner, free on the plan of the seeded evening. */
+const SUGGESTED_TIME = '20:30';
+/** How long ahead a table can still be booked, as the restaurant's rules say. */
+const NOTICE_MINUTES = 60;
+
+/**
+ * The first dinner a guest could still book at an instant, at 20:30 for two:
+ * tonight before 19:30, otherwise the next evening the restaurant opens. The
+ * site words its examples from it ("ce soir", "demain soir", "vendredi soir"),
+ * so none asks for a time already gone or an evening it is closed.
+ */
+export function demoSuggestion(instant: Date, config: BusinessConfig = DEMO_RESTAURANT): DemoSuggestion {
+  const local = localNow(instant, config.timeZone);
+  for (let ahead = 0; ahead <= 14; ahead += 1) {
+    const date = addDays(local.date, ahead);
+    const dinner = sittingsOn(config, date).some(
+      (sitting) => sitting.service === 'dinner' && toMinutes(sitting.firstSeating) <= toMinutes(SUGGESTED_TIME) && toMinutes(SUGGESTED_TIME) <= toMinutes(sitting.lastSeating),
+    );
+    if (dinner && (ahead > 0 || toMinutes(local.time) + NOTICE_MINUTES <= toMinutes(SUGGESTED_TIME))) return { date, time: SUGGESTED_TIME, partySize: 2 };
+  }
+  return { date: addDays(local.date, 1), time: SUGGESTED_TIME, partySize: 2 };
+}
 
 type GuestChannel = 'voice' | 'whatsapp' | 'web';
 
 const PHONE_SOURCES = { voice: 'caller_id', whatsapp: 'whatsapp', web: 'form' } as const;
-
-/** Paris was on summer time that week. */
-function paris(date: string, time: string): Date {
-  return new Date(`${date}T${time}:00+02:00`);
-}
 
 /** Identifiers that come out the same on every load: the demo and its screenshots show the same references. */
 function seededIds(seed: number): IdSource {
@@ -62,9 +118,7 @@ function seededIds(seed: number): IdSource {
   };
 }
 
-const FRIDAY = DEMO_EVENING_DATE;
-
-/** Lunch, long over by 20:05: time, party, channel, name, seated at, left at. */
+/** Lunch: time, party, channel, name, seated at, left at. */
 const LUNCH: readonly [string, number, GuestChannel, string, string, string][] = [
   ['12:00', 2, 'web', 'Laurent', '12:03', '13:20'],
   ['12:00', 4, 'voice', 'Michel', '12:05', '13:40'],
@@ -104,21 +158,59 @@ const DINNER: readonly DinnerBooking[] = [
 ];
 
 /**
- * Friday dinner at the demo restaurant at 20:05: lunch over, the first
- * sitting at its tables, one party at the door, another late, a table being
- * booked online and two calls to return.
+ * The rest of dinner, after the recorded 20:05: the late party sits down, the
+ * later ones come, and the tables empty. Name, seated at, left at.
+ */
+const LATER_DINNER: readonly [string, string, string][] = [
+  ['Moreau', '20:06', '22:10'],
+  ['Petit', '20:09', '22:15'],
+  ['Bernard', '20:17', '22:20'],
+  ['Roux', '20:32', '22:40'],
+  ['Fournier', '20:34', '22:55'],
+  ['Girard', '21:02', '23:05'],
+  ['Lambert', '21:34', '23:25'],
+];
+
+/** When the parties seated before 20:05 leave. */
+const FIRST_SITTING_LEAVES: readonly [string, string][] = [
+  ['Martin', '20:52'],
+  ['Lefèvre', '21:05'],
+  ['Dubois', '21:10'],
+  ['Garcia', '21:45'],
+];
+
+/**
+ * A day of service at the demo restaurant: lunch, then dinner, with the first
+ * sitting at its tables by 20:05, one party at the door, another late, and two
+ * calls to return.
  *
  * It is built through the engine's own operations, as the clock goes round:
- * guests book, move, confirm and cancel on their channels during the week,
- * and the staff seat and see off each party on the day. Every table, state and
- * history entry is one the engine produced, and the evening is the same on
- * every load. All names and numbers are invented.
+ * guests book, move, confirm and cancel on their channels in the days before,
+ * and the staff seat and see off each party on the day. Only what has happened
+ * by the restaurant's now is done: the recorded evening stops at 20:05 on
+ * Friday 16 October, a live restaurant at the real time. Every table, state and
+ * history entry is one the engine produced, and the same instant gives the
+ * same day on every load. All names and numbers are invented.
  */
 export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
-  let now = new Date(WEEK_STARTS);
+  const recorded = options.now === undefined;
+  if (!recorded && options.fromChat?.length) throw new RangeError('The conversations played in the chat belong to the recorded evening');
+  const until = options.now ?? new Date(DEMO_EVENING_AT);
+  const timeZone = DEMO_RESTAURANT.timeZone;
+  const day = recorded ? DEMO_EVENING_DATE : serviceDayAt(until);
+  const dayBefore = addDays(day, -1);
+  // Two days before, the week's bookings come in: the conversations played in the chat came before.
+  const weekStarts = zonedInstant(addDays(day, -2), '11:00', timeZone);
+  const services = new Set(sittingsOn(DEMO_RESTAURANT, day).map((sitting) => sitting.service));
+
+  let now = new Date(weekStarts);
   const engine = new BookingEngine(DEMO_RESTAURANT, options.store ?? new MemoryStore(), { now: () => now, ids: seededIds(16_10_2026) });
-  const at = (time: string, date = FRIDAY): void => {
-    now = paris(date, time);
+  /** Something that happens at a time of the day, once that time has come. */
+  const when = (time: string, run: () => void, date = day): void => {
+    const instant = zonedInstant(date, time, timeZone);
+    if (instant.getTime() > until.getTime()) return;
+    now = instant;
+    run();
   };
   const ok = <T extends { status: string }>(result: T, expected: string, what: string): T => {
     if (result.status !== expected) throw new Error(`The demo evening could not ${what}: ${result.status}`);
@@ -142,7 +234,7 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
     ...(session.phone ? { phone: { e164: session.phone.e164, source: 'whatsapp' as const } } : {}),
   });
   const book = (session: Session, time: string, partySize: number, guestName: string, extra: Partial<DinnerBooking> = {}): string => {
-    const found = engine.findTable(session, { date: { kind: 'date', date: FRIDAY }, time, partySize });
+    const found = engine.findTable(session, { date: { kind: 'date', date: day }, time, partySize });
     if (found.status !== 'available') throw new Error(`The demo evening could not find a table for ${guestName}: ${found.status}`);
     const booked = engine.book(session, {
       holdId: found.holdId,
@@ -154,10 +246,10 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
     return booked.booking.reference;
   };
 
-  // Wednesday morning: the conversations the visitor played in the chat, when they took place.
+  // The conversations the visitor played in the chat, when they took place.
   const played = [...(options.fromChat ?? [])].sort((a, b) => a.at.localeCompare(b.at));
   for (const outcome of played) {
-    if (outcome.at >= WEEK_STARTS) throw new RangeError(`The conversation "${outcome.recording}" took place after the evening's week began`);
+    if (Date.parse(outcome.at) >= weekStarts.getTime()) throw new RangeError(`The conversation "${outcome.recording}" took place after the evening's week began`);
     now = new Date(outcome.at);
     const session: Session = {
       id: `chat-${outcome.recording}`,
@@ -182,12 +274,14 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
     }
   }
 
-  // Wednesday: the week's bookings come in.
-  now = new Date(WEEK_STARTS);
+  // The week's bookings come in, for the services the day has.
+  now = new Date(weekStarts);
   const references = new Map<string, string>();
   const sessions = new Map<string, Session>();
-  for (const [time, partySize, channel, name] of LUNCH) references.set(name, book(guest(channel), time, partySize, name));
-  for (const booking of DINNER) {
+  const lunch = services.has('lunch') ? LUNCH : [];
+  const dinner = services.has('dinner') ? DINNER : [];
+  for (const [time, partySize, channel, name] of lunch) references.set(name, book(guest(channel), time, partySize, name));
+  for (const booking of dinner) {
     const session = guest(booking.channel, booking.language);
     sessions.set(booking.name, session);
     references.set(booking.name, book(session, booking.time, booking.partySize, booking.name, booking));
@@ -195,57 +289,91 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
   const reference = (name: string): string => references.get(name) ?? '';
   const session = (name: string): Session => sessions.get(name) as Session;
 
-  // Thursday: Roux moves to 20:30, and the reminders are answered.
-  at('18:30', '2026-10-15');
-  const later = engine.findTable(session('Roux'), { date: { kind: 'date', date: FRIDAY }, time: '20:30', partySize: 2, changing: reference('Roux') });
-  if (later.status !== 'available') throw new Error(`The demo evening could not find Roux a later table: ${later.status}`);
-  ok(engine.change(session('Roux'), { reference: reference('Roux'), holdId: later.holdId }), 'changed', 'move Roux');
-  at('19:10', '2026-10-15');
-  for (const name of ['Petit', 'Roux']) ok(engine.confirm(onWhatsApp(session(name))), 'confirmed', `confirm ${name}`);
-  at('10:20');
-  ok(engine.confirm(onWhatsApp(session('Fournier'))), 'confirmed', 'confirm Fournier');
-
-  // Friday lunch: every party seated, then gone.
-  const lunchEvents = LUNCH.flatMap(([, , , name, seated, left]) => [
-    { time: seated, run: () => ok(engine.seat(reference(name)), 'done', `seat ${name}`) },
-    { time: left, run: () => ok(engine.markLeft(reference(name)), 'done', `see ${name} off`) },
-  ]).sort((a, b) => a.time.localeCompare(b.time));
-  for (const event of lunchEvents) {
-    at(event.time);
-    event.run();
+  if (dinner.length > 0) {
+    // The day before: Roux moves to 20:30, and the reminders are answered.
+    when(
+      '18:30',
+      () => {
+        const later = engine.findTable(session('Roux'), { date: { kind: 'date', date: day }, time: '20:30', partySize: 2, changing: reference('Roux') });
+        if (later.status !== 'available') throw new Error(`The demo evening could not find Roux a later table: ${later.status}`);
+        ok(engine.change(session('Roux'), { reference: reference('Roux'), holdId: later.holdId }), 'changed', 'move Roux');
+      },
+      dayBefore,
+    );
+    when('19:10', () => {
+      for (const name of ['Petit', 'Roux']) ok(engine.confirm(onWhatsApp(session(name))), 'confirmed', `confirm ${name}`);
+    }, dayBefore);
+    when('10:20', () => ok(engine.confirm(onWhatsApp(session('Fournier'))), 'confirmed', 'confirm Fournier'));
   }
 
-  // Friday evening.
-  at('18:40');
-  ok(engine.cancel(session('Bonnet'), { reference: reference('Bonnet') }), 'cancelled', 'cancel Bonnet');
-  for (const [time, name] of [
-    ['19:02', 'Martin'],
-    ['19:05', 'Lefèvre'],
-    ['19:18', 'Dubois'],
-    ['19:34', 'Garcia'],
-  ] as const) {
-    at(time);
-    ok(engine.seat(reference(name)), 'done', `seat ${name}`);
-  }
-  at('19:40');
-  ok(
-    engine.requestCallback(guest('voice'), { reason: 'large_group', summary: 'Groupe de 9 pour un anniversaire, samedi 17 octobre au soir.' }),
-    'recorded',
-    'pass on a party of nine',
-  );
-  at('19:55');
-  // Asked on WhatsApp: the sheet says nothing about nuts in the mousse, so the code passes the question on.
-  ok(runTool(engine, guest('whatsapp'), 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] }), 'ok', 'check the mousse');
-  at('20:00');
-  ok(engine.staffBook({ date: FRIDAY, partySize: 3, walkIn: true }), 'booked', 'seat a party on the spot');
-  at('20:03');
-  ok(engine.markArrived(reference('Moreau')), 'done', 'greet Moreau');
-  // Someone is booking online right now: the table is held until 20:08.
-  ok(engine.findTable(guest('web'), { date: { kind: 'date', date: FRIDAY }, time: '21:15', partySize: 4 }), 'available', 'hold a table');
-  at('20:05');
+  // Lunch: every party seated, then gone.
+  const lunchEvents = lunch
+    .flatMap(([, , , name, seated, left]) => [
+      { time: seated, run: () => ok(engine.seat(reference(name)), 'done', `seat ${name}`) },
+      { time: left, run: () => ok(engine.markLeft(reference(name)), 'done', `see ${name} off`) },
+    ])
+    .sort((a, b) => a.time.localeCompare(b.time));
+  for (const event of lunchEvents) when(event.time, event.run);
 
+  // Dinner.
+  if (dinner.length > 0) {
+    let walkIn = '';
+    const evening: { time: string; run: () => void }[] = [
+      { time: '18:40', run: () => ok(engine.cancel(session('Bonnet'), { reference: reference('Bonnet') }), 'cancelled', 'cancel Bonnet') },
+      ...(
+        [
+          ['19:02', 'Martin'],
+          ['19:05', 'Lefèvre'],
+          ['19:18', 'Dubois'],
+          ['19:34', 'Garcia'],
+        ] as const
+      ).map(([time, name]) => ({ time, run: () => void ok(engine.seat(reference(name)), 'done', `seat ${name}`) })),
+      {
+        time: '19:40',
+        run: () =>
+          ok(
+            engine.requestCallback(guest('voice'), {
+              reason: 'large_group',
+              summary: `Groupe de 9 pour un anniversaire, ${formatDate(addDays(day, 1), 'fr', day)} au soir.`,
+            }),
+            'recorded',
+            'pass on a party of nine',
+          ),
+      },
+      {
+        time: '19:55',
+        // Asked on WhatsApp: the sheet says nothing about nuts in the mousse, so the code passes the question on.
+        run: () => ok(runTool(engine, guest('whatsapp'), 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] }), 'ok', 'check the mousse'),
+      },
+      {
+        time: '20:00',
+        run: () => {
+          const placed = engine.staffBook({ date: day, partySize: 3, walkIn: true });
+          if (placed.status !== 'booked') throw new Error(`The demo evening could not seat a party on the spot: ${placed.status}`);
+          walkIn = placed.booking.reference;
+        },
+      },
+      { time: '20:03', run: () => ok(engine.markArrived(reference('Moreau')), 'done', 'greet Moreau') },
+      // In the recorded evening someone is booking online right now: the table is held until 20:08.
+      ...(recorded
+        ? [{ time: '20:03', run: () => ok(engine.findTable(guest('web'), { date: { kind: 'date', date: day }, time: '21:15', partySize: 4 }), 'available', 'hold a table') }]
+        : []),
+      ...LATER_DINNER.flatMap(([name, seated, left]) => [
+        { time: seated, run: () => void ok(engine.seat(reference(name)), 'done', `seat ${name}`) },
+        { time: left, run: () => void ok(engine.markLeft(reference(name)), 'done', `see ${name} off`) },
+      ]),
+      ...FIRST_SITTING_LEAVES.map(([name, left]) => ({ time: left, run: () => void ok(engine.markLeft(reference(name)), 'done', `see ${name} off`) })),
+      { time: '21:38', run: () => void ok(engine.markLeft(walkIn), 'done', 'see the party on the spot off') },
+    ];
+    // In the order of the clock; what happens at the same minute, in the order written.
+    const ordered = evening.map((event, index) => ({ ...event, index })).sort((a, b) => a.time.localeCompare(b.time) || a.index - b.index);
+    for (const event of ordered) when(event.time, event.run);
+  }
+
+  now = new Date(until);
   return {
     engine,
+    day,
     clock: {
       now: () => new Date(now),
       set: (instant: Date) => {

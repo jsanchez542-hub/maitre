@@ -16,6 +16,7 @@ evening: the booking must be there, with the number from the keypad.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import statistics
 import sys
@@ -32,13 +33,13 @@ from livekit.agents.utils import http_context
 from maitre_voice.speech import build_tts
 
 API = "http://127.0.0.1:8787"
-EVENING = "2026-10-16"
 #: Per language: the caller's lines, said in turn once the agent has finished speaking (None means: type the number),
-#: the name the booking must be under, and the caller's voice, native and unlike the agent's.
+#: the name the booking must be under, and the caller's voice, native and unlike the agent's. The restaurant lives at the
+#: real time: the caller asks for the evening the demo suggests, named as a caller would ("{when}").
 CALLS: dict[str, tuple[list[str | None], str, str]] = {
     "fr": (
         [
-            "Bonsoir, je voudrais réserver une table pour quatre personnes ce soir à vingt et une heures trente.",
+            "Bonsoir, je voudrais réserver une table pour quatre personnes {when} à vingt et une heures trente.",
             "Au nom de Dupont, et personne n'a d'allergie.",
             None,
             "Merci beaucoup, au revoir.",
@@ -48,7 +49,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
     ),
     "es": (
         [
-            "Buenas noches, quería reservar una mesa para cuatro personas esta noche a las nueve y media.",
+            "Buenas noches, quería reservar una mesa para cuatro personas {when} a las nueve y media.",
             "A nombre de Ortega, y nadie tiene alergias.",
             None,
             "Muchas gracias, adiós.",
@@ -58,7 +59,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
     ),
     "en": (
         [
-            "Good evening, I'd like to book a table for four people tonight at half past nine.",
+            "Good evening, I'd like to book a table for four people {when} at half past nine.",
             "Under the name Clarke, and nobody has any allergies.",
             None,
             "Thank you very much, goodbye.",
@@ -69,6 +70,24 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
 }
 LANGUAGE = sys.argv[1] if len(sys.argv) > 1 else "fr"
 SCRIPT, GUEST, CALLER_VOICE = CALLS[LANGUAGE]
+WEEKDAYS = {
+    "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
+    "es": ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+}
+
+
+def evening_of(today: str, date: str) -> str:
+    """How a caller names the evening of `date`: tonight, tomorrow night, or its weekday within the week."""
+    ahead = (dt.date.fromisoformat(date) - dt.date.fromisoformat(today)).days
+    weekday = WEEKDAYS[LANGUAGE][dt.date.fromisoformat(date).weekday()]
+    if LANGUAGE == "fr":
+        return "ce soir" if ahead == 0 else "demain soir" if ahead == 1 else f"{weekday} soir"
+    if LANGUAGE == "es":
+        return "esta noche" if ahead == 0 else "mañana por la noche" if ahead == 1 else f"el {weekday} por la noche"
+    return "tonight" if ahead == 0 else "tomorrow night" if ahead == 1 else f"on {weekday} night"
+
+
 #: From ARCEP's range for fiction (06 39 98 xx xx): the booking it ends up in shows on the panel.
 NUMBER = "0639980042"
 DTMF_CODES = {"*": 10, "#": 11}
@@ -207,7 +226,13 @@ def keep_awake() -> None:
 async def main() -> None:
     keep_awake()
     load_dotenv(".env.local")
-    lines = [line for line in SCRIPT if line]
+    # The evening a guest could still book now, as the demo suggests it: the caller asks for that one.
+    async with aiohttp.ClientSession() as http, http.get(f"{API}/v1/demo") as response:
+        demo = await response.json()
+    evening = str(demo["suggestion"]["date"])
+    script = [line.format(when=evening_of(str(demo["today"]), evening)) if line else None for line in SCRIPT]
+    print(f"The restaurant's today is {demo['today']}; the caller asks for {evening}.")
+    lines = [line for line in script if line]
     print("Synthesizing the caller's lines…")
     synthesized = await synthesize_lines(lines)
     print("  silence after the last word of each line:", [f"{trailing_silence(clip):.2f} s" for clip in synthesized])
@@ -232,6 +257,11 @@ async def main() -> None:
                 listening.append(asyncio.ensure_future(ear.listen(track)))
 
         keypad: list[str] = []
+        hung_up = asyncio.Event()
+
+        @room.on("disconnected")
+        def _on_disconnected(*_args: object) -> None:
+            hung_up.set()
 
         @room.on("participant_attributes_changed")
         def _on_attributes(changed: dict[str, str], _participant: rtc.Participant) -> None:
@@ -256,7 +286,7 @@ async def main() -> None:
 
         waits = []
         turns = []
-        for step in SCRIPT:
+        for step in script:
             if step is None:
                 for digit in f"{NUMBER}#":
                     await room.local_participant.publish_dtmf(code=DTMF_CODES.get(digit, int(digit) if digit.isdigit() else 0), digit=digit)
@@ -290,8 +320,17 @@ async def main() -> None:
                 else f"  caller: {label}\n    no answer heard"
             )
 
-        await asyncio.sleep(2)
+        # The caller's last line is a goodbye: the restaurant answers it and hangs up, as a restaurant does.
+        try:
+            await asyncio.wait_for(hung_up.wait(), timeout=20)
+            hung_up_after: float | None = time.monotonic() - said
+            print(f"  the restaurant hung up {hung_up_after:.1f} s after the caller's goodbye")
+        except TimeoutError:
+            hung_up_after = None
+            print("  the restaurant did not hang up after the goodbye")
+        # Released by hand, whoever hung up: left to the garbage collector, LiveKit's handles fail their checks at exit.
         await room.disconnect()
+        await source.aclose()
         for task in listening:
             task.cancel()
 
@@ -305,7 +344,7 @@ async def main() -> None:
                 out.writeframes(np.concatenate(ear.recording).tobytes())
 
         await asyncio.sleep(3)  # the agent logs the call's end
-        async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/day?date={EVENING}&language=fr") as response:
+        async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/day?date={evening}&language=fr") as response:
             day = await response.json()
         async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/calls") as response:
             calls = await response.json()
@@ -322,6 +361,7 @@ async def main() -> None:
         "callLog": calls,
         "restaurantTurns": heard_by_the_restaurant,
         "keypadAttribute": keypad,
+        "restaurantHungUpAfterSeconds": round(hung_up_after, 2) if hung_up_after is not None else None,
     }
     (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print("\nBooking:", json.dumps(result["booking"], ensure_ascii=False) if booked else "NONE")
@@ -341,6 +381,9 @@ async def main() -> None:
         and booked[0].get("time") == "21:30"
         and keypad[:1] == ["open"]
         and keypad[-1:] == ["closed"]
+        # The restaurant, not the caller, ended the call after the goodbye.
+        and hung_up_after is not None
+        and any(call.get("endedBy") == "goodbye" for call in calls)
     )
     if booked and GUEST not in str(booked[0].get("guestName", "")).lower():
         print(f"Name heard as {booked[0].get('guestName')!r}, said as {GUEST.title()!r}: a recognition note, not a failure")

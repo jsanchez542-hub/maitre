@@ -1,10 +1,12 @@
 import { env, reset, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { budgetStub, demoStub } from '../src/env.js';
 
 const DEMO = 'https://maitre.test/v1/demo';
 const JSON_BODY = { 'content-type': 'application/json' };
 const EVENING = '2026-10-16';
+/** Friday 16 October 2026 at 20:05 in Bordeaux: the restaurant lives at the real time, and the tests fix it there. */
+const FRIDAY_EVENING = '2026-10-16T18:05:00.000Z';
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -76,17 +78,40 @@ async function day(sandbox: string, language = 'fr'): Promise<{ bookings: Record
 }
 
 describe('the public demo', () => {
-  it('opens a restaurant of its own for a person, on the demo evening at 20:05', async () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(FRIDAY_EVENING));
+  });
+
+  it('opens a restaurant of its own for a person, at the real time, with the day’s service seeded around it', async () => {
     fakeNetwork();
     const { code, body } = await open();
     expect(code).toBe(201);
     expect(body['sandbox']).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(body['clock']).toBe('2026-10-16T18:05:00.000Z');
+    expect(body).toMatchObject({ clock: FRIDAY_EVENING, day: EVENING });
     expect(Date.parse(String(body['expiresAt'])) - Date.now()).toBeGreaterThan(23 * 3_600_000);
 
     const evening = await day(String(body['sandbox']));
     expect(evening.bookings.map((booking) => booking['guestName'])).toEqual(expect.arrayContaining(['Moreau', 'Petit', 'Garcia', 'Fournier']));
     expect(evening.callbacks.open).toBe(2);
+  });
+
+  it('opens on the next service on the restaurant’s day off', async () => {
+    fakeNetwork();
+    // Monday 19 October at 15:00: Merrain is closed on Mondays.
+    vi.setSystemTime(new Date('2026-10-19T13:00:00Z'));
+    const { body } = await open();
+    expect(body).toMatchObject({ clock: '2026-10-19T13:00:00.000Z', day: '2026-10-20' });
+    const tuesday = (await (await SELF.fetch(`${DEMO}/sandboxes/${String(body['sandbox'])}/day?date=2026-10-20&language=fr`)).json()) as {
+      bookings: Record<string, unknown>[];
+    };
+    expect(tuesday.bookings.length).toBeGreaterThan(0);
+    expect(tuesday.bookings.every((booking) => booking['stage'] === 'expected')).toBe(true);
+  });
+
+  it('says the restaurant’s time and day before any restaurant is opened', async () => {
+    fakeNetwork();
+    expect(await (await SELF.fetch(DEMO)).json()).toMatchObject({ now: FRIDAY_EVENING, today: EVENING, day: EVENING });
   });
 
   it('refuses a script: Turnstile has to vouch for the visitor first', async () => {
@@ -142,7 +167,10 @@ describe('the public demo', () => {
     const requests = fakeNetwork();
     const status = async () => (await (await SELF.fetch(DEMO)).json()) as Record<string, unknown>;
     // A page asks before showing the chat and the call button, without opening a restaurant.
-    expect(await status()).toEqual({ live: true, calls: { perRestaurant: 3, maxSeconds: 240 } });
+    // At 20:05 tonight's 20:30 is within the hour's notice: the example is tomorrow's dinner.
+    const suggestion = { date: '2026-10-17', time: '20:30', partySize: 2 };
+    const time = { now: FRIDAY_EVENING, today: EVENING, day: EVENING, suggestion };
+    expect(await status()).toEqual({ live: true, calls: { perRestaurant: 3, maxSeconds: 240 }, ...time });
     const sandbox = await opened();
     const budget = budgetStub(env);
     if (!budget) throw new Error('the test config must set DATA_JURISDICTION');
@@ -154,7 +182,7 @@ describe('the public demo', () => {
     expect(paused.status).toBe(503);
     expect(await paused.json()).toEqual({ error: 'live_paused' });
     expect(await open()).toMatchObject({ code: 503, body: { error: 'live_paused' } });
-    expect(await status()).toEqual({ live: false, calls: null });
+    expect(await status()).toEqual({ live: false, calls: null, ...time });
     expect(requests).toHaveLength(0);
   });
 
@@ -181,14 +209,13 @@ describe('the public demo', () => {
     expect(requests).toHaveLength(0);
   });
 
-  it('moves the evening’s clock on, only forward, up to six hours', async () => {
+  it('keeps the real time, which nobody can move on, as in production', async () => {
     fakeNetwork();
     const sandbox = await opened();
-    expect(await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()).toMatchObject({ clock: '2026-10-16T18:05:00.000Z' });
-    const moved = await send(sandbox, 'clock', { minutes: 15 });
-    expect(moved.status).toBe(200);
-    expect(await moved.json()).toMatchObject({ clock: '2026-10-16T18:20:00.000Z' });
-    for (const minutes of [0, -15, 2.5, 'ten', 360]) expect((await send(sandbox, 'clock', { minutes })).status).toBe(400);
+    expect(await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()).toMatchObject({ clock: FRIDAY_EVENING, day: EVENING });
+    vi.setSystemTime(new Date('2026-10-16T18:20:00Z'));
+    expect(await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()).toMatchObject({ clock: '2026-10-16T18:20:00.000Z' });
+    expect((await send(sandbox, 'clock', { minutes: 15 })).status).toBe(405);
   });
 
   it('runs the dashboard’s actions on the visitor’s restaurant, in the dashboard’s language', async () => {

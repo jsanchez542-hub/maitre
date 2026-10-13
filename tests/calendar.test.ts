@@ -10,6 +10,7 @@ import {
   isPlainTime,
   localNow,
   toMinutes,
+  zonedInstant,
 } from '../src/calendar.js';
 
 describe('plain dates', () => {
@@ -105,6 +106,20 @@ describe('local time of the business', () => {
 
   it('writes midnight as 00, not 24', () => {
     expect(localNow(new Date('2026-10-15T22:00:00Z'), 'Europe/Paris').time).toBe('00:00');
+  });
+
+  it('finds the instant a Paris wall clock shows, in summer and in winter', () => {
+    expect(zonedInstant('2026-10-16', '20:05', 'Europe/Paris').toISOString()).toBe('2026-10-16T18:05:00.000Z');
+    expect(zonedInstant('2026-11-03', '20:05', 'Europe/Paris').toISOString()).toBe('2026-11-03T19:05:00.000Z');
+    for (const [date, time] of [
+      ['2026-07-01', '00:00'],
+      ['2026-10-25', '12:00'],
+      ['2026-12-31', '23:59'],
+    ] as const) {
+      expect(localNow(zonedInstant(date, time, 'Europe/Paris'), 'Europe/Paris')).toEqual({ date, time });
+    }
+    // 02:30 never happens on 29 March 2026: the clocks go from 02:00 to 03:00, and it comes out an hour later.
+    expect(localNow(zonedInstant('2026-03-29', '02:30', 'Europe/Paris'), 'Europe/Paris').time).toBe('03:30');
   });
 
   it('rejects an unknown time zone', () => {

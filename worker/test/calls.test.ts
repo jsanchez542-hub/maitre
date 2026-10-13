@@ -1,5 +1,5 @@
 import { env, reset, runInDurableObject, SELF } from 'cloudflare:test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { localNow } from '../../src/calendar.js';
 import { parseDay, resolveDate } from '../../src/dates.js';
 import { budgetStub } from '../src/env.js';
@@ -219,6 +219,21 @@ describe('a call to the restaurant', () => {
     expect((await step('call-voice-0007', 'turns', { turnId: 'turn-unheard-5', message: 'Merci.', language: 'fr', unheard: 'x' })).status).toBe(400);
   });
 
+  it('offers the phone a way to hang up, and hangs up after the goodbye of a caller who ends the call', async () => {
+    const requests = fakeNetwork([
+      { content: 'Au revoir, et à bientôt chez Merrain.', tool_calls: [{ id: 'call-bye', type: 'function', function: { name: 'end_call', arguments: '{}' } }] },
+    ]);
+    await step('call-voice-0007', 'start', { language: 'fr' });
+    const answer = await lines(await step('call-voice-0007', 'turns', { turnId: 'turn-bye-0001', message: 'Merci, au revoir.', language: 'fr' }));
+    // No short line while a goodbye is written: the answer alone.
+    expect(answer).toEqual([expect.objectContaining({ type: 'answer', reply: 'Au revoir, et à bientôt chez Merrain.', hangUp: true })]);
+    const offered = (JSON.parse(requests[0]?.body ?? '{}') as { tools: { function: { name: string } }[] }).tools.map((tool) => tool.function.name);
+    expect(offered).toContain('end_call');
+    expect(await (await step('call-voice-0007', 'end', { endedBy: 'goodbye', seconds: 41.2 })).json()).toEqual({ status: 'ok', say: '' });
+    const calls = (await (await SELF.fetch(`${BASE}/calls?limit=10`, { headers: STAFF })).json()) as Record<string, unknown>[];
+    expect(calls[0]).toMatchObject({ sessionId: 'call-voice-0007', endedBy: 'goodbye', seconds: 41 });
+  });
+
   it('gives the last words of a line that hangs up on its own, and shows the owner each call’s length and pace', async () => {
     fakeNetwork();
     await step('call-voice-0005', 'start', { language: 'fr' });
@@ -315,6 +330,12 @@ function demoStep(sandbox: string, sessionId: string, name: string, body: object
 }
 
 describe('calling the demo restaurant from the browser', () => {
+  // The demo restaurant lives at the real time: the tests fix it at 20:05 on Friday 16 October, in the middle of dinner.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-16T18:05:00Z'));
+  });
+
   it('gives the visitor a pass that sends the voice agent with the call, and the agent books in the visitor’s own restaurant', async () => {
     const requests = fakeNetwork([
       call('find_table', { day: 'today', time: '21:30', partySize: 2 }),

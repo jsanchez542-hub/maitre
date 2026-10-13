@@ -1,3 +1,6 @@
+import { localNow } from '../../src/calendar.js';
+import { demoSuggestion, serviceDayAt } from '../../src/demo/evening.js';
+import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import { isLanguage } from '../../src/i18n/index.js';
 import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
@@ -38,16 +41,19 @@ export { Restaurant } from './restaurant.js';
  *
  * The public demo, under /v1/demo/:
  *
- *   GET  (the demo itself)                           { live, calls }: whether it is open now, and the call's terms or
- *                                                    null, without opening a restaurant or counting a visitor
+ *   GET  (the demo itself)                           { live, calls, now, today, day, suggestion }: whether it is open
+ *                                                    now, the call's terms or null, the restaurant's time and date,
+ *                                                    the day of its service and a table a guest could still book,
+ *                                                    without opening a restaurant or counting a visitor
  *   POST sandboxes                                   { turnstile } opens a visitor's own restaurant
  *   POST sandboxes/:sandbox/chat                     { sessionId, message, language } with the real assistant
  *   POST sandboxes/:sandbox/sessions/:session/phone  { phone } typed in the chat's field
  *   POST sandboxes/:sandbox/calls                    { language } the pass to call the restaurant from the browser
  *   POST sandboxes/:sandbox/calls/:session/...       agent  start, turns, keypad and end as above, and usage
  *                                                    { seconds }: the call's length, which the budget pays for
- *   GET  sandboxes/:sandbox/clock                    the evening's time
- *   POST sandboxes/:sandbox/clock                    { minutes } moves it on
+ *   GET  sandboxes/:sandbox/clock                    { clock, day, suggestion, expiresAt }: the real time, the day of
+ *                                                    the service the dashboard opens on, a table a guest could still
+ *                                                    book, and when the restaurant deletes itself
  *   GET  sandboxes/:sandbox/day, conversations and calls, POST sandboxes/:sandbox/staff/...  as the staff routes above
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
@@ -308,7 +314,6 @@ async function demo(request: Request, env: Env, url: URL, rest: readonly string[
     at('POST', 'calls') ||
     callStep !== undefined ||
     at('GET', 'clock') ||
-    at('POST', 'clock') ||
     isStaffRoute(request, inner);
   if (!known) return problem(405, 'method_or_route_not_allowed');
 
@@ -337,12 +342,6 @@ async function demo(request: Request, env: Env, url: URL, rest: readonly string[
     return demoAnswer(await sandbox.demoSetPhone(inner[1] ?? '', String(body.value['phone'] ?? '')));
   }
   if (at('GET', 'clock')) return json(state);
-  if (at('POST', 'clock')) {
-    const body = await readJson(request);
-    if (!body.ok) return body.response;
-    const moved = await sandbox.advance(body.value['minutes']);
-    return json(moved, moved.status === 'ok' ? 200 : moved.status === 'not_found' ? 404 : 400);
-  }
   return staff(request, url, inner, sandbox);
 }
 
@@ -443,7 +442,10 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   if (!sandbox) return problem(503, 'not_configured');
   const state = await sandbox.open();
   if (state.status !== 'ok') return problem(500, 'internal_error');
-  return json({ sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock, calls: callOffer(env) }, 201);
+  return json(
+    { sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock, day: state.day, suggestion: state.suggestion, calls: callOffer(env) },
+    201,
+  );
 }
 
 /**
@@ -454,7 +456,16 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
 async function demoStatus(env: Env): Promise<Response> {
   const budget = budgetStub(env);
   const live = budget !== undefined && Boolean(env.DEMO_OPENROUTER_API_KEY) && (await budget.status()) === 'live';
-  return json({ live, calls: live ? callOffer(env) : null });
+  // The restaurant lives at the real time: a page shows it before any restaurant is opened.
+  const now = new Date();
+  return json({
+    live,
+    calls: live ? callOffer(env) : null,
+    now: now.toISOString(),
+    today: localNow(now, DEMO_RESTAURANT.timeZone).date,
+    day: serviceDayAt(now),
+    suggestion: demoSuggestion(now),
+  });
 }
 
 /** Whether the demo can take calls, and on what terms: the page shows its call button only then, never one that would fail. */

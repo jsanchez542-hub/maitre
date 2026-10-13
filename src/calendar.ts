@@ -100,6 +100,23 @@ export function localNow(instant: Date, timeZone: string): LocalMoment {
   };
 }
 
+/**
+ * The instant a wall clock in the zone shows a date and time: the way back
+ * from `localNow`. The zone's offset is read at that instant, so a summer
+ * evening and a winter one each get their own. A time the clocks skip when
+ * they go forward gives the instant an hour later.
+ */
+export function zonedInstant(date: PlainDate, time: PlainTime, timeZone: string): Date {
+  const wanted = utcMidnight(date) + toMinutes(time) * 60_000;
+  let instant = wanted;
+  // Twice: the offset found the first time may be the other side of a change of the clocks.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const shown = localNow(new Date(instant), timeZone);
+    instant += wanted - (utcMidnight(shown.date) + toMinutes(shown.time) * 60_000);
+  }
+  return new Date(instant);
+}
+
 /** Throws when the runtime does not know the zone, so a typo fails at startup. */
 export function assertTimeZone(timeZone: string): void {
   try {

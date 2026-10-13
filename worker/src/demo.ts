@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { TurnResult } from '../../src/agent/agent.js';
-import { DEMO_EVENING_AT, demoEvening } from '../../src/demo/evening.js';
+import { demoEvening, demoSuggestion, serviceDayAt, type DemoSuggestion } from '../../src/demo/evening.js';
 import { normalizePhone } from '../../src/phone.js';
 import { budgetStub, type Env } from './env.js';
 import {
@@ -15,10 +15,11 @@ import {
 } from './restaurant.js';
 
 /**
- * The public demo, live: each visitor opens a restaurant of their own, the
- * Friday evening of the demo at 20:05 written into its own Durable Object, and
- * talks to the real assistant. What they book is on their dashboard and on no
- * one else's, and the whole restaurant is deleted a day later.
+ * The public demo, live: each visitor opens a restaurant of their own, in its
+ * own Durable Object, at the real date and time in Bordeaux, as a restaurant in
+ * production lives: its service is seeded around the moment it opens, and the
+ * visitor talks to the real assistant. What they book is on their dashboard
+ * and on no one else's, and the whole restaurant is deleted a day later.
  *
  * Abuse is kept out in layers: Turnstile before a restaurant opens, a few
  * restaurants a day per visitor, a ceiling on the messages of each restaurant,
@@ -33,8 +34,6 @@ export const SANDBOX_HOURS = 24;
 export const MAX_DEMO_MESSAGE = 500;
 /** Messages a restaurant takes in one minute: a person types slower than this. */
 const MESSAGES_PER_MINUTE = 8;
-/** How far a visitor can move the evening's clock on, in all: from 20:05 to 02:05. */
-const MAX_ADVANCE_MINUTES = 6 * 60;
 
 /** A demo restaurant's id: 128 random bits, base64url. Knowing it is what opens the restaurant. */
 export const SANDBOX_ID = /^[A-Za-z0-9_-]{22}$/;
@@ -48,14 +47,20 @@ export function newSandboxId(): string {
 }
 
 const EXPIRES_AT = 'demo:expiresAt';
-const ADVANCED_MS = 'demo:advancedMs';
 const MESSAGES = 'demo:messages';
 const CALLS_MADE = 'demo:callsMade';
 const CALL = 'demo:call:';
 /** Time to join a call once its pass is given, before the call's own clock starts, in seconds. */
 const JOIN_SECONDS = 60;
 
-export type SandboxState = { status: 'ok'; expiresAt: string; clock: string } | { status: 'not_found' };
+/**
+ * A visitor's restaurant: when it deletes itself, its time now, the day of the
+ * service its dashboard opens on, and a table a guest could still book, for
+ * the site's examples.
+ */
+export type SandboxState =
+  | { status: 'ok'; expiresAt: string; clock: string; day: string; suggestion: DemoSuggestion }
+  | { status: 'not_found' };
 /** Why a demo turn did not run: the restaurant is gone, the visitor writes too fast or has used its messages, or the demo is paused. */
 type Refusal = { status: 'not_found' } | { status: 'rate_limited' } | { status: 'sandbox_limit' } | { status: 'live_paused' };
 export type DemoChatResponse = ChatResponse | Refusal;
@@ -88,19 +93,12 @@ function setting(value: string | undefined): number | undefined {
 
 export class DemoRestaurant extends Restaurant {
   #expiresAt = 0;
-  #advancedMs = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
       this.#expiresAt = (await ctx.storage.get<number>(EXPIRES_AT)) ?? 0;
-      this.#advancedMs = (await ctx.storage.get<number>(ADVANCED_MS)) ?? 0;
     });
-  }
-
-  /** The evening's own time: Friday 16 October at 20:05, plus what the visitor moved it on. */
-  protected override now(): Date {
-    return new Date(Date.parse(DEMO_EVENING_AT) + this.#advancedMs);
   }
 
   protected override modelKey(): string | undefined {
@@ -115,12 +113,12 @@ export class DemoRestaurant extends Restaurant {
     return this.#expiresAt > Date.now();
   }
 
-  /** Writes the demo evening into this restaurant's database, once, and sets the day after which it deletes itself. */
+  /** Writes the day's service into this restaurant's database, once, at the real time, and sets the day after which it deletes itself. */
   async open(): Promise<SandboxState> {
     if (this.#expiresAt === 0) {
-      demoEvening({ store: this.store });
+      demoEvening({ store: this.store, now: this.now() });
       this.#expiresAt = Date.now() + SANDBOX_HOURS * 3_600_000;
-      await this.ctx.storage.put({ [EXPIRES_AT]: this.#expiresAt, [ADVANCED_MS]: 0 });
+      await this.ctx.storage.put(EXPIRES_AT, this.#expiresAt);
       await this.ctx.storage.setAlarm(this.#expiresAt);
     }
     return this.state();
@@ -128,19 +126,14 @@ export class DemoRestaurant extends Restaurant {
 
   async state(): Promise<SandboxState> {
     if (!this.#open()) return { status: 'not_found' };
-    return { status: 'ok', expiresAt: new Date(this.#expiresAt).toISOString(), clock: this.now().toISOString() };
-  }
-
-  /** Moves the evening on: the dashboard's "move the clock on 15 minutes". */
-  async advance(minutes: unknown): Promise<SandboxState | Invalid> {
-    if (!this.#open()) return { status: 'not_found' };
-    const total = this.#advancedMs / 60_000 + Number(minutes);
-    if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes < 1 || total > MAX_ADVANCE_MINUTES) {
-      return { status: 'invalid', problems: [`minutes must be a whole number from 1, and the evening ends ${MAX_ADVANCE_MINUTES / 60} hours after 20:05`] };
-    }
-    this.#advancedMs = total * 60_000;
-    await this.ctx.storage.put(ADVANCED_MS, this.#advancedMs);
-    return this.state();
+    const now = this.now();
+    return {
+      status: 'ok',
+      expiresAt: new Date(this.#expiresAt).toISOString(),
+      clock: now.toISOString(),
+      day: serviceDayAt(now),
+      suggestion: demoSuggestion(now),
+    };
   }
 
   /** One turn of the visitor's conversation with the real assistant, within this restaurant's limits and the demo's budget. */
@@ -291,7 +284,6 @@ export class DemoRestaurant extends Restaurant {
       await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       this.#expiresAt = 0;
-      this.#advancedMs = 0;
       return;
     }
     if (this.#expiresAt !== 0) await this.ctx.storage.setAlarm(this.#expiresAt);
