@@ -427,6 +427,7 @@ export class Restaurant extends DurableObject<Env> {
           booked: [],
           passedToTeam: false,
           askForPhone: true,
+          hangUp: false,
         };
         this.#conversations.save({ ...stored, updatedAt: now, lastTurn: { id: request.turnId, answer } });
         return send({ type: 'answer', ...answer });
@@ -498,7 +499,16 @@ export class Restaurant extends DurableObject<Env> {
         await run(send);
       } catch (error) {
         console.error('Maître call turn failed:', describe(error));
-        send({ type: 'answer', status: 'ok', reply: messages(language).failureRetry(), outcome: 'failed_retry', booked: [], passedToTeam: false, askForPhone: false });
+        send({
+          type: 'answer',
+          status: 'ok',
+          reply: messages(language).failureRetry(),
+          outcome: 'failed_retry',
+          booked: [],
+          passedToTeam: false,
+          askForPhone: false,
+          hangUp: false,
+        });
       } finally {
         await writer.close().catch(() => undefined);
       }

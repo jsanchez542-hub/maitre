@@ -206,10 +206,72 @@ describe('what a turn did', () => {
   });
 
   it('says when the team was asked to call back, and when the web chat must show its phone field', () => {
-    expect(turnEffects([{ name: 'hand_over', output: { status: 'recorded', needsPhone: true } }])).toEqual({ booked: [], passedToTeam: true, askForPhone: true });
+    expect(turnEffects([{ name: 'hand_over', output: { status: 'recorded', needsPhone: true } }])).toEqual({ booked: [], passedToTeam: true, askForPhone: true, hangUp: false });
     expect(turnEffects([{ name: 'check_dish', output: { status: 'ok', passedToTeam: true } }]).passedToTeam).toBe(true);
-    expect(turnEffects([{ name: 'book_table', output: { status: 'phone_required' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: true });
-    expect(turnEffects([{ name: 'book_table', output: { status: 'hold_expired' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: false });
+    expect(turnEffects([{ name: 'book_table', output: { status: 'phone_required' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: true, hangUp: false });
+    expect(turnEffects([{ name: 'book_table', output: { status: 'hold_expired' } }])).toEqual({ booked: [], passedToTeam: false, askForPhone: false, hangUp: false });
+  });
+
+  it('says when the phone line hangs up after the reply, and not when the call was kept open', () => {
+    expect(turnEffects([{ name: 'end_call', output: { status: 'ending' } }]).hangUp).toBe(true);
+    expect(turnEffects([{ name: 'end_call', output: { status: 'kept_open' } }]).hangUp).toBe(false);
+  });
+});
+
+describe('the end of a phone call', () => {
+  const caller = guest('v9', '+33612345678', 'fr', 'voice');
+
+  it('hangs up after the goodbye written with end_call, in one model call and with no short line said meanwhile', async () => {
+    const h = harness();
+    const heard: string[][] = [];
+    const model = scriptedModel([{ text: 'Au revoir, et à bientôt.', toolCalls: [{ name: 'end_call', input: {} }] }]);
+    const result = await respond(h.engine, model, caller, [], 'Merci, au revoir.', { onToolCalls: (names) => heard.push([...names]) });
+    expect(result).toMatchObject({ reply: 'Au revoir, et à bientôt.', outcome: 'answered', modelCalls: 1, corrections: [] });
+    expect(turnEffects(result.tools).hangUp).toBe(true);
+    expect(heard).toEqual([]);
+    // The call, its answer, then the goodbye: the conversation reads as it would with a second model call.
+    expect(result.transcript.slice(-3).map((entry) => entry.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(result.transcript.at(-1)).toMatchObject({ role: 'assistant', text: 'Au revoir, et à bientôt.' });
+  });
+
+  it('has the goodbye written after end_call when the model called it alone', async () => {
+    const h = harness();
+    const heard: string[][] = [];
+    const model = scriptedModel([{ toolCalls: [{ name: 'end_call', input: {} }] }, { text: 'Très bien, bonne soirée.' }]);
+    const result = await respond(h.engine, model, caller, [], 'Je vais rappeler plus tard, merci.', { onToolCalls: (names) => heard.push([...names]) });
+    expect(result).toMatchObject({ reply: 'Très bien, bonne soirée.', modelCalls: 2 });
+    expect(turnEffects(result.tools).hangUp).toBe(true);
+    expect(heard).toEqual([]);
+  });
+
+  it('keeps the line open when the last reply asks the caller something, and tells the model so', async () => {
+    const h = harness();
+    const model = scriptedModel([{ text: 'Au revoir ! Souhaitez-vous autre chose ?', toolCalls: [{ name: 'end_call', input: {} }] }]);
+    const result = await respond(h.engine, model, caller, [], 'Merci.');
+    expect(turnEffects(result.tools).hangUp).toBe(false);
+    expect(result.corrections).toContain('question_at_goodbye');
+    expect(result.transcript.find((entry) => entry.role === 'tool' && entry.name === 'end_call')).toMatchObject({ output: { status: 'kept_open' } });
+  });
+
+  it('never hangs up on an apology', async () => {
+    const h = harness();
+    const model = scriptedModel((_request, call) => {
+      if (call === 0) return { toolCalls: [{ name: 'end_call', input: {} }] };
+      throw new ModelError('overloaded', 'the provider is down');
+    });
+    const result = await respond(h.engine, model, guest('v10', null, 'fr', 'voice'), [], 'Au revoir.');
+    expect(result.outcome).toBe('failed_retry');
+    expect(turnEffects(result.tools).hangUp).toBe(false);
+  });
+
+  it('is offered on the phone only', async () => {
+    const h = harness();
+    const phone = scriptedModel([{ text: 'Bonjour.' }]);
+    await respond(h.engine, phone, caller, [], 'Allô ?');
+    expect(phone.requests[0]?.tools.map((tool) => tool.name)).toContain('end_call');
+    const chat = scriptedModel([{ text: 'Bonjour.' }]);
+    await respond(h.engine, chat, guest('w1', null, 'fr', 'web'), [], 'Bonjour');
+    expect(chat.requests[0]?.tools.map((tool) => tool.name)).not.toContain('end_call');
   });
 });
 

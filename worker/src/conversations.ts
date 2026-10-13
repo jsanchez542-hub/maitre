@@ -38,7 +38,8 @@ export interface CallLog {
   voiceToVoiceMs?: number[];
 }
 
-export const CALL_ENDINGS = ['caller', 'silence', 'time_limit', 'paused', 'error'] as const;
+/** Who ended a call: the caller hung up, or the line did, after a goodbye, a silence, the call's longest or the demo's budget. */
+export const CALL_ENDINGS = ['caller', 'goodbye', 'silence', 'time_limit', 'paused', 'error'] as const;
 export type CallEndedBy = (typeof CALL_ENDINGS)[number];
 
 export interface TurnLog {

@@ -1,6 +1,6 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
-import { TOOL_DEFINITIONS, bookingWaitsForPhone, runTool, type ToolOutput } from '../tools.js';
+import { bookingWaitsForPhone, runTool, toolDefinitions, type ToolOutput } from '../tools.js';
 import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
@@ -46,6 +46,8 @@ export interface TurnEffects {
   passedToTeam: boolean;
   /** The web chat should now show its phone field. */
   askForPhone: boolean;
+  /** The phone line hangs up once this reply has been heard: the caller was ending the call. */
+  hangUp: boolean;
 }
 
 export function turnEffects(tools: readonly { name: string; output: ToolOutput }[]): TurnEffects {
@@ -64,13 +66,29 @@ export function turnEffects(tools: readonly { name: string; output: ToolOutput }
     booked,
     passedToTeam: tools.some((tool) => (tool.name === 'hand_over' && tool.output.status === 'recorded') || tool.output['passedToTeam'] === true),
     askForPhone: tools.some((tool) => tool.output.status === 'phone_required' || tool.output['needsPhone'] === true),
+    hangUp: tools.some((tool) => tool.name === 'end_call' && tool.output.status === 'ending'),
   };
 }
+
+/** What end_call answers on the phone: the reply the model writes is the last of the call. */
+const ENDING: ToolOutput = { status: 'ending', instruction: 'Write your goodbye now: the line hangs up once it has been heard.' };
+
+const KEPT_OPEN: ToolOutput = { status: 'kept_open', instruction: 'The reply asked the caller something, so the line stayed open for the answer.' };
+
+/** A reply that asks the caller something waits for the answer: it is never the last of a call. */
+const ASKS = /[?¿]/;
 
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */
-export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference' | 'kept_promise' | 'needless_hand_over';
+export type Correction =
+  | 'allergen_relay'
+  | 'guessed_title'
+  | 'name_vocative'
+  | 'spoken_reference'
+  | 'kept_promise'
+  | 'needless_hand_over'
+  | 'question_at_goodbye';
 
 /** Whether the last booking the conversation tried waits only for the guest's number. */
 export function waitsForNumber(transcript: readonly TranscriptEntry[]): boolean {
@@ -182,7 +200,26 @@ export async function respond(
   let usage: Usage = NO_USAGE;
   let costUsd: number | undefined = 0;
   const system = buildSystemPrompt(engine.config, session.language, session.channel, engine.now());
+  const offered = toolDefinitions(session.channel);
   const maxCalls = options.maxModelCalls ?? 6;
+  // Where this turn's entries begin, after the guest's message.
+  const turnStart = working.length;
+
+  /** end_call taken back when the reply asks the caller something: the line stays open for the answer. */
+  const keepLineOpen = (): boolean => {
+    let kept = false;
+    for (const tool of tools) {
+      if (tool.name === 'end_call' && tool.output.status === 'ending') {
+        tool.output = KEPT_OPEN;
+        kept = true;
+      }
+    }
+    for (let index = turnStart; index < working.length; index += 1) {
+      const entry = working[index];
+      if (entry?.role === 'tool' && entry.name === 'end_call' && entry.output.status === 'ending') working[index] = { ...entry, output: KEPT_OPEN };
+    }
+    return kept;
+  };
 
   const finish = (reply: string, outcome: TurnOutcome, corrections: Correction[] = []): TurnResult => {
     working.push({ role: 'assistant', text: reply, toolCalls: [] });
@@ -203,6 +240,8 @@ export async function respond(
 
   const fail = (error: unknown): TurnResult => {
     options.onError?.(error);
+    // An apology is never the last thing a caller hears: the line stays open.
+    keepLineOpen();
     if (!session.phone) return finish(words.failureRetry(), 'failed_retry');
     try {
       const recorded = engine.requestCallback(session, {
@@ -224,7 +263,7 @@ export async function respond(
       response = await model.complete({
         system,
         transcript: working,
-        tools: TOOL_DEFINITIONS,
+        tools: offered,
         maxOutputTokens: options.maxOutputTokens ?? 700,
       });
     } catch (error) {
@@ -236,7 +275,22 @@ export async function respond(
     usage = addUsage(usage, response.usage);
     costUsd = costUsd === undefined || response.costUsd === undefined ? undefined : costUsd + response.costUsd;
 
-    if (response.toolCalls.length === 0) {
+    // The phone's goodbye, written with end_call: it is the last reply of the call, and needs no other model call.
+    const goodbye =
+      session.channel === 'voice' &&
+      response.toolCalls.length > 0 &&
+      response.toolCalls.every((toolCall) => toolCall.name === 'end_call') &&
+      response.text.trim() !== '';
+    if (goodbye) {
+      // The call first, then its words as the reply: the conversation reads as it would with a second model call.
+      working.push({ role: 'assistant', text: '', toolCalls: response.toolCalls });
+      for (const toolCall of response.toolCalls) {
+        tools.push({ name: toolCall.name, input: toolCall.input, output: ENDING, ms: 0 });
+        working.push({ role: 'tool', callId: toolCall.id, name: toolCall.name, output: ENDING });
+      }
+    }
+
+    if (response.toolCalls.length === 0 || goodbye) {
       const cleaned = sanitizeReply(response.text, session.channel, session.language);
       if (cleaned === '') return fail(new Error('The model answered with an empty message'));
       const corrections: Correction[] = [...guarded];
@@ -287,12 +341,16 @@ export async function respond(
           corrections.push('kept_promise');
         }
       }
+      // The line hangs up after a goodbye, never after a question: the caller would be cut off before answering.
+      if (ASKS.test(reply) && keepLineOpen()) corrections.push('question_at_goodbye');
       return finish(reply, 'answered', corrections);
     }
 
     working.push({ role: 'assistant', text: response.text, toolCalls: response.toolCalls });
+    // The phone says a short line while the restaurant's errands run; a goodbye being written needs none.
+    const errands = response.toolCalls.map((toolCall) => toolCall.name).filter((name) => name !== 'end_call');
     try {
-      options.onToolCalls?.(response.toolCalls.map((toolCall) => toolCall.name));
+      if (errands.length > 0) options.onToolCalls?.(errands);
     } catch (error) {
       // Whoever listens cannot break the turn: the guest still gets the answer.
       options.onError?.(error);
@@ -301,9 +359,12 @@ export async function respond(
       const toolStarted = clock();
       const needless = needlessHandOver(toolCall.name, toolCall.input, working);
       if (needless) guarded.push('needless_hand_over');
-      const output: ToolOutput = needless
-        ? { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) }
-        : runTool(engine, session, toolCall.name, toolCall.input, options.onError);
+      const output: ToolOutput =
+        toolCall.name === 'end_call' && session.channel === 'voice'
+          ? ENDING
+          : needless
+            ? { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) }
+            : runTool(engine, session, toolCall.name, toolCall.input, options.onError);
       tools.push({ name: toolCall.name, input: toolCall.input, output, ms: clock() - toolStarted });
       working.push({ role: 'tool', callId: toolCall.id, name: toolCall.name, output });
     }

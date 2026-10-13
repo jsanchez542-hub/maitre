@@ -33,7 +33,8 @@ export type ToolName =
   | 'dishes_without'
   | 'opening_hours'
   | 'business_info'
-  | 'hand_over';
+  | 'hand_over'
+  | 'end_call';
 
 export interface ToolOutput {
   status: string;
@@ -81,7 +82,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'book_table',
     description:
-      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. Read back `booking.readBack` once it is booked, and the reference in writing (never on the phone, where nobody can note it). Never tell the guest an allergy is noted unless it is in `booking.allergies`.',
+      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. Read back `booking.readBack` once it is booked. In a written conversation give the reference too; on the phone never say it, since nobody can note it. Never tell the guest an allergy is noted unless it is in `booking.allergies`.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -198,6 +199,26 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   },
 ];
 
+/**
+ * The phone's own tool: the line hangs up once the goodbye said with it has
+ * been heard. Without it, a caller who said "Merci, au revoir" on 13 October
+ * stayed on an open line, and heard the assistant answer what they then said
+ * to someone in the room.
+ */
+export const END_CALL: ToolDefinition = {
+  name: 'end_call',
+  description:
+    'Hangs up the phone once your reply has been heard. Use it only when the caller is ending the call: they say goodbye, that they will call back, or thank you when nothing is left to do. Write your goodbye in the same reply. Never use it in a reply that asks the caller something.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+};
+
+const VOICE_TOOLS: readonly ToolDefinition[] = [...TOOL_DEFINITIONS, END_CALL];
+
+/** The tools offered to the model on a channel: on the phone, it can also hang up. */
+export function toolDefinitions(channel: Channel): readonly ToolDefinition[] {
+  return channel === 'voice' ? VOICE_TOOLS : TOOL_DEFINITIONS;
+}
+
 const ERRANDS: Readonly<Record<ToolName, Errand>> = {
   find_table: 'looking',
   my_bookings: 'looking',
@@ -211,6 +232,7 @@ const ERRANDS: Readonly<Record<ToolName, Errand>> = {
   change_booking: 'booking',
   confirm_booking: 'booking',
   hand_over: 'other',
+  end_call: 'other',
 };
 
 /** What a batch of tool calls is about, for the line the phone says while they run: the most specific errand wins. */

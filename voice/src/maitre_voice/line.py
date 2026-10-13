@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import aiohttp
 
-EndedBy = Literal["caller", "silence", "time_limit", "paused", "error"]
+EndedBy = Literal["caller", "goodbye", "silence", "time_limit", "paused", "error"]
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,8 @@ class Answer:
     passed_to_team: bool = False
     #: The caller should now type their number on the keypad.
     ask_for_phone: bool = False
+    #: The caller was ending the call: the line hangs up once this reply has been heard.
+    hang_up: bool = False
 
 
 Event = Working | Answer
@@ -106,6 +108,7 @@ def _event(line: dict[str, Any]) -> Event:
             ),
             passed_to_team=bool(line.get("passedToTeam")),
             ask_for_phone=bool(line.get("askForPhone")),
+            hang_up=bool(line.get("hangUp")),
         )
     raise LineError(f"unreadable line from the restaurant: {str(line)[:200]}")
 

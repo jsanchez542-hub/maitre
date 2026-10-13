@@ -10,7 +10,7 @@ const CHANNEL_NOTES: Record<Channel, string> = {
   web: 'The guest is writing in the chat on the restaurant’s website.',
   whatsapp: 'The guest is writing on WhatsApp. Keep messages short enough to read on a phone.',
   voice:
-    'The guest is on the phone and hears your words through speech synthesis. Use short spoken sentences. Never read out lists, references or anything written for the eye; say dates and times as the tools phrase them. While your tools run, the caller already hears a short line such as "Let me check", so never start your reply with words like those.',
+    'The guest is on the phone and hears your words through speech synthesis. Use short spoken sentences. Never read out lists, references or anything written for the eye; say dates and times as the tools phrase them. While your tools run, the caller already hears a short line such as "Let me check", so never start your reply with words like those. Nothing is sent in writing after a call: never offer a written confirmation. When the caller ends the call, saying goodbye or that they will call back, answer with a short goodbye and use end_call in the same reply.',
   staff: 'A member of the restaurant’s staff is entering a booking for a guest.',
 };
 

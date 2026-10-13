@@ -65,6 +65,8 @@ class FakeWorker:
             "booked": [{"reference": "ACDEFH", "date": "2026-10-16", "time": "20:00", "partySize": 4}],
             "passedToTeam": False,
             "askForPhone": False,
+            # The caller ends the call: the restaurant's reply is the last one.
+            "hangUp": body.get("message") == "Merci, au revoir.",
         }
         await response.write(json.dumps(answer).encode() + b"\n")
         await response.write_eof()
@@ -93,6 +95,15 @@ async def test_a_turn_gives_the_short_line_first_then_the_answer(worker, http):
         Answer(reply="C’est réservé.", outcome="answered", booked=(Booked("ACDEFH", "2026-10-16", "20:00", 4),)),
     ]
     assert fake.requests == [("turns", {"turnId": "turn_a", "message": "Une table pour 4 vendredi", "language": "fr"})]
+
+
+async def test_an_answer_says_when_it_is_the_last_of_the_call(worker, http):
+    _fake, url = worker
+    line = Line(http, Call.demo_sandbox(url, "sandbox-0000000000000000", "call_1"), TOKEN)
+    events = [event async for event in line.turn("turn_bye", "Merci, au revoir.", "fr")]
+    assert isinstance(events[-1], Answer) and events[-1].hang_up
+    events = [event async for event in line.turn("turn_more", "Et pour le parking ?", "fr")]
+    assert isinstance(events[-1], Answer) and not events[-1].hang_up
 
 
 async def test_a_dropped_turn_is_asked_again_with_the_same_id_and_its_short_line_said_once(worker, http):

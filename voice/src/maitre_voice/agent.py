@@ -3,8 +3,8 @@
 LiveKit sends it a call: from the public demo, where a visitor calls their own
 restaurant from the browser, or on the restaurant's own number. It hears the
 caller, speaks the restaurant's answers, takes the number from the keypad, and
-hangs up when the caller has gone quiet, when the call reaches its longest, or
-when the demo's budget says so.
+hangs up after its goodbye when the caller ends the call, when the caller has
+gone quiet, when the call reaches its longest, or when the demo's budget says so.
 
     uv run python -m maitre_voice.agent dev     # on a developer's machine
 """
@@ -40,7 +40,7 @@ from livekit.agents.voice.background_audio import AudioConfig, BackgroundAudioPl
 from livekit.agents.voice.events import CloseEvent, ConversationItemAddedEvent, UserInputTranscribedEvent, UserStateChangedEvent
 from livekit.plugins import noise_cancellation, silero
 
-from .brain import TURN, UNREACHABLE, CallState, RestaurantBrain, Spoken
+from .brain import TURN, UNREACHABLE, CallState, Goodbye, RestaurantBrain, Spoken
 from .config import LANGUAGES, Settings
 from .keypad import Keypad
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
@@ -64,6 +64,8 @@ ENDPOINTING_SECONDS = 0.25
 LONGEST_TURN_WAIT_SECONDS = 1.5
 #: Below this peak (16-bit samples, about -44 dBFS) a frame of synthesized speech is silence.
 SILENT_PEAK = 200
+#: Seconds the line waits once its goodbye has been heard before it hangs up: time for the caller to say one more thing.
+GOODBYE_PAUSE_SECONDS = 1.2
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -187,6 +189,7 @@ class PhoneCall:
         self._keypad_shown = "closed"
         self._tasks: set[asyncio.Task[None]] = set()
         self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
+        self._goodbye = Goodbye(lambda: self._spawn(self.end("goodbye")), GOODBYE_PAUSE_SECONDS)
         self._tts = build_tts(settings.voice_for(started.language), started.language)
         self.session: AgentSession = AgentSession(
             stt=build_stt(settings.stt, started.language, settings.end_of_turn, started.keyterms),
@@ -240,6 +243,8 @@ class PhoneCall:
     # Events from the call.
 
     def _on_transcript(self, event: UserInputTranscribedEvent) -> None:
+        if event.is_final and event.transcript.strip():
+            self._goodbye.caller_said()
         language = (event.language or "")[:2].lower()
         if not event.is_final or language not in LANGUAGES or language == self._state.language:
             return
@@ -251,6 +256,8 @@ class PhoneCall:
     def _on_user_state(self, event: UserStateChangedEvent) -> None:
         if event.new_state == "away":
             self._spawn(self.end("silence"))
+            return
+        self._goodbye.caller_speaking(event.new_state == "speaking")
 
     def _on_close(self, _event: CloseEvent) -> None:
         if not self._ending:
@@ -279,6 +286,7 @@ class PhoneCall:
     def _on_answer(self, answer: Answer) -> None:
         if answer.booked:
             logger.info("booked during the call", extra={"bookings": len(answer.booked)})
+        self._goodbye.answered(self._state.last_turn, answer.hang_up)
         # A browser shows its keypad when the restaurant asks for a number; a phone has one anyway.
         keypad = "open" if answer.ask_for_phone else "closed"
         if keypad != self._keypad_shown:
@@ -318,6 +326,7 @@ class PhoneCall:
         text = " ".join(item.text_content or "" for item in items if item.type == "message" and item.role == "assistant").strip()
         if text:
             self._state.spoken[turn_id] = Spoken(text, cut_short=interrupted)
+        self._goodbye.played(turn_id, interrupted)
 
     async def _watch_the_clock(self) -> None:
         """A demo call tells the Worker how long it has lasted, which the demo's budget pays for; any call has a longest."""

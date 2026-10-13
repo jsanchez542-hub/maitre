@@ -9,6 +9,7 @@ as the start of the same reply.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -73,6 +74,68 @@ class CallState:
             return None, None
         heard = without_working_line(spoken.text, self.working_lines)
         return (heard, None) if heard else (None, turn)
+
+
+class Goodbye:
+    """The line's own hang-up, after the reply that ends the call.
+
+    It waits for that reply to be heard to the end, then for a short pause. A caller who speaks over the goodbye, or
+    says words in the pause, keeps the line open: the restaurant answers them, and says goodbye again if that is what
+    they said. A noise in the pause, which recognition makes no words of, only delays the hang-up.
+    """
+
+    def __init__(self, hang_up: Callable[[], None], pause: float) -> None:
+        self._hang_up = hang_up
+        self._pause = pause
+        #: The turn whose reply is the last of the call, until it has played.
+        self._turn: str | None = None
+        #: The goodbye was heard: the line hangs up once the caller is quiet for the pause.
+        self._heard = False
+        self._speaking = False
+        self._timer: asyncio.TimerHandle | None = None
+
+    def answered(self, turn_id: str | None, ends_call: bool) -> None:
+        """The restaurant answered a turn, with the last reply of the call or not."""
+        self._turn = turn_id if ends_call else None
+
+    def played(self, turn_id: str, interrupted: bool) -> None:
+        """A reply has finished playing, to its end or cut short."""
+        if turn_id != self._turn:
+            return
+        self._turn = None
+        if interrupted:
+            return
+        self._heard = True
+        if not self._speaking:
+            self._arm()
+
+    def caller_speaking(self, speaking: bool) -> None:
+        """The caller's voice, as voice activity hears it: the hang-up waits until they are quiet again."""
+        self._speaking = speaking
+        if speaking:
+            self._disarm()
+        elif self._heard:
+            self._arm()
+
+    def caller_said(self) -> None:
+        """The caller said words: they are not done, and the restaurant answers them."""
+        self._turn = None
+        self._heard = False
+        self._disarm()
+
+    def _arm(self) -> None:
+        self._disarm()
+        self._timer = asyncio.get_running_loop().call_later(self._pause, self._fire)
+
+    def _disarm(self) -> None:
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+
+    def _fire(self) -> None:
+        self._timer = None
+        self._heard = False
+        self._hang_up()
 
 
 def without_working_line(text: str, working_lines: list[str]) -> str:

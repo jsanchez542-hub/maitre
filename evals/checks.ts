@@ -1,4 +1,4 @@
-import type { TurnResult } from '../src/agent/agent.js';
+import { turnEffects, type TurnResult } from '../src/agent/agent.js';
 import { comparable, referencesIn } from '../src/agent/guards.js';
 import type { Language } from '../src/i18n/index.js';
 import type { Booking, CallbackRequest } from '../src/store.js';
@@ -109,10 +109,21 @@ export function universalChecks(scenario: Scenario, outcome: Outcome): Check[] {
         new RegExp([...reference].join('[\\s.,-]*'), 'i').test(turn.reply),
       );
       checks.push({ name: `${label} reads no booking reference aloud`, ok: !spoken, ...(spoken ? { detail: spoken } : {}) });
+      // Nothing is sent after a call: a written confirmation offered on the phone is a promise nobody keeps.
+      const promised = IN_WRITING.exec(turn.reply);
+      checks.push({ name: `${label} promises nothing in writing`, ok: !promised, ...(promised ? { detail: promised[0] } : {}) });
+      // Only the last reply may end the call: a line that hangs up earlier cuts the caller off.
+      if (index < outcome.turns.length - 1) {
+        checks.push({ name: `${label} keeps the line open`, ok: !turnEffects(turn.tools).hangUp });
+      }
     }
   });
   return checks;
 }
+
+/** A confirmation offered in writing, in the three languages. */
+const IN_WRITING =
+  /par (?:écrit|sms|e-?mail|mail|message)|in writing|by (?:text|sms|e-?mail)|send you (?:a )?(?:text|confirmation|e-?mail)|por (?:escrito|sms|correo|mensaje)/i;
 
 function describeBooking(booking: Booking): string {
   return `${booking.date} ${booking.time} for ${booking.partySize} (${booking.guestName}, ${booking.status})`;
@@ -171,6 +182,15 @@ export function expectationCheck(expectation: Expectation, outcome: Outcome): Ch
     case 'tool': {
       const called = outcome.turns.some((turn) => turn.tools.some((tool) => tool.name === expectation.name && tool.output.status === 'ok'));
       return { name: `used ${expectation.name}`, ok: called };
+    }
+    case 'hangs_up': {
+      const hangs = outcome.turns.map((turn) => turnEffects(turn.tools).hangUp);
+      const ok = hangs.at(-1) === true && hangs.slice(0, -1).every((hung) => !hung);
+      return { name: 'hangs up after the last reply, and only then', ok, ...(ok ? {} : { detail: `hang-ups by turn: ${hangs.join(', ')}` }) };
+    }
+    case 'stays_open': {
+      const ok = outcome.turns.every((turn) => !turnEffects(turn.tools).hangUp);
+      return { name: 'keeps the line open', ok };
     }
     case 'reply': {
       const ok = replies.some((reply) => expectation.pattern.test(reply));

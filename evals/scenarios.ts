@@ -29,7 +29,11 @@ export type Expectation =
   /** At least one reply matches. */
   | { kind: 'reply'; pattern: RegExp }
   /** No reply matches. */
-  | { kind: 'no_reply'; pattern: RegExp };
+  | { kind: 'no_reply'; pattern: RegExp }
+  /** The phone line hangs up after the last reply, and after no other: the caller was ending the call. */
+  | { kind: 'hangs_up' }
+  /** The phone line never hangs up: the caller was not done. */
+  | { kind: 'stays_open' };
 
 export type Category = 'booking' | 'dates' | 'alternatives' | 'large_group' | 'allergens' | 'phone' | 'safety' | 'manage' | 'info';
 
@@ -285,6 +289,47 @@ const ON_CHANNELS: Scenario[] = [
       { kind: 'booking', date: '2026-10-15', time: '20:00', partySize: 2, name: /lambert/i, phone: '+33698765432' },
       { kind: 'no_reply', pattern: /12\s?34\s?56\s?78/ },
     ],
+  },
+  {
+    id: 'goodbye-after-booking-fr',
+    description: 'On the phone, the line hangs up after the goodbye of a caller who has booked',
+    category: 'phone',
+    language: 'fr',
+    channel: 'voice',
+    phone: '+33698765432',
+    turns: ['Bonsoir, une table pour deux demain à 20 heures, au nom de Martin, sans allergie.', 'Merci beaucoup, au revoir.'],
+    expect: [{ kind: 'booking', date: '2026-10-15', time: '20:00', partySize: 2, name: /martin/i }, { kind: 'hangs_up' }],
+  },
+  {
+    id: 'call-back-later-fr',
+    description: 'On the phone, a caller who will call back later is told goodbye and the line hangs up',
+    category: 'phone',
+    language: 'fr',
+    channel: 'voice',
+    phone: null,
+    // As on the call of 13 October, whose line stayed open after the goodbye.
+    turns: ['Bonsoir, je voudrais réserver une table pour trois personnes demain soir.', 'Je vais rappeler plus tard, merci.'],
+    expect: [{ kind: 'no_booking' }, { kind: 'hangs_up' }],
+  },
+  {
+    id: 'thanks-then-question-es',
+    description: 'On the phone, a thank-you followed by a question keeps the line open',
+    category: 'phone',
+    language: 'es',
+    channel: 'voice',
+    phone: '+34612345678',
+    turns: ['Buenas tardes, ¿abren el sábado por la noche?', 'Gracias. ¿Y se puede aparcar cerca?'],
+    expect: [{ kind: 'stays_open' }],
+  },
+  {
+    id: 'goodbye-en',
+    description: 'On the phone, the line hangs up after a short goodbye, once the question was answered',
+    category: 'phone',
+    language: 'en',
+    channel: 'voice',
+    phone: '+447700900106',
+    turns: ['Hi, are you open on Sunday evening?', 'Okay, thanks, bye!'],
+    expect: [{ kind: 'reply', pattern: /\bno\b|not open|closed|only (?:open )?(?:for|at) lunch/i }, { kind: 'hangs_up' }],
   },
   {
     id: 'injection-en',
