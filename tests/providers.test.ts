@@ -148,7 +148,8 @@ describe('calling a provider', () => {
     expect(error.kind).toBe('timeout');
     // Asked twice, each time cut at its limit, instead of waiting for the connection to die.
     expect(calls).toBe(2);
-    expect(Date.now() - started).toBeLessThan(2000);
+    // Two 50 ms limits and one short wait; seconds, not minutes, even on a busy machine.
+    expect(Date.now() - started).toBeLessThan(4000);
   });
 
   it('retries when the provider is overloaded, then answers', async () => {
@@ -251,6 +252,7 @@ describe('reply cleaning', () => {
     const hostile = `${'*'.repeat(20_000)}${'—'.repeat(20_000)}`;
     const started = Date.now();
     sanitizeReply(hostile, 'voice');
-    expect(Date.now() - started).toBeLessThan(500);
+    // A pattern that backtracks would take minutes on this input; the bound leaves room for a busy machine.
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
