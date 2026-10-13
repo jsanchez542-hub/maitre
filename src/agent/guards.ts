@@ -151,6 +151,8 @@ export function dropSpokenReferences(reply: string, references: readonly string[
   const sentences = sentencesOf(reply);
   const said = sentences.flatMap((sentence) => {
     if (!spoken.some((pattern) => pattern.test(sentence))) return [sentence];
+    // A sentence that opens with the reference is about it ("Votre référence est 4XKZ2P, notez-la."): it goes whole.
+    if (mentions.some((mention) => sentence.search(new RegExp(mention.source, 'iu')) === 0)) return [];
     const without = mentions
       .reduce((text, mention) => text.replace(mention, ''), sentence)
       .replace(/\s+([.,!?;:…])/g, '$1')

@@ -165,6 +165,8 @@ describe('the spoken reference guard', () => {
       ['C’est réservé sous la référence 3PYPJA pour vendredi à 20 h.', '3PYPJA', 'C’est réservé pour vendredi à 20 h.'],
       ['Your table is booked, your reference is ACDEFH. See you on Friday!', 'ACDEFH', 'Your table is booked. See you on Friday!'],
       ['Su mesa está reservada con la referencia 34PDUE para el viernes.', '34PDUE', 'Su mesa está reservada para el viernes.'],
+      // The first live call, 13 October: the rest of a sentence about the reference means nothing without it.
+      ['Votre table est réservée au nom de Dupont. Votre référence est 4XKZ2P, je vous conseille de la noter.', '4XKZ2P', 'Votre table est réservée au nom de Dupont.'],
     ];
     for (const [reply, reference, expected] of cases) {
       expect(dropSpokenReferences(reply, [reference]), reply).toEqual({ reply: expected, corrected: true });
