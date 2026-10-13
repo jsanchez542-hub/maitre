@@ -101,6 +101,11 @@ export const es: Messages = {
   keypadUnreadable() {
     return 'No he podido leer ese número. ¿Puede volver a marcarlo en el teclado y pulsar la tecla almohadilla?';
   },
+  bookingNeedsNumber(channel) {
+    return channel === 'voice'
+      ? 'Para confirmar la reserva, marque su número de teléfono en el teclado y pulse la tecla almohadilla.'
+      : 'Para confirmar la reserva, indique su número de teléfono en el campo debajo de la conversación.';
+  },
   callEnding(reason) {
     return {
       silence: 'Ya no le oigo. No dude en volver a llamar. Adiós.',

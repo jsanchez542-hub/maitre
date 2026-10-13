@@ -1,6 +1,6 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
-import { TOOL_DEFINITIONS, runTool, type ToolOutput } from '../tools.js';
+import { TOOL_DEFINITIONS, bookingWaitsForPhone, runTool, type ToolOutput } from '../tools.js';
 import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
@@ -70,7 +70,26 @@ export function turnEffects(tools: readonly { name: string; output: ToolOutput }
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */
-export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference' | 'kept_promise';
+export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference' | 'kept_promise' | 'needless_hand_over';
+
+/** Whether the last booking the conversation tried waits only for the guest's number. */
+export function waitsForNumber(transcript: readonly TranscriptEntry[]): boolean {
+  for (let index = transcript.length - 1; index >= 0; index -= 1) {
+    const entry = transcript[index];
+    if (entry?.role === 'tool' && entry.name === 'book_table') return entry.output.status === 'phone_required';
+  }
+  return false;
+}
+
+/**
+ * A hand_over for no stated reason while a booking waits only for the number is
+ * a model taking that wait for a failure: the team would call back about a table
+ * the caller was about to book, and the caller would hear it could not be made.
+ * Large groups, events and complaints go to the team as ever.
+ */
+function needlessHandOver(name: string, input: unknown, transcript: readonly TranscriptEntry[]): boolean {
+  return name === 'hand_over' && (input as { reason?: unknown } | null)?.reason === 'other' && waitsForNumber(transcript);
+}
 
 /** Whether the conversation has already passed something to the team: by hand_over, or by an allergen question the sheet could not answer. */
 function passedOn(transcript: readonly TranscriptEntry[]): boolean {
@@ -158,6 +177,8 @@ export async function respond(
   const tools: ToolRecord[] = [];
   const modelMs: number[] = [];
   const servedBy: string[] = [];
+  // Rules the code enforced on the tool calls, before the reply.
+  const guarded: Correction[] = [];
   let usage: Usage = NO_USAGE;
   let costUsd: number | undefined = 0;
   const system = buildSystemPrompt(engine.config, session.language, session.channel, engine.now());
@@ -218,7 +239,7 @@ export async function respond(
     if (response.toolCalls.length === 0) {
       const cleaned = sanitizeReply(response.text, session.channel, session.language);
       if (cleaned === '') return fail(new Error('The model answered with an empty message'));
-      const corrections: Correction[] = [];
+      const corrections: Correction[] = [...guarded];
       let reply = cleaned;
       const relay = enforceAllergenRelay(reply, tools);
       if (relay.corrected) {
@@ -250,7 +271,11 @@ export async function respond(
       }
       // A promise to the guest is kept by code: told the team has their request, the team gets it,
       // even when the model said so without calling hand_over.
-      if (promisesTeam(reply) && !passedOn(working)) {
+      if (promisesTeam(reply) && !passedOn(working) && waitsForNumber(working) && (session.channel === 'voice' || session.channel === 'web')) {
+        // Waiting only for the number, the team has nothing to call back about: the guest is asked for it instead.
+        reply = words.bookingNeedsNumber(session.channel);
+        if (!corrections.includes('needless_hand_over')) corrections.push('needless_hand_over');
+      } else if (promisesTeam(reply) && !passedOn(working)) {
         const input = { reason: 'other', summary: `Told the team would get back to them, from: "${text.slice(0, 300)}"` };
         const output = runTool(engine, session, 'hand_over', input, options.onError);
         if (output.status === 'recorded') {
@@ -274,7 +299,11 @@ export async function respond(
     }
     for (const toolCall of response.toolCalls) {
       const toolStarted = clock();
-      const output = runTool(engine, session, toolCall.name, toolCall.input, options.onError);
+      const needless = needlessHandOver(toolCall.name, toolCall.input, working);
+      if (needless) guarded.push('needless_hand_over');
+      const output: ToolOutput = needless
+        ? { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) }
+        : runTool(engine, session, toolCall.name, toolCall.input, options.onError);
       tools.push({ name: toolCall.name, input: toolCall.input, output, ms: clock() - toolStarted });
       working.push({ role: 'tool', callId: toolCall.id, name: toolCall.name, output });
     }

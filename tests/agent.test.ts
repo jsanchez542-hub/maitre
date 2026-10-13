@@ -47,6 +47,45 @@ describe('a turn of conversation', () => {
     expect(result.transcript.map((entry) => entry.role)).toEqual(['user', 'assistant']);
   });
 
+  it('asks for the number instead of passing on a booking that waits only for it (13 October)', async () => {
+    const h = harness();
+    const caller = guest('v1', null, 'fr', 'voice');
+    const found = await respond(
+      h.engine,
+      scriptedModel([{ toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 4 } }] }, { text: 'À quel nom ?' }]),
+      caller,
+      [],
+      'Une table pour 4 vendredi à 20 h',
+    );
+    const holdId = found.tools[0]?.output['holdId'];
+    // As on the call: the booking got "phone_required" twice, and the model passed it to the team and promised a call back.
+    const model = scriptedModel([
+      { toolCalls: [{ name: 'book_table', input: { holdId, guestName: 'Dupont', allergies: [] } }] },
+      { toolCalls: [{ name: 'hand_over', input: { reason: 'other', summary: 'Could not finish the booking' } }] },
+      { text: 'Je suis désolé, je ne peux pas finaliser la réservation. J’ai transmis votre demande à l’équipe, qui vous rappellera.' },
+    ]);
+    const result = await respond(h.engine, model, caller, found.transcript, 'Au nom de Dupont, et personne n’a d’allergie.');
+    expect(result.tools.map((tool) => tool.output.status)).toEqual(['phone_required', 'not_needed']);
+    expect(String(result.tools[0]?.output['instruction'])).toContain('nothing has gone wrong');
+    expect(h.store.snapshot().callbacks).toHaveLength(0);
+    expect(result.reply).toBe('Pour confirmer la réservation, tapez votre numéro de téléphone sur le clavier, puis la touche dièse.');
+    expect(result.corrections).toContain('needless_hand_over');
+
+    // A real reason still goes to the team, number or not.
+    const group = await respond(
+      h.engine,
+      scriptedModel([
+        { toolCalls: [{ name: 'hand_over', input: { reason: 'large_group', summary: 'A group of 30 next month' } }] },
+        { text: 'L’équipe vous rappellera pour le groupe.' },
+      ]),
+      caller,
+      result.transcript,
+      'Et pour un groupe de 30 le mois prochain ?',
+    );
+    expect(group.tools[0]?.output.status).toBe('recorded');
+    expect(h.store.snapshot().callbacks).toHaveLength(1);
+  });
+
   it('cleans the reply before the guest sees it', async () => {
     const h = harness();
     const model = scriptedModel([{ text: '**Bien sûr** — nous sommes ouverts.\n- le midi\n- le soir' }]);

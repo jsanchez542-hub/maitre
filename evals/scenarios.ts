@@ -255,6 +255,21 @@ const ON_CHANNELS: Scenario[] = [
     expect: [{ kind: 'no_booking' }, { kind: 'reply', pattern: /champ|ci-dessous|en dessous|sous la conversation|sous le chat/i }],
   },
   {
+    id: 'keypad-wait-fr',
+    description: 'On a call without caller ID, a booking waiting for the number is never passed to the team, even when the caller adds something first',
+    category: 'phone',
+    language: 'fr',
+    channel: 'voice',
+    phone: null,
+    // As on the call of 13 October: the name, then the allergies in a turn of their own, before the number is typed.
+    turns: ['Bonsoir, je voudrais réserver une table pour 4 personnes vendredi à 20 h.', 'Au nom de Dupont.', 'Et personne n’a d’allergie.'],
+    expect: [
+      { kind: 'no_booking' },
+      { kind: 'reply', pattern: /clavier/i },
+      { kind: 'no_reply', pattern: /rappel|recontact|transmis|l['’]équipe|ne (?:peux|pourrai) pas (?:finaliser|confirmer)/i },
+    ],
+  },
+  {
     id: 'dictated-number-fr',
     description: 'On the phone, a dictated number never replaces the caller ID',
     category: 'phone',

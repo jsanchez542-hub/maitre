@@ -227,6 +227,17 @@ const PHONE_INSTRUCTIONS: Record<Channel, string> = {
 };
 
 /**
+ * A booking that waits only for the guest's number. Told only to ask for it, a
+ * model that got the answer twice in a row took it for a failure: it passed the
+ * booking to the team and told the caller it could not be made (13 October).
+ */
+export function bookingWaitsForPhone(channel: Channel): string {
+  if (channel !== 'web' && channel !== 'voice') return PHONE_INSTRUCTIONS[channel];
+  const guest = channel === 'voice' ? 'caller' : 'guest';
+  return `The table is held and the booking waits only for the ${guest}'s number: nothing has gone wrong. ${PHONE_INSTRUCTIONS[channel]} Never use hand_over for this, and do not call book_table again until they have typed it.`;
+}
+
+/**
  * When the team has a request but no number to call back on, the channel asks
  * for one: `needsPhone` makes the web chat show its phone field.
  */
@@ -334,7 +345,7 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
         ...(notes === undefined ? {} : { notes }),
         ...(allergies === undefined ? {} : { allergies }),
       });
-      return result.status === 'phone_required' ? { ...result, instruction: PHONE_INSTRUCTIONS[session.channel] } : result;
+      return result.status === 'phone_required' ? { ...result, instruction: bookingWaitsForPhone(session.channel) } : result;
     }
     case 'my_bookings': {
       const result = engine.myBookings(session);

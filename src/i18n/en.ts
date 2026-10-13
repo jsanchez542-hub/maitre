@@ -101,6 +101,11 @@ export const en: Messages = {
   keypadUnreadable() {
     return 'I could not read that number. Could you type it again on the keypad, then press the hash key?';
   },
+  bookingNeedsNumber(channel) {
+    return channel === 'voice'
+      ? 'To confirm the booking, please type your phone number on the keypad, then press the hash key.'
+      : 'To confirm the booking, please enter your phone number in the field below the chat.';
+  },
   callEnding(reason) {
     return {
       silence: 'I can no longer hear you. Feel free to call back. Goodbye.',

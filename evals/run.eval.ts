@@ -22,7 +22,8 @@ import { guestNumber, NOW, ON_THE_PHONE, SCENARIOS, type Scenario } from './scen
  *
  * Settings, from the environment or from .env:
  *   OPENROUTER_API_KEY        required
- *   MAITRE_EVAL_MODELS        comma-separated OpenRouter ids
+ *   MAITRE_EVAL_MODELS        OpenRouter ids, separated by semicolons; commas will do when no id names its providers
+ *                             after an "@", as the configured route does ("…@google-vertex/europe,anthropic")
  *   MAITRE_EVAL_RUNS          runs per scenario (default 3; a scenario passes when every run passes)
  *   MAITRE_EVAL_BUDGET_USD    stop starting new runs past this spend (default 2)
  *   MAITRE_EVAL_ONLY          comma-separated scenario ids
@@ -33,6 +34,15 @@ import { guestNumber, NOW, ON_THE_PHONE, SCENARIOS, type Scenario } from './scen
  */
 
 const DEFAULT_MODELS = ['anthropic/claude-haiku-5.5', 'openai/gpt-6-luna', 'mistralai/mistral-small-2603'];
+
+/** Model ids: a route after an "@" lists its providers with commas, so ids are then told apart by semicolons. */
+function modelList(value: string): string[] {
+  const separator = value.includes(';') || value.includes('@') ? ';' : ',';
+  return value
+    .split(separator)
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
 
 function setting(name: string, fallback: string): string {
   const value = process.env[name];
@@ -133,7 +143,7 @@ it('runs the evaluation against real models', async () => {
   const apiKey = process.env['OPENROUTER_API_KEY'];
   if (!apiKey) throw new Error('OPENROUTER_API_KEY is missing: put it in .env');
 
-  const models = setting('MAITRE_EVAL_MODELS', DEFAULT_MODELS.join(',')).split(',').map((id) => id.trim()).filter(Boolean);
+  const models = modelList(setting('MAITRE_EVAL_MODELS', DEFAULT_MODELS.join(';')));
   const runs = Number(setting('MAITRE_EVAL_RUNS', '3'));
   const budget = Number(setting('MAITRE_EVAL_BUDGET_USD', '2'));
   const concurrency = Number(setting('MAITRE_EVAL_CONCURRENCY', '3'));

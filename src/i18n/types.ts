@@ -56,6 +56,8 @@ export interface Messages {
   working(errand: Errand): string;
   /** On the phone: the digits typed on the keypad are not a phone number. */
   keypadUnreadable(): string;
+  /** A booking waits only for the guest's number: on the phone, typed on the keypad; on the web, in the field. */
+  bookingNeedsNumber(channel: 'voice' | 'web'): string;
   /** On the phone: the last words when the line hangs up on its own. */
   callEnding(reason: CallEnd): string;
 }

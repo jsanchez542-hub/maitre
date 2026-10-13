@@ -109,6 +109,11 @@ export const fr: Messages = {
   keypadUnreadable() {
     return `Je n’ai pas pu lire ce numéro. Pouvez-vous le taper à nouveau sur le clavier, puis la touche dièse${THIN}?`;
   },
+  bookingNeedsNumber(channel) {
+    return channel === 'voice'
+      ? 'Pour confirmer la réservation, tapez votre numéro de téléphone sur le clavier, puis la touche dièse.'
+      : 'Pour confirmer la réservation, indiquez votre numéro de téléphone dans le champ sous la conversation.';
+  },
   callEnding(reason) {
     return {
       silence: 'Je ne vous entends plus. N’hésitez pas à rappeler. Au revoir.',
