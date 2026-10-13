@@ -158,7 +158,9 @@ describe('capacity and tables under random traffic', () => {
     // Guard against a test that passes because nothing was ever booked or moved.
     expect(booked).toBeGreaterThan(400);
     expect(moves).toBeGreaterThan(100);
-  });
+    // Twelve thousand steps take two seconds on a laptop at full speed and seven on its battery: the
+    // test is about what the engine does, not how fast the machine is.
+  }, 60_000);
 
   it('never gives two bookings the same reference', () => {
     const h = harness();
