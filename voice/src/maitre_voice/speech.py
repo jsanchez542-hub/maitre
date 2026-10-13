@@ -101,10 +101,14 @@ def ends_turns_itself(spec: str) -> bool:
     return (provider == "deepgram" and model.startswith("flux")) or (provider == "inference" and "/flux" in model)
 
 
-def follow_language(engine: tts.TTS, language: str) -> None:
-    """Speaks the caller's language after they switch, when the synthesis can be told."""
+def switch_voice(engine: tts.TTS, spec: str, language: str) -> None:
+    """Speaks the caller's language with that language's own voice, after they switch."""
     update = getattr(engine, "update_options", None)
     if update is None:
+        return
+    provider, model, voice = _split(spec, 3)
+    if provider == "inference":
+        update(model=model, language=language, **({"voice": voice} if voice else {}))
         return
     try:
         update(language=language)

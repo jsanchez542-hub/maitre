@@ -1,13 +1,14 @@
 """A real call to the demo restaurant, made by a program: the end-to-end test of the voice channel.
 
-    uv run python bench/caller.py
+    uv run python bench/caller.py          # in French; "en" or "es" for the other languages the line speaks
 
 It does what a visitor's browser does. It opens a demo restaurant on the local
 Worker, asks for the pass to call, and joins the LiveKit room as the caller; the
 voice agent must be running (python -m maitre_voice.agent dev). Then it speaks
-French lines through a microphone of its own (speech synthesized once with a
+its lines through a microphone of its own (speech synthesized once with a native
 voice unlike the agent's), types the number on the keypad as DTMF tones, and
-listens. From the caller's side it measures, for every answer, the time from its
+listens. Each language is a test of its own: calls in Spanish were silent while
+the calls in French, the only ones tested, went well. From the caller's side it measures, for every answer, the time from its
 last word to the agent's first sound. At the end it checks the restaurant's
 evening: the booking must be there, with the number from the keypad.
 """
@@ -32,18 +33,45 @@ from maitre_voice.speech import build_tts
 
 API = "http://127.0.0.1:8787"
 EVENING = "2026-10-16"
-#: The caller's lines, said in turn once the agent has finished speaking. None means: type the number.
-SCRIPT: list[str | None] = [
-    "Bonsoir, je voudrais réserver une table pour quatre personnes ce soir à vingt et une heures trente.",
-    "Au nom de Dupont, et personne n'a d'allergie.",
-    None,
-    "Merci beaucoup, au revoir.",
-]
+#: Per language: the caller's lines, said in turn once the agent has finished speaking (None means: type the number),
+#: the name the booking must be under, and the caller's voice, native and unlike the agent's.
+CALLS: dict[str, tuple[list[str | None], str, str]] = {
+    "fr": (
+        [
+            "Bonsoir, je voudrais réserver une table pour quatre personnes ce soir à vingt et une heures trente.",
+            "Au nom de Dupont, et personne n'a d'allergie.",
+            None,
+            "Merci beaucoup, au revoir.",
+        ],
+        "dupont",
+        "inference:deepgram/aura-2:hector",
+    ),
+    "es": (
+        [
+            "Buenas noches, quería reservar una mesa para cuatro personas esta noche a las nueve y media.",
+            "A nombre de Ortega, y nadie tiene alergias.",
+            None,
+            "Muchas gracias, adiós.",
+        ],
+        "ortega",
+        "inference:deepgram/aura-2:nestor",
+    ),
+    "en": (
+        [
+            "Good evening, I'd like to book a table for four people tonight at half past nine.",
+            "Under the name Clarke, and nobody has any allergies.",
+            None,
+            "Thank you very much, goodbye.",
+        ],
+        "clarke",
+        "inference:deepgram/aura-2:orion",
+    ),
+}
+LANGUAGE = sys.argv[1] if len(sys.argv) > 1 else "fr"
+SCRIPT, GUEST, CALLER_VOICE = CALLS[LANGUAGE]
 #: From ARCEP's range for fiction (06 39 98 xx xx): the booking it ends up in shows on the panel.
 NUMBER = "0639980042"
 DTMF_CODES = {"*": 10, "#": 11}
-#: The caller's voice: a synthesized voice that is not the agent's, so the recognition is tested on someone else.
-CALLER_VOICE = "inference:deepgram/aura-2:hector"
 SAMPLE_RATE = 48_000
 FRAME_MS = 20
 #: Agent audio louder than this (RMS on 16-bit samples) counts as speech.
@@ -59,7 +87,7 @@ OUT = Path(__file__).with_name("runs")
 
 async def synthesize_lines(lines: list[str]) -> list[np.ndarray]:
     """The caller's lines as 48 kHz mono 16-bit samples."""
-    engine = build_tts(CALLER_VOICE, "fr")
+    engine = build_tts(CALLER_VOICE, LANGUAGE)
     clips = []
     async with http_context.open():
         for line in lines:
@@ -186,7 +214,7 @@ async def main() -> None:
     async with aiohttp.ClientSession() as http:
         async with http.post(f"{API}/v1/demo/sandboxes", json={"turnstile": "local-test-token"}) as response:
             sandbox = (await response.json())["sandbox"]
-        async with http.post(f"{API}/v1/demo/sandboxes/{sandbox}/calls", json={"language": "fr"}) as response:
+        async with http.post(f"{API}/v1/demo/sandboxes/{sandbox}/calls", json={"language": LANGUAGE}) as response:
             call_pass = await response.json()
             if response.status != 201:
                 raise SystemExit(f"no pass to call: {call_pass}")
@@ -277,8 +305,9 @@ async def main() -> None:
         async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/conversations?limit=20") as response:
             heard_by_the_restaurant = list(reversed(await response.json()))
 
-    # The evening already has voice bookings of its own: this call's is the one under its name.
-    booked = [b for b in day["bookings"] if b.get("channel") == "voice" and "dupont" in str(b.get("guestName", "")).lower()]
+    # The evening already has voice bookings of its own: this call's is the one with the number typed on the keypad.
+    # Not the one under the name: speech recognition may write a name as it sounds ("Clark" for Clarke).
+    booked = [b for b in day["bookings"] if "".join(char for char in str(b.get("phone", "")) if char.isdigit()).endswith(NUMBER[1:])]
     result = {
         "booking": booked[0] if booked else None,
         "callerSideWaitsSeconds": [round(wait, 2) for wait in waits],
@@ -295,7 +324,9 @@ async def main() -> None:
     for turn in heard_by_the_restaurant:
         flags = " ".join(name for name in ("unheardBefore", "phoneEntered", "fellBack") if turn.get(name))
         print(f"  {turn.get('guest') or '(keypad)'!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r} {flags}")
-    ok = bool(booked) and booked[0].get("phoneSource") == "keypad" and booked[0].get("partySize") == 4
+    ok = bool(booked) and booked[0].get("phoneSource") == "keypad" and booked[0].get("partySize") == 4 and booked[0].get("time") == "21:30"
+    if booked and GUEST not in str(booked[0].get("guestName", "")).lower():
+        print(f"Name heard as {booked[0].get('guestName')!r}, said as {GUEST.title()!r}: a recognition note, not a failure")
     print("PASS" if ok else "FAIL")
     raise SystemExit(0 if ok else 1)
 

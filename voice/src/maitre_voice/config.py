@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .speech import EndOfTurn
 
 LANGUAGES = ("fr", "en", "es")
+#: A voice for each language the line speaks: a synthesized voice speaks the one language it was made for. Aura-2's
+#: Agathe, asked for Spanish, made every call in Spanish silent (13 October).
+DEFAULT_VOICES = {
+    "fr": "inference:deepgram/aura-2:agathe",
+    "en": "inference:deepgram/aura-2:athena",
+    "es": "inference:deepgram/aura-2:carina",
+}
 #: The keys each speech provider needs, by name. LiveKit Inference is paid from the LiveKit project's own credit.
 PROVIDER_KEYS = {
     "inference": ("LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"),
@@ -27,9 +34,8 @@ class Settings:
     agent_name: str
     #: The restaurant a call to the restaurant's own number is for.
     restaurant_id: str
-    #: Speech recognition and speech synthesis, as "provider:model[:voice]".
+    #: Speech recognition, as "provider:model".
     stt: str
-    tts: str
     #: When Flux decides the caller has finished; tuned from measured calls (VOICE_EOT_THRESHOLD, VOICE_EOT_TIMEOUT_MS).
     end_of_turn: EndOfTurn
     #: Seconds of silence from both sides before the line says goodbye and hangs up.
@@ -42,6 +48,11 @@ class Settings:
     thinking_sound: bool
     #: The speech providers' keys the environment has, by name only.
     keys: frozenset[str] = frozenset()
+    #: The voice for each language, as "provider:model:voice" (VOICE_TTS for French, VOICE_TTS_EN, VOICE_TTS_ES).
+    voices: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_VOICES))
+
+    def voice_for(self, language: str) -> str:
+        return self.voices.get(language, self.voices["fr"])
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -55,7 +66,6 @@ class Settings:
             # Through LiveKit Inference, paid from the LiveKit project's credit, with no other provider's key. Nova-3 with
             # LiveKit's turn detector answered sooner than Flux on measured calls and cut fewer sentences in two.
             stt=values.get("VOICE_STT", "inference:deepgram/nova-3"),
-            tts=values.get("VOICE_TTS", "inference:deepgram/aura-2:agathe"),
             end_of_turn=EndOfTurn(
                 threshold=float(values["VOICE_EOT_THRESHOLD"]) if values.get("VOICE_EOT_THRESHOLD") else None,
                 timeout_ms=int(values["VOICE_EOT_TIMEOUT_MS"]) if values.get("VOICE_EOT_TIMEOUT_MS") else None,
@@ -65,6 +75,11 @@ class Settings:
             usage_every_seconds=float(values.get("VOICE_USAGE_EVERY_SECONDS", "30")),
             thinking_sound=values.get("VOICE_THINKING_SOUND", "on") != "off",
             keys=frozenset(name for names in PROVIDER_KEYS.values() for name in names if values.get(name)),
+            voices={
+                "fr": values.get("VOICE_TTS") or DEFAULT_VOICES["fr"],
+                "en": values.get("VOICE_TTS_EN") or DEFAULT_VOICES["en"],
+                "es": values.get("VOICE_TTS_ES") or DEFAULT_VOICES["es"],
+            },
         )
 
     def problems(self) -> list[str]:
@@ -74,9 +89,19 @@ class Settings:
             found.append("MAITRE_AGENT_TOKEN is missing")
         if not self.api_url.startswith(("http://127.0.0.1", "http://localhost", "https://")):
             found.append("MAITRE_API_URL must be https, or the local Worker")
-        for spec in (self.stt, self.tts):
+        for spec in (self.stt, *self.voices.values()):
             provider = spec.split(":", 1)[0]
             if provider not in PROVIDER_KEYS:
                 found.append(f"unknown speech provider in {spec}")
             found.extend(f"{name} is missing, for {spec}" for name in PROVIDER_KEYS.get(provider, ()) if name not in self.keys)
-        return found
+        # The voice changes when the caller changes language, within one provider: its options do not mix with another's.
+        families = {voice_family(spec) for spec in self.voices.values()}
+        if len(families) > 1:
+            found.append(f"the voices must come from one provider, not {', '.join(sorted(families))}")
+        return sorted(set(found), key=found.index)
+
+
+def voice_family(spec: str) -> str:
+    """The provider behind a voice: "inference:deepgram/aura-2:agathe" is Deepgram's."""
+    provider, _, rest = spec.partition(":")
+    return f"{provider}:{rest.split('/', 1)[0]}" if provider == "inference" else provider

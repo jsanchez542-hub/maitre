@@ -44,7 +44,7 @@ from .brain import TURN, UNREACHABLE, CallState, RestaurantBrain, Spoken
 from .config import LANGUAGES, Settings
 from .keypad import Keypad
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
-from .speech import build_stt, build_tts, ends_turns_itself, follow_language
+from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
 
 load_dotenv(".env.local")
 logger = logging.getLogger("maitre.voice")
@@ -187,7 +187,7 @@ class PhoneCall:
         self._keypad_shown = "closed"
         self._tasks: set[asyncio.Task[None]] = set()
         self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
-        self._tts = build_tts(settings.tts, started.language)
+        self._tts = build_tts(settings.voice_for(started.language), started.language)
         self.session: AgentSession = AgentSession(
             stt=build_stt(settings.stt, started.language, settings.end_of_turn, started.keyterms),
             tts=self._tts,
@@ -246,7 +246,7 @@ class PhoneCall:
         if len(event.transcript.split()) < WORDS_TO_SWITCH:
             return
         self._state.language = language
-        follow_language(self._tts, language)
+        switch_voice(self._tts, settings.voice_for(language), language)
 
     def _on_user_state(self, event: UserStateChangedEvent) -> None:
         if event.new_state == "away":

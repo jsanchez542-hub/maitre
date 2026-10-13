@@ -17,7 +17,7 @@ caller (browser or phone) ──► LiveKit ──► this agent: speech recogni
 - **Never leaves the caller in silence**: as soon as the model reaches for a tool, the Worker sends a short line ("Je regarde.", "Je regarde la fiche de la cuisine.") that is spoken while the tool and the reply run. Before that, the caller hears soft typing, as at a real desk.
 - **Takes the phone number from caller ID or the keypad**, never from what speech recognition heard. The browser's keypad sends real DTMF tones, as a phone does.
 - **Never reads a booking reference out**: letters and digits nobody can note while listening.
-- **Follows a caller who switches language**, once a sentence of three words or more is heard in French, English or Spanish.
+- **Follows a caller who switches language**, once a sentence of three words or more is heard in French, English or Spanish, and answers with that language's own voice: a synthesized voice speaks the one language it was made for (Aura-2's Agathe, asked for Spanish, left every call in Spanish silent).
 - **Remembers a reply cut short as far as the caller heard it**, and forgets one they heard none of: a caller who speaks on after a pause, before the reply begins, is heard as one message, and a booking that reply confirmed is told again.
 - **Never makes a turn of an unfinished sentence**: LiveKit's preemptive generation is off, because every turn reaches the restaurant, which may set a table aside.
 - **Hangs up on its own** after 20 seconds of silence, at the call's longest, or when the public demo's budget runs out, after saying why in the caller's language.
@@ -59,7 +59,8 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 |---|---|
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The LiveKit project. The Worker needs the same three to sign the browser's pass. |
 | `MAITRE_API_URL`, `MAITRE_AGENT_TOKEN` | The Worker and the token of its "agent" routes. |
-| `VOICE_STT`, `VOICE_TTS` | Speech recognition and synthesis as `provider:model[:voice]`. By default Nova-3 and Aura-2 through LiveKit Inference, paid from the LiveKit project's credit. |
+| `VOICE_STT` | Speech recognition as `provider:model`. By default Nova-3 through LiveKit Inference, paid from the LiveKit project's credit. |
+| `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Aura-2's Agathe, Athena and Carina, through LiveKit Inference. |
 | `VOICE_EOT_THRESHOLD`, `VOICE_EOT_TIMEOUT_MS` | With Flux only: when it decides the caller has finished. |
 | `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `MISTRAL_API_KEY`, `ELEVEN_API_KEY` | Only for a provider called directly. The agent refuses calls, and says which key is missing, when the chosen speech lacks one. |
 
@@ -69,7 +70,7 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 uv run pytest                        # the line, the keypad and the brain, against a stand-in Worker
 uv run ruff check .
 uv run python bench/line_check.py    # a French booking call against the local Worker and the real model, without LiveKit
-uv run python bench/caller.py        # a real call through LiveKit, made by a program: speech, keypad, timing, what the restaurant heard, the booking checked
+uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: speech, keypad, timing, what the restaurant heard, the booking checked
 uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to call the local demo restaurant yourself
 ```
 
