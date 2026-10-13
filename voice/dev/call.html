@@ -45,6 +45,10 @@
   </div>
   <div id="status" role="status" aria-live="polite">Prêt.</div>
   <div id="mic" aria-live="polite"><span id="level" aria-hidden="true"><span></span></span><span id="micText">Micro : pas encore utilisé.</span></div>
+  <div class="row" id="devices" hidden>
+    <label for="micDevice" style="font-size:14px">Micro utilisé :</label>
+    <select id="micDevice"></select>
+  </div>
 
   <div id="captions" aria-live="polite" aria-label="Sous-titres de l'appel"></div>
 
@@ -134,6 +138,25 @@
   }
 
   let stopMeter = () => {};
+  let currentMic = null;
+  // A laptop often has several inputs, and the browser may pick one that hears nothing: "Stereo Mix" records the
+  // speakers, an empty jack records silence. The caller picks the one that moves the level, during the call too.
+  async function listMicrophones() {
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput');
+    const chosen = currentMic?.mediaStreamTrack.getSettings().deviceId;
+    $('micDevice').replaceChildren(
+      ...inputs.map((input) => Object.assign(document.createElement('option'), { value: input.deviceId, textContent: input.label || 'Micro', selected: input.deviceId === chosen })),
+    );
+    $('devices').hidden = inputs.length < 2;
+  }
+  $('micDevice').addEventListener('change', async () => {
+    if (!currentMic) return;
+    await currentMic.setDeviceId($('micDevice').value);
+    stopMeter();
+    micSays('Micro : parlez pour vérifier.');
+    stopMeter = followLevel(currentMic.mediaStreamTrack);
+  });
+
   async function call() {
     $('call').disabled = true;
     let micTrack;
@@ -141,7 +164,9 @@
       micSays('Micro : autorisation…');
       micTrack = await LivekitClient.createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
       micSays('Micro : prêt, parlez pour vérifier.');
+      currentMic = micTrack;
       stopMeter = followLevel(micTrack.mediaStreamTrack);
+      await listMicrophones();
     } catch (error) {
       micSays(MIC_PROBLEMS[error.name] ?? `Micro indisponible : ${error.message}`, true);
       $('call').disabled = false;
@@ -167,6 +192,8 @@
       room.on(RoomEvent.Disconnected, () => {
         say('Appel terminé.');
         stopMeter();
+        currentMic?.stop();
+        currentMic = null;
         micSays('Micro : libéré.');
         $('hangup').disabled = true;
         $('call').disabled = false;
