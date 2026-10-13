@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { respond } from '../src/agent/agent.js';
-import { comparable, dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, referencesIn } from '../src/agent/guards.js';
+import { respond, turnEffects } from '../src/agent/agent.js';
+import { comparable, dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from '../src/agent/guards.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
 import { guest, harness } from './fixtures.js';
 
@@ -210,5 +210,72 @@ describe('the spoken reference guard', () => {
     const web = await book('web');
     expect(web.corrections).toEqual([]);
     expect(web.reply).toMatch(/Votre référence est [A-Z0-9]{6}/);
+  });
+});
+
+describe('the kept promise guard', () => {
+  it('hears a reply that tells the guest the team has their request (real replies of the 13 October run)', () => {
+    for (const reply of [
+      'Pour un anniversaire à 12 personnes samedi à 20 h, je transmets votre demande à notre équipe. Elle vous recontactera.',
+      'Claro. He pasado al equipo su solicitud para una celebración de cumpleaños para 12 personas el sábado a las 20:00.',
+      'El equipo se pondrá en contacto con usted.',
+      'I have passed your request on to the team, who will call you back.',
+      'J’ai bien transmis votre question.',
+    ]) {
+      expect(promisesTeam(reply), reply).toBe(true);
+    }
+  });
+
+  it('does not take an offer or a question for a promise', () => {
+    for (const reply of [
+      'Souhaitez-vous que je transmette votre demande à l’équipe ?',
+      'Si vous le souhaitez, je transmets votre demande à l’équipe.',
+      'Would you like me to pass your request on to the team?',
+      '¿Desea que el equipo le llame?',
+      'Nous sommes ouverts du mardi au samedi.',
+    ]) {
+      expect(promisesTeam(reply), reply).toBe(false);
+    }
+  });
+
+  it('runs inside the agent: a promise the model made without the tool reaches the team, once', async () => {
+    const h = harness();
+    const promised = await respond(
+      h.engine,
+      scriptedModel([{ text: 'Je transmets votre demande à notre équipe. Elle vous recontactera.' }]),
+      guest('p1', '+33612345678', 'fr', 'whatsapp'),
+      [],
+      'Nous serons 12 samedi soir pour un anniversaire.',
+    );
+    expect(promised.corrections).toEqual(['kept_promise']);
+    expect(h.store.snapshot().callbacks).toHaveLength(1);
+    expect(turnEffects(promised.tools).passedToTeam).toBe(true);
+
+    // Said again in the next turn, it is not passed on twice.
+    const again = await respond(
+      h.engine,
+      scriptedModel([{ text: 'L’équipe vous recontactera très vite.' }]),
+      guest('p1', '+33612345678', 'fr', 'whatsapp'),
+      promised.transcript,
+      'Merci !',
+    );
+    expect(again.corrections).toEqual([]);
+    expect(h.store.snapshot().callbacks).toHaveLength(1);
+  });
+
+  it('leaves a promise alone when the model did call the tool', async () => {
+    const h = harness();
+    const handed = await respond(
+      h.engine,
+      scriptedModel([
+        { toolCalls: [{ name: 'hand_over', input: { reason: 'large_group', summary: 'Groupe de 12 samedi soir' } }] },
+        { text: 'J’ai transmis votre demande à l’équipe, qui vous rappellera.' },
+      ]),
+      guest('p2', '+33612345678', 'fr', 'whatsapp'),
+      [],
+      'Nous serons 12 samedi soir.',
+    );
+    expect(handed.corrections).toEqual([]);
+    expect(h.store.snapshot().callbacks).toHaveLength(1);
   });
 });

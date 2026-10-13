@@ -1,7 +1,7 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
 import { TOOL_DEFINITIONS, runTool, type ToolOutput } from '../tools.js';
-import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, referencesIn } from './guards.js';
+import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
@@ -70,7 +70,14 @@ export function turnEffects(tools: readonly { name: string; output: ToolOutput }
 export type TurnOutcome = 'answered' | 'failed_handed_over' | 'failed_retry' | 'empty_message';
 
 /** A rule the code enforced because the model did not follow it on its own. */
-export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference';
+export type Correction = 'allergen_relay' | 'guessed_title' | 'name_vocative' | 'spoken_reference' | 'kept_promise';
+
+/** Whether the conversation has already passed something to the team: by hand_over, or by an allergen question the sheet could not answer. */
+function passedOn(transcript: readonly TranscriptEntry[]): boolean {
+  return transcript.some(
+    (entry) => entry.role === 'tool' && ((entry.name === 'hand_over' && entry.output.status === 'recorded') || entry.output['passedToTeam'] === true),
+  );
+}
 
 export interface TurnResult {
   /** What the guest sees or hears. */
@@ -229,6 +236,20 @@ export async function respond(
         if (unread.corrected) {
           reply = unread.reply;
           corrections.push('spoken_reference');
+        }
+      }
+      // A promise to the guest is kept by code: told the team has their request, the team gets it,
+      // even when the model said so without calling hand_over.
+      if (promisesTeam(reply) && !passedOn(working)) {
+        const input = { reason: 'other', summary: `Told the team would get back to them, from: "${text.slice(0, 300)}"` };
+        const output = runTool(engine, session, 'hand_over', input, options.onError);
+        if (output.status === 'recorded') {
+          // Written into the conversation as the call the model should have made, so it is never passed on twice.
+          const callId = `kept-promise-${working.length}`;
+          working.push({ role: 'assistant', text: '', toolCalls: [{ id: callId, name: 'hand_over', input }] });
+          working.push({ role: 'tool', callId, name: 'hand_over', output });
+          tools.push({ name: 'hand_over', input, output, ms: 0 });
+          corrections.push('kept_promise');
         }
       }
       return finish(reply, 'answered', corrections);

@@ -95,6 +95,24 @@ export function dropNameVocatives(reply: string, names: readonly string[]): { re
   return { reply: text, corrected: text !== reply };
 }
 
+/**
+ * A reply that tells the guest their request is with the team: "j'ai transmis
+ * votre demande", "the team will call you back", "he pasado su solicitud al
+ * equipo". Questions and offers ("Souhaitez-vous que je transmette… ?", "Si
+ * vous le souhaitez…") promise nothing yet and do not count.
+ */
+const PROMISES: readonly RegExp[] = [
+  /\b(je (vous )?(transmets|fais suivre)|j['’]ai (bien )?(transmis|fait suivre)|votre (demande|question|message) (est|a été|a bien été) (transmise?|envoyée?)|l['’]équipe (va |vous )*(vous )?(rappeler|rappellera|recontacter|recontactera|contacter|contactera|reviendra vers vous))/i,
+  /\b(i['’]ve (just )?passed|i have (just )?passed|i['’]m passing|i am passing|i['’]ll pass|i will pass|(your request|your question|it) (has been|is being|was) passed|the team will (call|get back|contact|be in touch)|someone (from the team )?will (call|get back|contact))/i,
+  /\b(he pasado|he trasladado|he enviado|paso (su|tu) (solicitud|petici[oó]n|consulta)|traslado (su|tu)|(su|tu) (solicitud|petici[oó]n|consulta) (ha sido|fue) (trasladada|enviada|pasada)|el equipo (le |te )?(llamar[áa]|contactar[áa]|se pondr[áa] en contacto))/i,
+];
+const OFFER = /^\s*(si|if)\b|souhaitez-vous|voulez-vous|would you like|do you want|¿?\s*desea|¿?\s*quiere/i;
+
+/** Whether a reply tells the guest, without asking, that the team has their request. */
+export function promisesTeam(reply: string): boolean {
+  return sentencesOf(reply).some((sentence) => !sentence.includes('?') && !OFFER.test(sentence) && PROMISES.some((promise) => promise.test(sentence)));
+}
+
 /** Every booking reference in the tools' answers, wherever it sits in them. */
 export function referencesIn(outputs: readonly unknown[]): string[] {
   const found = new Set<string>();

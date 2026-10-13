@@ -341,6 +341,21 @@ const ON_CHANNELS: Scenario[] = [
     ],
   },
   {
+    id: 'hello-fr',
+    description: 'A hello alone gets a few words back, not the welcome again',
+    category: 'info',
+    language: 'fr',
+    channel: 'whatsapp',
+    phone: '+33611111133',
+    // Found by Miguel on 13 October: to a bare "Hola", the assistant listed again what the welcome had just said.
+    turns: ['Bonjour'],
+    expect: [
+      { kind: 'no_booking' },
+      { kind: 'no_reply', pattern: /(trouver une table|renseigner sur la carte|la carte et (les )?horaires)/i },
+      { kind: 'no_reply', pattern: /^[\s\S]{140,}$/ },
+    ],
+  },
+  {
     id: 'faq-en',
     description: 'A question the restaurant has answered is answered with its words',
     category: 'info',
@@ -462,6 +477,35 @@ const ON_THE_SITE: Scenario[] = [
     turns: ['Hola, seremos 12 para un cumpleaños el sábado a las 20:00. ¿Puede pedirle al equipo que me llame?'],
     fieldPhone: { afterTurn: 0, phone: '+33639980025' },
     expect: [{ kind: 'handover', reason: 'large_group', phone: '+33639980025' }, { kind: 'no_booking' }, { kind: 'reply', pattern: FIELD.es }],
+  },
+  {
+    id: 'web-hello-es',
+    description: 'In the site’s chat, a hello alone gets a few words back, not the welcome again',
+    category: 'info',
+    language: 'es',
+    channel: 'web',
+    phone: null,
+    turns: ['Hola'],
+    expect: [
+      { kind: 'no_booking' },
+      { kind: 'no_reply', pattern: /(buscar(le)? (una )?mesa|responder a sus preguntas|la carta y (los )?horarios)/i },
+      { kind: 'no_reply', pattern: /^[\s\S]{140,}$/ },
+    ],
+  },
+  {
+    id: 'web-goodbye-es',
+    description: 'In the site’s chat, a goodbye that fits the restaurant’s hour: no good night in the morning',
+    category: 'info',
+    language: 'es',
+    channel: 'web',
+    phone: null,
+    // Found by Miguel on 13 October: "buenas noches" in the afternoon in Bordeaux, said by the demo restaurant, whose evening is 20:05.
+    // A wish follows the restaurant's hour, as a person on its phone would; here it is 10 am there.
+    turns: ['¿Abren el sábado a mediodía?', 'Perfecto, gracias. Hasta luego.'],
+    expect: [
+      { kind: 'tool', name: 'opening_hours' },
+      { kind: 'no_reply', pattern: /buenas (tardes|noches)|(tenga|pase) (una )?buenas? (tarde|noche)/i },
+    ],
   },
 ];
 

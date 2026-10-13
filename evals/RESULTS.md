@@ -194,6 +194,21 @@ The slip came from `find_table` itself: on "available" it told the model to read
 
 The first full run with no failure at all. On the phone the guard fired on 32 turns of 126 instead of 41: the model reads fewer references aloud now that no tool asks it to.
 
+### Run M: a hello, a promise, a goodbye, and a fallback that did not pass (13 October)
+
+Miguel used the chat in Spanish and found two things; a third came from the fallback test.
+
+- **A hello alone got the welcome again.** To "Hola", the assistant listed what the welcome had just said. The prompt now says to answer a hello in a few words. New conversations `hello-fr` (and its phone twin) and `web-hello-es`: "¿En qué puedo ayudarle?", "Bonjour, que puis-je faire pour vous ?".
+- **"Buenas noches" in the afternoon.** The demo restaurant lives on its own evening, 20:05, which the chat did not show; it now does. A rule against wishing any time of day was tried and dropped: a person on a restaurant's phone says "bonne soirée" by the restaurant's hour too, and the model did not keep the rule (2 runs of 3 still said "que tenga un buen día"). `web-goodbye-es` now checks what would be wrong: a good night at 10 am, the restaurant's hour in the evaluation.
+- **A promise kept by code.** GPT-5.6 Luna, tried as a fallback, told a party of twelve "je transmets votre demande à notre équipe" without calling `hand_over`, in one run of three: the team would never have known. Luna is not switched on. And the agent now keeps such a promise itself: a reply that tells the guest the team has their request, with nothing passed on in the conversation, passes it on (`kept_promise`). It never fired on Claude in 171 conversations.
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| All channels | Claude Haiku 5.5 `@latency` | **36/36** | **108/108** | 2.5 s | 5.1 s | 1.3 s | 2.2 s | $0.073 |
+| Phone | Claude Haiku 5.5 `@latency` | **21/21** | **63/63** | 2.6 s | 5.6 s | 1.5 s | 2.2 s | $0.038 |
+| All channels, as a fallback | GPT-5.6 Luna | 31/33 | 97/99 | 3.8 s | 6.3 s | 2.3 s | 3.2 s | $0.054 |
+| Phone, as a fallback | GPT-5.6 Luna | 19/20 | 59/60 | 4.3 s | 6.9 s | 2.6 s | 3.4 s | $0.035 |
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -232,4 +247,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10 and run L $0.13: $6.71 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10, run L $0.13 and run M, with the fallback's test and the rule that was dropped, $0.31: $7.02 in all.
