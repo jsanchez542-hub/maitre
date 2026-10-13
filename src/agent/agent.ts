@@ -147,7 +147,12 @@ export async function respond(
     };
   }
 
-  const working: TranscriptEntry[] = [...trimTranscript(transcript), { role: 'user', text }];
+  // A conversation that ends with the guest's words lost the reply to them, which the caller never heard:
+  // what they said then and say now is one message.
+  const earlier = trimTranscript(transcript);
+  const unanswered = earlier.at(-1);
+  const working: TranscriptEntry[] =
+    unanswered?.role === 'user' ? [...earlier.slice(0, -1), { role: 'user', text: `${unanswered.text} ${text}` }] : [...earlier, { role: 'user', text }];
   const tools: ToolRecord[] = [];
   const modelMs: number[] = [];
   let usage: Usage = NO_USAGE;

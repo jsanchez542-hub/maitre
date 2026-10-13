@@ -99,6 +99,15 @@ async def test_a_dropped_turn_is_asked_again_with_the_same_id_and_its_short_line
     assert fake.requests[0][1]["heard"] == "Nous sommes ouverts"
 
 
+async def test_names_the_turn_whose_reply_the_caller_never_heard(worker, http):
+    fake, url = worker
+    line = Line(http, Call.restaurant(url, "demo", "call_3"), TOKEN)
+    _events = [event async for event in line.turn("turn_c", "Je voudrais réserver.", "fr", unheard="turn_b")]
+    body = fake.requests[-1][1]
+    assert body["unheard"] == "turn_b"
+    assert "heard" not in body
+
+
 async def test_a_refusal_carries_the_workers_name_for_it_and_is_not_retried(worker, http):
     fake, url = worker
     fake.refuse = (409, "call_time_limit")

@@ -30,15 +30,16 @@ from livekit.agents import (
     JobProcess,
     ModelSettings,
     cli,
+    llm,
     room_io,
     tts,
     utils,
 )
 from livekit.agents.voice.background_audio import AudioConfig, BackgroundAudioPlayer, BuiltinAudioClip
-from livekit.agents.voice.events import CloseEvent, UserInputTranscribedEvent, UserStateChangedEvent
+from livekit.agents.voice.events import CloseEvent, ConversationItemAddedEvent, UserInputTranscribedEvent, UserStateChangedEvent
 from livekit.plugins import noise_cancellation, silero
 
-from .brain import UNREACHABLE, CallState, RestaurantBrain
+from .brain import TURN, UNREACHABLE, CallState, RestaurantBrain, Spoken
 from .config import LANGUAGES, Settings
 from .keypad import Keypad
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
@@ -215,6 +216,7 @@ class PhoneCall:
         self.session.on("user_input_transcribed", self._on_transcript)
         self.session.on("user_state_changed", self._on_user_state)
         self.session.on("close", self._on_close)
+        self.session.on("conversation_item_added", self._on_item)
         self._ctx.room.on("sip_dtmf_received", self._on_key)
         if settings.thinking_sound:
             # While the restaurant works out its answer, the caller hears someone typing, as at a real desk, not silence.
@@ -246,6 +248,12 @@ class PhoneCall:
     def _on_close(self, _event: CloseEvent) -> None:
         if not self._ending:
             self._spawn(self.end("caller"))
+
+    def _on_item(self, event: ConversationItemAddedEvent) -> None:
+        # A reply of the brain's names its turn: the framework keeps it with what played of the reply.
+        item = event.item
+        if item.type == "message" and item.role == "assistant" and isinstance(turn := item.extra.get(TURN), str):
+            self._remember(turn, [item], item.interrupted)
 
     def _on_key(self, dtmf: rtc.SipDTMF) -> None:
         if self._keypad_timer:
@@ -280,6 +288,7 @@ class PhoneCall:
         turn_id = new_turn_id()
 
         async def words():
+            self._state.last_turn = turn_id
             try:
                 async for event in self._line.keypad(turn_id, digits):
                     if isinstance(event, Working):
@@ -294,7 +303,14 @@ class PhoneCall:
                     return
                 yield UNREACHABLE.get(self._state.language, UNREACHABLE["fr"])
 
-        self.session.say(words())
+        # Said as words, not as a reply of the brain's: what played of it is learnt from the speech itself.
+        self.session.say(words()).add_done_callback(lambda speech: self._remember(turn_id, speech.chat_items, speech.interrupted))
+
+    def _remember(self, turn_id: str, items: list[llm.ChatItem], interrupted: bool) -> None:
+        """What played of a reply, for the next turn to tell the restaurant: nothing is kept when nothing played."""
+        text = " ".join(item.text_content or "" for item in items if item.type == "message" and item.role == "assistant").strip()
+        if text:
+            self._state.spoken[turn_id] = Spoken(text, cut_short=interrupted)
 
     async def _watch_the_clock(self) -> None:
         """A demo call tells the Worker how long it has lasted, which the demo's budget pays for; any call has a longest."""

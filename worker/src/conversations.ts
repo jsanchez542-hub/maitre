@@ -54,6 +54,8 @@ export interface TurnLog {
   working?: string;
   /** The turn was answered by the fallback model: the first one's provider failed. */
   fellBack?: true;
+  /** On the phone, the caller had heard none of the reply before: they spoke on before it began. */
+  unheardBefore?: true;
   reply: string;
   outcome: string;
   latencyMs: number;

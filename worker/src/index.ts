@@ -173,6 +173,7 @@ function callTurn(sessionId: string, input: Record<string, unknown>): CallTurn {
     message: String(input['message'] ?? ''),
     language: String(input['language'] ?? ''),
     ...(typeof input['heard'] === 'string' ? { heard: input['heard'] } : {}),
+    ...(input['unheard'] !== undefined ? { unheard: String(input['unheard']) } : {}),
   };
 }
 

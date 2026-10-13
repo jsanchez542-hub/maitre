@@ -139,10 +139,14 @@ class Line:
         answer = await self._post_json("start", body)
         return Started(greeting=str(answer["greeting"]), language=str(answer["language"]))
 
-    def turn(self, turn_id: str, message: str, language: str, heard: str | None = None) -> AsyncIterator[Event]:
+    def turn(self, turn_id: str, message: str, language: str, heard: str | None = None, unheard: str | None = None) -> AsyncIterator[Event]:
+        """A turn of the caller's. `heard`: the part of the last reply they heard, when they cut it short;
+        `unheard`: the last turn's id, when they heard none of its reply."""
         body: dict[str, Any] = {"turnId": turn_id, "message": message, "language": language}
         if heard:
             body["heard"] = heard
+        if unheard:
+            body["unheard"] = unheard
         return self._stream("turns", body)
 
     def keypad(self, turn_id: str, digits: str) -> AsyncIterator[Event]:

@@ -230,6 +230,8 @@ async def main() -> None:
             else:
                 said = await speak(source, next(clips))
                 label = step
+            # The same moment on the wall clock, to set against the agent's own log.
+            said_at = time.time() - (time.monotonic() - said)
             ear.expect_answer(said)
             answered = await ear.answer(said)
             wait = (answered - said) if answered else None
@@ -246,7 +248,8 @@ async def main() -> None:
                 }
             )
             print(
-                f"  caller: {label}\n    agent started {wait:.2f} s later; its parts started at {parts} s; states {states}"
+                f"  caller: {label} (last word at {time.strftime('%H:%M:%S', time.localtime(said_at))}.{int(said_at % 1 * 1000):03d})\n"
+                f"    agent started {wait:.2f} s later; its parts started at {parts} s; states {states}"
                 if wait is not None
                 else f"  caller: {label}\n    no answer heard"
             )
@@ -270,6 +273,8 @@ async def main() -> None:
             day = await response.json()
         async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/calls") as response:
             calls = await response.json()
+        async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/conversations?limit=20") as response:
+            heard_by_the_restaurant = list(reversed(await response.json()))
 
     # The evening already has voice bookings of its own: this call's is the one under its name.
     booked = [b for b in day["bookings"] if b.get("channel") == "voice" and "dupont" in str(b.get("guestName", "")).lower()]
@@ -278,12 +283,17 @@ async def main() -> None:
         "callerSideWaitsSeconds": [round(wait, 2) for wait in waits],
         "turns": turns,
         "callLog": calls,
+        "restaurantTurns": heard_by_the_restaurant,
     }
     (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print("\nBooking:", json.dumps(result["booking"], ensure_ascii=False) if booked else "NONE")
     if waits:
         print(f"Caller-side wait: median {statistics.median(waits):.2f} s, longest {max(waits):.2f} s")
     print(f"Call log: {json.dumps(calls, ensure_ascii=False)}")
+    print("What the restaurant heard and answered:")
+    for turn in heard_by_the_restaurant:
+        flags = " ".join(name for name in ("unheardBefore", "phoneEntered", "fellBack") if turn.get(name))
+        print(f"  {turn.get('guest') or '(keypad)'!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r} {flags}")
     ok = bool(booked) and booked[0].get("phoneSource") == "keypad" and booked[0].get("partySize") == 4
     print("PASS" if ok else "FAIL")
     raise SystemExit(0 if ok else 1)

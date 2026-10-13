@@ -38,6 +38,15 @@ describe('a turn of conversation', () => {
     expect(book.requests[0]?.transcript.map((entry) => entry.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user']);
   });
 
+  it('hears a guest whose last words lost their reply as one message: the caller spoke on before it began', async () => {
+    const h = harness();
+    const model = scriptedModel([{ text: 'Pour combien de personnes ?' }]);
+    const unanswered: TranscriptEntry[] = [{ role: 'user', text: 'Bonsoir.' }];
+    const result = await respond(h.engine, model, guest('v1', undefined, 'fr', 'voice'), unanswered, 'Je voudrais réserver une table.');
+    expect(model.requests[0]?.transcript).toEqual([{ role: 'user', text: 'Bonsoir. Je voudrais réserver une table.' }]);
+    expect(result.transcript.map((entry) => entry.role)).toEqual(['user', 'assistant']);
+  });
+
   it('cleans the reply before the guest sees it', async () => {
     const h = harness();
     const model = scriptedModel([{ text: '**Bien sûr** — nous sommes ouverts.\n- le midi\n- le soir' }]);

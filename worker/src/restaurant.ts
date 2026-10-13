@@ -76,6 +76,11 @@ export interface CallTurn {
   language: string;
   /** When the caller cut the last reply short, the part of it they heard. */
   heard?: string;
+  /**
+   * The id of the last turn when the caller heard none of its reply: they spoke
+   * on before it began, or heard only the short line said while the tools ran.
+   */
+  unheard?: string;
 }
 
 /** The keys the caller pressed after being asked for their number. */
@@ -143,12 +148,25 @@ function cutShort(transcript: TranscriptEntry[], heard: string): TranscriptEntry
   return [...transcript.slice(0, -1), { ...last, text: said }];
 }
 
+/**
+ * The conversation without its last reply, which the caller never heard: they
+ * spoke on before it began. What its tools did stays, so the model tells them
+ * now, and their words before and after it become one message.
+ */
+function unsaid(transcript: TranscriptEntry[]): TranscriptEntry[] {
+  const last = transcript.at(-1);
+  if (!last || last.role !== 'assistant' || last.toolCalls.length > 0) return transcript;
+  return transcript.slice(0, -1);
+}
+
 interface TurnHooks {
   /** The line's id for the turn, kept with the answer so asking again returns it. */
   turnId?: string;
   onToolCalls?: (names: readonly string[]) => void;
   /** The short line said while the tools ran, for the log. */
   working?: () => string | undefined;
+  /** The caller had heard none of the reply before this turn, for the log. */
+  unheardBefore?: boolean;
 }
 
 /**
@@ -283,6 +301,7 @@ export class Restaurant extends DurableObject<Env> {
       ...this.#turnLog(session, typedPhone ? '' : message, result, now),
       ...(typedPhone ? { phoneEntered: true as const } : {}),
       ...(working ? { working } : {}),
+      ...(hooks.unheardBefore ? { unheardBefore: true as const } : {}),
       ...(fellBack ? { fellBack: true as const } : {}),
     });
     await this.turnCompleted(result);
@@ -336,6 +355,7 @@ export class Restaurant extends DurableObject<Env> {
     if (typeof request.message !== 'string' || request.message.length > MAX_SPOKEN) problems.push(`message must be text of at most ${MAX_SPOKEN} characters`);
     if (!isLanguage(request.language)) problems.push('language must be fr, en or es');
     if (request.heard !== undefined && (typeof request.heard !== 'string' || request.heard.length > MAX_SPOKEN)) problems.push('heard must be text');
+    if (request.unheard !== undefined && (typeof request.unheard !== 'string' || !SESSION_ID.test(request.unheard))) problems.push('unheard must be a turn id');
     if (problems.length > 0) return { status: 'invalid', problems };
     const apiKey = this.modelKey();
     if (!apiKey) return { status: 'not_configured' };
@@ -346,14 +366,17 @@ export class Restaurant extends DurableObject<Env> {
       const stored = this.#conversations.get(request.sessionId);
       if (!stored) throw new Error('The call vanished between its check and its turn');
       if (stored.lastTurn?.id === request.turnId) return send({ type: 'answer', ...(stored.lastTurn.answer as ChatAnswer) });
-      const transcript = request.heard ? cutShort(stored.transcript, request.heard) : stored.transcript;
+      // Only the last reply can be the one nobody heard: a turn the restaurant never answered leaves the conversation as it is.
+      const unheard = request.unheard !== undefined && stored.lastTurn?.id === request.unheard;
+      const transcript = unheard ? unsaid(stored.transcript) : request.heard ? cutShort(stored.transcript, request.heard) : stored.transcript;
       const session: Session = {
         id: request.sessionId,
         channel: 'voice',
         language,
         ...(stored.phone && stored.phoneSource ? { phone: { e164: stored.phone, source: stored.phoneSource } } : {}),
       };
-      const answer = await this.#turn(session, transcript, request.message, apiKey, this.#workingLine(request.turnId, language, send));
+      const hooks = { ...this.#workingLine(request.turnId, language, send), unheardBefore: unheard };
+      const answer = await this.#turn(session, transcript, request.message, apiKey, hooks);
       send({ type: 'answer', ...answer });
     });
   }

@@ -167,6 +167,49 @@ describe('a call to the restaurant', () => {
     expect(JSON.stringify(sent.messages[0]?.content)).toContain('Always reply in English');
   });
 
+  it('forgets a reply the caller never heard, and hears what they said before and after it as one message', async () => {
+    const requests = fakeNetwork([
+      say('Bonsoir, que puis-je faire pour vous ?'),
+      call('find_table', { day: 'friday next week', time: '20:00', partySize: 4 }),
+      say('J’ai une table pour 4 personnes vendredi à 20 h. À quel nom ?'),
+      say('Bien sûr. J’ai une table pour 4 personnes vendredi à 20 h : à quel nom ?'),
+      say('C’est noté.'),
+    ]);
+    await step('call-voice-0007', 'start', { language: 'fr' });
+    // The caller paused after "Bonsoir", speech recognition ended the turn there, and they spoke on before the reply began.
+    await lines(await step('call-voice-0007', 'turns', { turnId: 'turn-unheard-1', message: 'Bonsoir.', language: 'fr' }));
+    await lines(
+      await step('call-voice-0007', 'turns', {
+        turnId: 'turn-unheard-2',
+        message: 'Je voudrais une table pour quatre vendredi prochain à vingt heures.',
+        language: 'fr',
+        unheard: 'turn-unheard-1',
+      }),
+    );
+    const merged = (JSON.parse(requests[1]?.body ?? '{}') as { messages: Message[] }).messages;
+    expect(merged.filter((message) => message.role === 'assistant')).toEqual([]);
+    const guest = merged.filter((message) => message.role === 'user');
+    expect(guest).toHaveLength(1);
+    expect(JSON.stringify(guest[0]?.content)).toContain('Bonsoir. Je voudrais une table pour quatre vendredi prochain à vingt heures.');
+
+    // Heard only "Je regarde.": the reply goes, what the tools found stays.
+    await lines(await step('call-voice-0007', 'turns', { turnId: 'turn-unheard-3', message: 'Pardon ?', language: 'fr', unheard: 'turn-unheard-2' }));
+    const kept = (JSON.parse(requests[3]?.body ?? '{}') as { messages: Message[] }).messages;
+    expect(kept.some((message) => message.role === 'tool' && JSON.stringify(message.content).includes('holdId'))).toBe(true);
+    expect(kept.some((message) => JSON.stringify(message.content).includes('À quel nom'))).toBe(false);
+    expect(kept.at(-1)?.role).toBe('user');
+    expect(JSON.stringify(kept.at(-1)?.content)).toContain('Pardon ?');
+
+    // An id that is not the last turn's changes nothing: that reply was heard.
+    await lines(await step('call-voice-0007', 'turns', { turnId: 'turn-unheard-4', message: 'Dupont.', language: 'fr', unheard: 'turn-unheard-1' }));
+    const intact = (JSON.parse(requests[4]?.body ?? '{}') as { messages: Message[] }).messages;
+    expect(intact.some((message) => message.role === 'assistant' && JSON.stringify(message.content).includes('Bien sûr.'))).toBe(true);
+
+    const turns = (await (await SELF.fetch(`${BASE}/conversations?limit=10`, { headers: STAFF })).json()) as Record<string, unknown>[];
+    expect(turns.filter((turn) => turn['unheardBefore'] === true)).toHaveLength(2);
+    expect((await step('call-voice-0007', 'turns', { turnId: 'turn-unheard-5', message: 'Merci.', language: 'fr', unheard: 'x' })).status).toBe(400);
+  });
+
   it('gives the last words of a line that hangs up on its own, and shows the owner each call’s length and pace', async () => {
     fakeNetwork();
     await step('call-voice-0005', 'start', { language: 'fr' });
