@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
+import { withFallback } from '../../src/agent/providers/fallback.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import {
@@ -246,7 +247,21 @@ export class Restaurant extends DurableObject<Env> {
     // The phone may use a faster model than the chat, and waits less for a stalled one: a caller is on the line.
     const voice = session.channel === 'voice';
     const modelId = voice && this.env.VOICE_MODEL ? this.env.VOICE_MODEL : this.env.MODEL;
-    const model = openRouterModel({ apiKey, model: modelId, ...(voice ? { timeoutMs: VOICE_MODEL_TIMEOUT_MS, maxRetries: 1 } : {}) });
+    const fallbackId = this.env.FALLBACK_MODEL;
+    // With a fallback, the first model gets one try less: the second model is the better retry.
+    const limits = voice
+      ? { timeoutMs: VOICE_MODEL_TIMEOUT_MS, maxRetries: fallbackId ? 0 : 1 }
+      : fallbackId
+        ? { maxRetries: 1 }
+        : {};
+    const primary = openRouterModel({ apiKey, model: modelId, ...limits });
+    let fellBack = false;
+    const model = fallbackId
+      ? withFallback(primary, openRouterModel({ apiKey, model: fallbackId, ...limits }), (error) => {
+          fellBack = true;
+          console.warn('Maître answered with the fallback model:', describe(error));
+        })
+      : primary;
     const result = await respond(this.#engine, model, session, transcript, message, {
       onError: (error) => console.error('Maître turn failed:', describe(error)),
       ...(hooks.onToolCalls ? { onToolCalls: hooks.onToolCalls } : {}),
@@ -268,6 +283,7 @@ export class Restaurant extends DurableObject<Env> {
       ...this.#turnLog(session, typedPhone ? '' : message, result, now),
       ...(typedPhone ? { phoneEntered: true as const } : {}),
       ...(working ? { working } : {}),
+      ...(fellBack ? { fellBack: true as const } : {}),
     });
     await this.turnCompleted(result);
     await this.#keepTidy();

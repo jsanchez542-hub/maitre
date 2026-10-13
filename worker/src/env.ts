@@ -19,6 +19,8 @@ export interface Env {
   MODEL: string;
   /** The model for phone calls, when it is not MODEL: chosen with its own test, where every second of silence is heard. */
   VOICE_MODEL?: string;
+  /** The model that answers when MODEL's providers are down, overloaded or stalled. It must have passed the same evaluation. */
+  FALLBACK_MODEL?: string;
   /** Comma-separated restaurant ids this deployment serves. Any other id is "not found". */
   RESTAURANT_IDS: string;
   /** The public demo's spending limits in dollars, a day and a month. Missing or unreadable keeps the demo paused. */

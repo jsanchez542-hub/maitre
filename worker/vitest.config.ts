@@ -21,6 +21,7 @@ export default defineConfig({
           LIVEKIT_URL: 'wss://maitre-test.livekit.cloud',
           LIVEKIT_API_KEY: 'test-livekit-key',
           LIVEKIT_API_SECRET: 'test-livekit-secret',
+          FALLBACK_MODEL: 'openai/gpt-5.6-luna',
           DEMO_DAILY_USD: '1',
           DEMO_MONTHLY_USD: '10',
           DEMO_SANDBOXES_PER_IP: '5',

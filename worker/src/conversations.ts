@@ -52,6 +52,8 @@ export interface TurnLog {
   phoneEntered?: true;
   /** On the phone, the short line said while the tools ran, before the reply. */
   working?: string;
+  /** The turn was answered by the fallback model: the first one's provider failed. */
+  fellBack?: true;
   reply: string;
   outcome: string;
   latencyMs: number;

@@ -350,3 +350,25 @@ describe('calling the demo restaurant from the browser', () => {
     expect(((await ended.json()) as { say: string }).say).toMatch(/^Tengo que terminar esta llamada/);
   });
 });
+
+describe('a model that is down', () => {
+  it('answers with the fallback model, and the log says so', async () => {
+    const asked: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const { model } = JSON.parse(String(init?.body)) as { model: string };
+      asked.push(model);
+      if (model === 'anthropic/claude-haiku-5.5') return new Response('{"error":{"message":"down"}}', { status: 503 });
+      return Response.json({ choices: [{ message: { content: 'Nous sommes ouverts du mardi au samedi.' } }], usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.0001 } });
+    });
+    const response = await SELF.fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: AGENT,
+      body: JSON.stringify({ sessionId: 'web-fallback-01', channel: 'web', language: 'fr', message: 'Vous êtes ouverts quand ?' }),
+    });
+    expect(await response.json()).toMatchObject({ status: 'ok', outcome: 'answered', reply: 'Nous sommes ouverts du mardi au samedi.' });
+    // The first model is asked twice, then the second answers: the guest only sees the answer.
+    expect(asked).toEqual(['anthropic/claude-haiku-5.5', 'anthropic/claude-haiku-5.5', 'openai/gpt-5.6-luna']);
+    const turns = (await (await SELF.fetch(`${BASE}/conversations?limit=1`, { headers: STAFF })).json()) as Record<string, unknown>[];
+    expect(turns[0]).toMatchObject({ outcome: 'answered', fellBack: true });
+  });
+});
