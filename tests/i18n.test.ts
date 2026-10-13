@@ -107,10 +107,17 @@ function everySentence(language: Language): string[] {
 }
 
 describe('the first words of a conversation', () => {
-  it('say on the phone that the assistant is an AI and that the call may be recorded', () => {
-    expect(messages('fr').greeting('Le Bistro', 'voice')).toMatch(/intelligence artificielle[\s\S]*enregistré/);
-    expect(messages('en').greeting('Le Bistro', 'voice')).toMatch(/an AI[\s\S]*recorded/);
-    expect(messages('es').greeting('Le Bistro', 'voice')).toMatch(/inteligencia artificial[\s\S]*grabada/);
+  it('answer the phone as a restaurant does, by the hour, and say it is an AI, never that the call is recorded', () => {
+    expect(messages('fr').greeting('Le Bistro', 'voice', 11)).toMatch(/^Le Bistro, bonjour\. .*une intelligence artificielle\./);
+    expect(messages('fr').greeting('Le Bistro', 'voice', 20)).toMatch(/^Le Bistro, bonsoir\. /);
+    expect(messages('es').greeting('Le Bistro', 'voice', 10)).toMatch(/^Le Bistro, buenos días\. .*una inteligencia artificial\./);
+    expect(messages('es').greeting('Le Bistro', 'voice', 16)).toMatch(/^Le Bistro, buenas tardes\. /);
+    expect(messages('es').greeting('Le Bistro', 'voice', 21)).toMatch(/^Le Bistro, buenas noches\. /);
+    expect(messages('en').greeting('Le Bistro', 'voice', 9)).toMatch(/^Le Bistro, good morning\. .*an AI\./);
+    expect(messages('en').greeting('Le Bistro', 'voice', 19)).toMatch(/^Le Bistro, good evening\. /);
+    for (const language of LANGUAGES) {
+      expect(messages(language).greeting('Le Bistro', 'voice', 20)).not.toMatch(/enregistr|recorded|grabad/i);
+    }
   });
 
   it('name the business in every language and channel', () => {

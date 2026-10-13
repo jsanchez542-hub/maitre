@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
+import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
 import { withFallback } from '../../src/agent/providers/fallback.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
@@ -17,6 +17,7 @@ import { isLanguage, messages, type Language } from '../../src/i18n/index.js';
 import { randomIds } from '../../src/ids.js';
 import { formatPhone, normalizePhone } from '../../src/phone.js';
 import { speechKeyterms } from '../../src/speech.js';
+import { localNow } from '../../src/calendar.js';
 import type { PhoneSource } from '../../src/store.js';
 import { errandOf, runTool, type ToolOutput } from '../../src/tools.js';
 import { CALL_ENDINGS, Conversations, RETENTION_DAYS, type CallEndedBy, type CallLog, type TurnLog } from './conversations.js';
@@ -289,7 +290,11 @@ export class Restaurant extends DurableObject<Env> {
       onError: (error) => console.error('Maître turn failed:', describe(error)),
       ...(hooks.onToolCalls ? { onToolCalls: hooks.onToolCalls } : {}),
     });
-    const answer: ChatAnswer = { status: 'ok', reply: result.reply, outcome: result.outcome, ...turnEffects(result.tools) };
+    const effects = turnEffects(result.tools);
+    // A booking waiting for the number is asked for in every turn, not only the one whose tool said so: the model may
+    // ask again on its own, and the phone's keypad and the web chat's field must open all the same.
+    const askForPhone = effects.askForPhone || (!session.phone && waitsForNumber(result.transcript));
+    const answer: ChatAnswer = { status: 'ok', reply: result.reply, outcome: result.outcome, ...effects, askForPhone };
     const now = new Date().toISOString();
     this.#conversations.save({
       id: session.id,
@@ -349,7 +354,8 @@ export class Restaurant extends DurableObject<Env> {
         status: 'ok',
         sessionId: request.sessionId,
         language: spoken,
-        greeting: messages(spoken).greeting(this.#engine.config.name, 'voice'),
+        // As a restaurant answers: "Merrain, bonsoir", by the hour where the restaurant is.
+        greeting: messages(spoken).greeting(this.#engine.config.name, 'voice', Number(localNow(this.#engine.now(), this.#engine.config.timeZone).time.slice(0, 2))),
         keyterms: speechKeyterms(this.#engine.config, spoken),
       };
     });

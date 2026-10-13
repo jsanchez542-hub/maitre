@@ -91,7 +91,9 @@ describe('a call to the restaurant', () => {
 
     const started = (await (await step('call-voice-0001', 'start', { language: 'fr', callerId: '+33 6 11 11 11 11' })).json()) as Record<string, string>;
     expect(started).toMatchObject({ status: 'ok', sessionId: 'call-voice-0001', language: 'fr' });
-    expect(started['greeting']).toMatch(/intelligence artificielle[\s\S]*enregistré/);
+    // As a restaurant answers, by the hour there, saying it is an AI; the audio is never recorded, so never that it may be.
+    expect(started['greeting']).toMatch(/^Merrain, bon(jour|soir)\. .*une intelligence artificielle\./);
+    expect(started['greeting']).not.toMatch(/enregistr/);
     // Speech recognition is told the restaurant's name and its dishes, in the call's language.
     expect(started['keyterms']).toEqual(expect.arrayContaining(['Merrain', 'Soupe à l’oignon gratinée']));
     // Starting the same call again changes nothing.
@@ -131,6 +133,7 @@ describe('a call to the restaurant', () => {
       call('find_table', { day: 'friday next week', time: '20:00', partySize: 2 }),
       (messages) => call('book_table', { holdId: heldTable(messages), guestName: 'Martin', allergies: [] }),
       say('Pour confirmer, tapez votre numéro sur le clavier, puis la touche dièse.'),
+      say('Bien sûr : tapez votre numéro sur le clavier, puis la touche dièse.'),
       (messages) => call('book_table', { holdId: heldTable(messages), guestName: 'Martin', allergies: [] }),
       say('C’est réservé, merci.'),
     ]);
@@ -139,16 +142,19 @@ describe('a call to the restaurant', () => {
       await step('call-voice-0003', 'turns', { turnId: 'turn-keypad-1', message: 'Une table pour deux vendredi prochain à vingt heures au nom de Martin, sans allergie', language: 'fr' }),
     );
     expect(asked.at(-1)).toMatchObject({ type: 'answer', askForPhone: true, booked: [] });
+    // Asked again without a tool, the number is still awaited: the keypad opens all the same.
+    const again = await lines(await step('call-voice-0003', 'turns', { turnId: 'turn-keypad-1b', message: 'Pardon, je dois faire quoi ?', language: 'fr' }));
+    expect(again.at(-1)).toMatchObject({ type: 'answer', askForPhone: true });
 
     // Two keys and a hash are not a number: the caller is asked again, in words, and no model is called.
     const unreadable = await lines(await step('call-voice-0003', 'keypad', { turnId: 'turn-keypad-2', digits: '12#' }));
     expect(unreadable).toEqual([expect.objectContaining({ type: 'answer', outcome: 'keypad_unreadable', askForPhone: true, reply: expect.stringContaining('touche dièse') })]);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
 
     const typed = await lines(await step('call-voice-0003', 'keypad', { turnId: 'turn-keypad-3', digits: '0622222222#' }));
     expect(typed.at(-1)).toMatchObject({ type: 'answer', askForPhone: false, booked: [{ date: friday, time: '20:00', partySize: 2 }] });
     expect((await staffDay(friday)).bookings[0]).toMatchObject({ guestName: 'Martin', phoneSource: 'keypad', phone: '+33 6 22 22 22 22' });
-    expect(requests[3]?.body).toContain('Note from the phone line, not said by the caller');
+    expect(requests[4]?.body).toContain('Note from the phone line, not said by the caller');
     for (const request of requests) expect(request.body).not.toMatch(/22\D?22\D?22\D?22/);
 
     expect((await step('call-voice-0003', 'keypad', { turnId: 'turn-keypad-4', digits: '06-22' })).status).toBe(400);
@@ -335,7 +341,7 @@ describe('calling the demo restaurant from the browser', () => {
     expect((await demoStep(sandbox, given.sessionId, 'start', { language: 'en' }, JSON_BODY)).status).toBe(401);
     expect((await demoStep(sandbox, 'call_AAAAAAAAAAAAAAAAAAAAAA', 'start', { language: 'en' })).status).toBe(400);
     const started = (await (await demoStep(sandbox, given.sessionId, 'start', { language: 'en' })).json()) as Record<string, string>;
-    expect(started['greeting']).toMatch(/an AI[\s\S]*recorded/);
+    expect(started['greeting']).toMatch(/^Merrain, good (morning|afternoon|evening)\. .*an AI\./);
 
     const asked = await lines(await demoStep(sandbox, given.sessionId, 'turns', { turnId: 'turn-demo-001', message: 'A table for two tonight at half past nine, Nolan, no allergies', language: 'en' }));
     expect(asked[0]).toEqual({ type: 'working', say: 'Let me check.' });

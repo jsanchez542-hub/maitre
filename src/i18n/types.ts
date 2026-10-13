@@ -42,9 +42,11 @@ export interface Messages {
   allergenQuestion(dish: string, allergens: readonly Allergen[]): string;
   /**
    * The first words of a conversation, written here and not by the model. On the
-   * phone they say it is an AI and that the call may be recorded, as the law asks.
+   * phone, as a restaurant answers: its name, the greeting for the hour at the
+   * restaurant, and that the caller is speaking with an AI, as the law asks (AI
+   * Act, art. 50). The call's audio is never recorded, so it does not say it may be.
    */
-  greeting(business: string, channel: Channel): string;
+  greeting(business: string, channel: Channel, hour?: number): string;
   /** Something failed and the team has been asked to call the guest back. */
   failureHandedOver(): string;
   /** Something failed and there is no number to call back: the guest is asked to try again. */

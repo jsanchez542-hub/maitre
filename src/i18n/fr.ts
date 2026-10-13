@@ -79,12 +79,10 @@ export const fr: Messages = {
   allergenQuestion(dish, allergens) {
     return `Allergènes que la fiche du plat ${quoted(dish)} ne précise pas${THIN}: ${allergens.map((allergen) => ALLERGEN_WORDS[allergen].name).join(', ')}.`;
   },
-  greeting(business, channel) {
+  greeting(business, channel, hour) {
     if (channel === 'voice') {
-      return (
-        `Bonjour, vous êtes bien chez ${business}. Je suis l’assistant vocal de réservation, un programme ` +
-        `d’intelligence artificielle, et cet appel peut être enregistré. Que puis-je faire pour vous${THIN}?`
-      );
+      const hello = hour !== undefined && hour >= 18 ? 'bonsoir' : 'bonjour';
+      return `${business}, ${hello}. Je suis l’assistant de réservation, une intelligence artificielle. Que puis-je faire pour vous${THIN}?`;
     }
     return (
       `Bonjour et bienvenue chez ${business}. Je suis l’assistant de réservation${THIN}: je peux vous trouver ` +

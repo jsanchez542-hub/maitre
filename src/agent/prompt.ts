@@ -56,7 +56,7 @@ export function buildSystemPrompt(
   const local = localNow(now, config.timeZone);
   const dynamic = [
     `Today is ${formatDate(local.date, 'en', local.date)} (${local.date}) at the restaurant (${config.timeZone}). The time now is in a note after the guest's last message.`,
-    `The conversation opened with this greeting, already ${channel === 'voice' ? 'said to the caller' : 'shown to the guest'}: "${messages(language).greeting(config.name, channel)}"`,
+    `The conversation opened with this greeting, already ${channel === 'voice' ? 'said to the caller' : 'shown to the guest'}: "${messages(language).greeting(config.name, channel, Number(local.time.slice(0, 2)))}"`,
   ].join('\n');
 
   return { stable, dynamic, now: `[Note from the system, not from the guest: it is ${formatTime(local.time, 'en')} at the restaurant now.]` };

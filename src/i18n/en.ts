@@ -77,9 +77,10 @@ export const en: Messages = {
   allergenQuestion(dish, allergens) {
     return `Allergens the sheet for ${quoted(dish)} does not cover: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
   },
-  greeting(business, channel) {
+  greeting(business, channel, hour) {
     if (channel === 'voice') {
-      return `Hello, you have reached ${business}. I am the automated booking assistant, an AI, and this call may be recorded. How can I help?`;
+      const hello = hour === undefined ? 'hello' : hour < 12 ? 'good morning' : hour < 18 ? 'good afternoon' : 'good evening';
+      return `${business}, ${hello}. This is the booking assistant, an AI. How can I help you?`;
     }
     return `Hello and welcome to ${business}. I am the booking assistant: I can find you a table and answer questions about the menu and opening hours. How can I help?`;
   },

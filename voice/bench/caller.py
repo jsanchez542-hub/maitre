@@ -82,6 +82,8 @@ LISTENING_GRACE_SECONDS = 0.4
 PART_GAP_SECONDS = 0.6
 #: The attribute where the agent says whether it listens, thinks or speaks.
 AGENT_STATE = "lk.agent.state"
+#: The attribute where the agent says the restaurant needs the caller's number: "open", then "closed".
+KEYPAD = "maitre.keypad"
 OUT = Path(__file__).with_name("runs")
 
 
@@ -229,10 +231,15 @@ async def main() -> None:
             if track.kind == rtc.TrackKind.KIND_AUDIO and publication.name != "background_audio":
                 listening.append(asyncio.ensure_future(ear.listen(track)))
 
+        keypad: list[str] = []
+
         @room.on("participant_attributes_changed")
         def _on_attributes(changed: dict[str, str], _participant: rtc.Participant) -> None:
             if AGENT_STATE in changed:
                 ear.agent_is(changed[AGENT_STATE])
+            # The browser's call page opens its keypad on this: the restaurant needs the number.
+            if KEYPAD in changed:
+                keypad.append(changed[KEYPAD])
 
         await room.connect(call_pass["url"], call_pass["token"])
         for participant in room.remote_participants.values():
@@ -314,6 +321,7 @@ async def main() -> None:
         "turns": turns,
         "callLog": calls,
         "restaurantTurns": heard_by_the_restaurant,
+        "keypadAttribute": keypad,
     }
     (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print("\nBooking:", json.dumps(result["booking"], ensure_ascii=False) if booked else "NONE")
@@ -324,7 +332,16 @@ async def main() -> None:
     for turn in heard_by_the_restaurant:
         flags = " ".join(name for name in ("unheardBefore", "phoneEntered", "fellBack") if turn.get(name))
         print(f"  {turn.get('guest') or '(keypad)'!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r} {flags}")
-    ok = bool(booked) and booked[0].get("phoneSource") == "keypad" and booked[0].get("partySize") == 4 and booked[0].get("time") == "21:30"
+    # The keypad opened when the number was asked for, and closed once it was typed.
+    print(f"Keypad attribute: {keypad or 'never set'}")
+    ok = (
+        bool(booked)
+        and booked[0].get("phoneSource") == "keypad"
+        and booked[0].get("partySize") == 4
+        and booked[0].get("time") == "21:30"
+        and keypad[:1] == ["open"]
+        and keypad[-1:] == ["closed"]
+    )
     if booked and GUEST not in str(booked[0].get("guestName", "")).lower():
         print(f"Name heard as {booked[0].get('guestName')!r}, said as {GUEST.title()!r}: a recognition note, not a failure")
     print("PASS" if ok else "FAIL")

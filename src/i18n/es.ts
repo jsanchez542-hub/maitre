@@ -71,12 +71,11 @@ export const es: Messages = {
   allergenQuestion(dish, allergens) {
     return `Alérgenos que la ficha del plato «${dish}» no indica: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
   },
-  greeting(business, channel) {
+  greeting(business, channel, hour) {
     if (channel === 'voice') {
-      return (
-        `Hola, ha llamado a ${business}. Soy el asistente automático de reservas, un programa de inteligencia ` +
-        'artificial, y esta llamada puede ser grabada. ¿En qué puedo ayudarle?'
-      );
+      if (hour === undefined) return `Ha llamado a ${business}. Le atiende el asistente de reservas, una inteligencia artificial. ¿En qué puedo ayudarle?`;
+      const hello = hour < 13 ? 'buenos días' : hour < 20 ? 'buenas tardes' : 'buenas noches';
+      return `${business}, ${hello}. Le atiende el asistente de reservas, una inteligencia artificial. ¿En qué puedo ayudarle?`;
     }
     return (
       `Hola y bienvenido a ${business}. Soy el asistente de reservas: puedo buscarle una mesa y responder ` +
