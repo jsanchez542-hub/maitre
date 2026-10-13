@@ -239,6 +239,11 @@ describe('calling a provider', () => {
       model: 'anthropic/claude-haiku-5.5',
       provider: { sort: 'latency', data_collection: 'deny' },
     });
+    // A provider's region is part of its name: the configured route keeps conversations in the EU first.
+    expect(await sentBody('anthropic/claude-haiku-5.5@google-vertex/europe,amazon-bedrock/eu-west-1,anthropic')).toMatchObject({
+      model: 'anthropic/claude-haiku-5.5',
+      provider: { order: ['google-vertex/europe', 'amazon-bedrock/eu-west-1', 'anthropic'], data_collection: 'deny' },
+    });
   });
 
   it('tells Anthropic’s models where to cache, and leaves the others to cache on their own', async () => {

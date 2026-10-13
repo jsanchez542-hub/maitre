@@ -31,9 +31,12 @@
     // Every restaurant's data stays in the EU. workerd cannot pin data, so
     // local runs override this with "none" in .dev.vars and the test config.
     "DATA_JURISDICTION": "eu",
-    // Chosen with the evaluation (evals/RESULTS.md, runs E, I and J), for the chat and the phone:
-    // after the "@", OpenRouter sends each call to whichever of the model's providers answers fastest.
-    "MODEL": "anthropic/claude-haiku-5.5@latency",
+    // The model was chosen with the evaluation (evals/RESULTS.md, runs E, I and J), for the chat and
+    // the phone. After the "@", its providers in order: the EU first, where the restaurant's data is,
+    // and the fastest on the phone's own request (npm run eval:providers, 13 October: Vertex in Europe
+    // ended a call in 0.77 s where "fastest now" routing took 1.13 s). One provider keeps the prompt
+    // cache, which a provider that changes from call to call loses. Anthropic only if both EU ones fail.
+    "MODEL": "anthropic/claude-haiku-5.5@google-vertex/europe,amazon-bedrock/eu-west-1,anthropic",
     "RESTAURANT_IDS": "demo",
     // The public demo's limits. A conversation costs about $0.002, so a dollar a day is some
     // 500 conversations; past a limit the demo pauses and says so. Its own OpenRouter key
