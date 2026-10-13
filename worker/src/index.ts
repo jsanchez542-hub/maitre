@@ -15,7 +15,8 @@ export { Restaurant } from './restaurant.js';
  *   POST chat                          agent  one turn of a web or WhatsApp conversation
  *   POST sessions/:session/phone       agent  the number typed in the web chat's field
  *   POST calls/:session/start          agent  a phone call begins: { language, callerId? }, answers the greeting
- *   POST calls/:session/turns          agent  { turnId, message, language, heard? }, answers JSON lines:
+ *                                             and the words speech recognition should expect on the line
+ *   POST calls/:session/turns          agent  { turnId, message, language, heard?, unheard? }, answers JSON lines:
  *                                             a short line to say while the tools run, then the answer
  *   POST calls/:session/keypad         agent  { turnId, digits } typed by the caller, answered the same way
  *   POST calls/:session/end            agent  { endedBy, seconds, voiceToVoiceMs }, answers the last words if any
