@@ -182,6 +182,18 @@ The design review asked "Bonsoir, vous êtes ouverts dimanche soir ?" and got "O
 
 All three answers now open with "Non, le dimanche 18 octobre nous ne sommes ouverts que le midi…". The one failure is the slip described in run G, in `day-after-tomorrow-fr`: given the name unasked, the model still asked about allergies as a yes-or-no question, and the guest's "Oui, parfait" left the booking unmade. It is the next thing to work on.
 
+### Run L: the slip of run G, found in a tool's own words (13 October)
+
+The slip came from `find_table` itself: on "available" it told the model to read back the table and ask for the name, even when the guest had just given it, and rule 4 says to ask about allergies with the name. The model asked the allergy question alone, as a yes or no. The tool now says: when the name is already given, book at once with the allergies mentioned or an empty list, and ask nothing more. `book_table` no longer asks for the reference to be read on the phone, which the guard then had to take out.
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| The three allergy conversations, 10 runs each | Claude Haiku 5.5 `@latency` | 3/3 | 30/30 | 3.7 s | 5.7 s | 1.5 s | 2.6 s | $0.027 |
+| All channels | Claude Haiku 5.5 `@latency` | **33/33** | **99/99** | 2.5 s | 5.0 s | 1.3 s | 2.4 s | $0.062 |
+| Phone | Claude Haiku 5.5 `@latency` | **20/20** | **60/60** | 2.6 s | 5.5 s | 1.4 s | 2.6 s | $0.037 |
+
+The first full run with no failure at all. On the phone the guard fired on 32 turns of 126 instead of 41: the model reads fewer references aloud now that no tool asks it to.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -220,4 +232,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14 and run K $0.10: $6.58 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10 and run L $0.13: $6.71 in all.

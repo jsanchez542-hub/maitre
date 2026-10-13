@@ -62,7 +62,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'find_table',
     description:
-      'Checks whether a table is free and, if it is, sets it aside for this guest for a few minutes. Call it before saying anything about availability: never tell a guest a table is free unless this returned status "available". On "available", read `readBack` to the guest and ask for the name to book under. On "unavailable", say so and offer the `alternatives`, which are not set aside: call find_table again for the one the guest picks. On "needs_staff", use hand_over.',
+      'Checks whether a table is free and, if it is, sets it aside for this guest for a few minutes. Call it before saying anything about availability: never tell a guest a table is free unless this returned status "available". On "available": when the guest has already given the name to book under, book at once with book_table, with the allergies they mentioned or an empty list, and ask nothing more; otherwise read `readBack` to the guest and ask for the name, with any allergies in the same question. On "unavailable", say so and offer the `alternatives`, which are not set aside: call find_table again for the one the guest picks. On "needs_staff", use hand_over.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,7 +81,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'book_table',
     description:
-      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. Read back `booking.readBack` and the reference once it is booked. Never tell the guest an allergy is noted unless it is in `booking.allergies`.',
+      'Books the table set aside by find_table, under the guest’s name. Never ask for a phone number: the conversation already has one, or this tool says how to get it. Read back `booking.readBack` once it is booked, and the reference in writing (never on the phone, where nobody can note it). Never tell the guest an allergy is noted unless it is in `booking.allergies`.',
     inputSchema: {
       type: 'object',
       properties: {
