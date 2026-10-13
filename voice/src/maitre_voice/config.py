@@ -8,6 +8,14 @@ from dataclasses import dataclass
 from .speech import EndOfTurn
 
 LANGUAGES = ("fr", "en", "es")
+#: The keys each speech provider needs, by name. LiveKit Inference is paid from the LiveKit project's own credit.
+PROVIDER_KEYS = {
+    "inference": ("LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"),
+    "deepgram": ("DEEPGRAM_API_KEY",),
+    "cartesia": ("CARTESIA_API_KEY",),
+    "mistral": ("MISTRAL_API_KEY",),
+    "elevenlabs": ("ELEVEN_API_KEY",),
+}
 
 
 @dataclass(frozen=True)
@@ -32,6 +40,8 @@ class Settings:
     usage_every_seconds: float
     #: Soft typing while the restaurant works out its answer, instead of silence.
     thinking_sound: bool
+    #: The speech providers' keys the environment has, by name only.
+    keys: frozenset[str] = frozenset()
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -42,8 +52,10 @@ class Settings:
             agent_token=token,
             agent_name=values.get("MAITRE_AGENT_NAME", "maitre-voice"),
             restaurant_id=values.get("MAITRE_RESTAURANT_ID", "demo"),
-            stt=values.get("VOICE_STT", "deepgram:flux-general-multi"),
-            tts=values.get("VOICE_TTS", "cartesia:sonic-3"),
+            # Through LiveKit Inference, paid from the LiveKit project's credit, with no other provider's key. Nova-3 with
+            # LiveKit's turn detector answered sooner than Flux on measured calls and cut fewer sentences in two.
+            stt=values.get("VOICE_STT", "inference:deepgram/nova-3"),
+            tts=values.get("VOICE_TTS", "inference:deepgram/aura-2:agathe"),
             end_of_turn=EndOfTurn(
                 threshold=float(values["VOICE_EOT_THRESHOLD"]) if values.get("VOICE_EOT_THRESHOLD") else None,
                 timeout_ms=int(values["VOICE_EOT_TIMEOUT_MS"]) if values.get("VOICE_EOT_TIMEOUT_MS") else None,
@@ -52,6 +64,7 @@ class Settings:
             max_call_seconds=float(values.get("VOICE_MAX_CALL_SECONDS", "900")),
             usage_every_seconds=float(values.get("VOICE_USAGE_EVERY_SECONDS", "30")),
             thinking_sound=values.get("VOICE_THINKING_SOUND", "on") != "off",
+            keys=frozenset(name for names in PROVIDER_KEYS.values() for name in names if values.get(name)),
         )
 
     def problems(self) -> list[str]:
@@ -61,4 +74,9 @@ class Settings:
             found.append("MAITRE_AGENT_TOKEN is missing")
         if not self.api_url.startswith(("http://127.0.0.1", "http://localhost", "https://")):
             found.append("MAITRE_API_URL must be https, or the local Worker")
+        for spec in (self.stt, self.tts):
+            provider = spec.split(":", 1)[0]
+            if provider not in PROVIDER_KEYS:
+                found.append(f"unknown speech provider in {spec}")
+            found.extend(f"{name} is missing, for {spec}" for name in PROVIDER_KEYS.get(provider, ()) if name not in self.keys)
         return found

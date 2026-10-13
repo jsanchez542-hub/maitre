@@ -118,3 +118,18 @@ def test_a_demo_pass_goes_to_the_visitors_restaurant_and_anything_else_to_the_re
     )
     assert Dispatch.from_job("not json", "AJ_2", settings).call.session_id == "call_AJ_2"
     assert Dispatch.from_job('{"language": "de"}', "AJ_3", settings).language == "fr"
+
+
+def test_says_which_key_the_chosen_speech_is_missing_without_its_value():
+    base = {"MAITRE_API_URL": "http://127.0.0.1:8787", "MAITRE_AGENT_TOKEN": "t"}
+    assert Settings.from_env(base).problems() == [
+        "LIVEKIT_API_KEY is missing, for inference:deepgram/nova-3",
+        "LIVEKIT_API_SECRET is missing, for inference:deepgram/nova-3",
+        "LIVEKIT_API_KEY is missing, for inference:deepgram/aura-2:agathe",
+        "LIVEKIT_API_SECRET is missing, for inference:deepgram/aura-2:agathe",
+    ]
+    configured = Settings.from_env(base | {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"})
+    assert configured.problems() == []
+    assert "secret" not in repr(configured.keys)
+    direct = Settings.from_env(base | {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s", "VOICE_TTS": "cartesia:sonic-3"})
+    assert direct.problems() == ["CARTESIA_API_KEY is missing, for cartesia:sonic-3"]

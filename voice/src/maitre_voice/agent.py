@@ -30,6 +30,7 @@ from livekit.agents import (
     JobProcess,
     ModelSettings,
     cli,
+    inference,
     llm,
     room_io,
     tts,
@@ -54,8 +55,13 @@ server = AgentServer()
 KEYPAD_PAUSE_SECONDS = 4.0
 #: Words a transcript needs before the conversation follows it into another language: "OK" is not a switch.
 WORDS_TO_SWITCH = 3
-#: Seconds after the caller's last word before the turn is theirs no more, on top of what speech recognition decides.
+#: Seconds after the caller's last word before the turn is theirs no more, when the turn detector hears that they have
+#: finished; on top of what Flux decides, when it decides.
 ENDPOINTING_SECONDS = 0.25
+#: The longest silence the line waits for more words when the detector hears an unfinished sentence. LiveKit's 2.5 s
+#: left a caller 4.5 s without an answer after "Au nom de Dupont, et personne n'a d'allergie."; a caller who goes on
+#: after a longer pause is heard as one message all the same, by the restaurant's handling of a reply nobody heard.
+LONGEST_TURN_WAIT_SECONDS = 1.5
 #: Below this peak (16-bit samples, about -44 dBFS) a frame of synthesized speech is silence.
 SILENT_PEAK = 200
 
@@ -188,11 +194,12 @@ class PhoneCall:
             vad=vad,
             llm=RestaurantBrain(self._state),
             turn_handling={
-                **({"turn_detection": "stt"} if ends_turns_itself(settings.stt) else {}),
+                # Flux decides the end of a turn itself; with any other recognition, LiveKit's detector hears it in the voice.
+                "turn_detection": "stt" if ends_turns_itself(settings.stt) else inference.TurnDetector(version="v1"),
                 # Never on a phrase the caller has not finished: every turn reaches the restaurant, which may set a table aside.
                 "preemptive_generation": {"enabled": False},
                 # Flux already hears when the caller has finished, from how they speak: the extra wait on top stays short.
-                "endpointing": {"min_delay": ENDPOINTING_SECONDS},
+                "endpointing": {"min_delay": ENDPOINTING_SECONDS, "max_delay": LONGEST_TURN_WAIT_SECONDS},
             },
             user_away_timeout=settings.silence_seconds,
         )
