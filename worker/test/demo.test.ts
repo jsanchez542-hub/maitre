@@ -140,6 +140,9 @@ describe('the public demo', () => {
 
   it('pauses past its budget, says so, and never calls the model or opens a restaurant then', async () => {
     const requests = fakeNetwork();
+    const status = async () => (await (await SELF.fetch(DEMO)).json()) as Record<string, unknown>;
+    // A page asks before showing the chat and the call button, without opening a restaurant.
+    expect(await status()).toEqual({ live: true, calls: { perRestaurant: 3, maxSeconds: 240 } });
     const sandbox = await opened();
     const budget = budgetStub(env);
     if (!budget) throw new Error('the test config must set DATA_JURISDICTION');
@@ -151,6 +154,7 @@ describe('the public demo', () => {
     expect(paused.status).toBe(503);
     expect(await paused.json()).toEqual({ error: 'live_paused' });
     expect(await open()).toMatchObject({ code: 503, body: { error: 'live_paused' } });
+    expect(await status()).toEqual({ live: false, calls: null });
     expect(requests).toHaveLength(0);
   });
 

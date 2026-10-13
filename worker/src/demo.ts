@@ -321,6 +321,11 @@ export class DemoBudget extends DurableObject<Env> {
     return 'ok';
   }
 
+  /** Whether the demo is open now: read only, so a page can ask on every visit. */
+  async status(): Promise<'live' | 'live_paused'> {
+    return (await this.#paused()) ? 'live_paused' : 'live';
+  }
+
   async allowTurn(): Promise<'ok' | 'live_paused'> {
     return (await this.#paused()) ? 'live_paused' : 'ok';
   }

@@ -38,6 +38,8 @@ export { Restaurant } from './restaurant.js';
  *
  * The public demo, under /v1/demo/:
  *
+ *   GET  (the demo itself)                           { live, calls }: whether it is open now, and the call's terms or
+ *                                                    null, without opening a restaurant or counting a visitor
  *   POST sandboxes                                   { turnstile } opens a visitor's own restaurant
  *   POST sandboxes/:sandbox/chat                     { sessionId, message, language } with the real assistant
  *   POST sandboxes/:sandbox/sessions/:session/phone  { phone } typed in the chat's field
@@ -291,6 +293,7 @@ type StaffAction = (typeof STAFF_ACTIONS)[number];
 
 /** The public demo: a visitor opens a restaurant of their own and uses it as a guest and as its owner. */
 async function demo(request: Request, env: Env, url: URL, rest: readonly string[]): Promise<Response> {
+  if (matcher(request, rest)('GET')) return demoStatus(env);
   if (matcher(request, rest)('POST', 'sandboxes')) return openSandbox(request, env);
   if (rest[0] !== 'sandboxes' || rest.length < 3) return problem(404, 'not_found');
 
@@ -441,6 +444,17 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   const state = await sandbox.open();
   if (state.status !== 'ok') return problem(500, 'internal_error');
   return json({ sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock, calls: callOffer(env) }, 201);
+}
+
+/**
+ * Whether the demo is open now, and the call's terms: what a page asks on
+ * every visit, so it shows the chat and the call button only when they work.
+ * Opening a restaurant to find out would spend the visitor's daily quota.
+ */
+async function demoStatus(env: Env): Promise<Response> {
+  const budget = budgetStub(env);
+  const live = budget !== undefined && Boolean(env.DEMO_OPENROUTER_API_KEY) && (await budget.status()) === 'live';
+  return json({ live, calls: live ? callOffer(env) : null });
 }
 
 /** Whether the demo can take calls, and on what terms: the page shows its call button only then, never one that would fail. */
