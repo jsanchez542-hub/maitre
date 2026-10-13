@@ -39,7 +39,8 @@ SCRIPT: list[str | None] = [
     None,
     "Merci beaucoup, au revoir.",
 ]
-NUMBER = "0612345678"
+#: From ARCEP's range for fiction (06 39 98 xx xx): the booking it ends up in shows on the panel.
+NUMBER = "0639980042"
 DTMF_CODES = {"*": 10, "#": 11}
 #: The caller's voice: a synthesized voice that is not the agent's, so the recognition is tested on someone else.
 CALLER_VOICE = "inference:deepgram/aura-2:hector"
