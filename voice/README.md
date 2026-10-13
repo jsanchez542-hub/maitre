@@ -13,13 +13,14 @@ caller (browser or phone) ──► LiveKit ──► this agent: speech recogni
 
 ## What a call does
 
-- **Greets** with words written by the code, not the model: the assistant is an AI and the call may be recorded (art. 50 of the EU AI Act). The greeting cannot be interrupted.
+- **Greets** with words written by the code, not the model, by the hour where the restaurant is: the assistant says it is an AI (art. 50 of the EU AI Act). The greeting cannot be interrupted.
 - **Never leaves the caller in silence**: as soon as the model reaches for a tool, the Worker sends a short line ("Je regarde.", "Je regarde la fiche de la cuisine.") that is spoken while the tool and the reply run. Before that, the caller hears soft typing, as at a real desk.
 - **Takes the phone number from caller ID or the keypad**, never from what speech recognition heard. The browser's keypad sends real DTMF tones, as a phone does.
 - **Never reads a booking reference out**: letters and digits nobody can note while listening.
 - **Follows a caller who switches language**, once a sentence of three words or more is heard in French, English or Spanish, and answers with that language's own voice: a synthesized voice speaks the one language it was made for (Aura-2's Agathe, asked for Spanish, left every call in Spanish silent).
 - **Remembers a reply cut short as far as the caller heard it**, and forgets one they heard none of: a caller who speaks on after a pause, before the reply begins, is heard as one message, and a booking that reply confirmed is told again.
 - **Never makes a turn of an unfinished sentence**: LiveKit's preemptive generation is off, because every turn reaches the restaurant, which may set a table aside.
+- **Hangs up after its goodbye** when the caller ends the call: they say goodbye, or that they will call back. The model says the goodbye with `end_call`, and the line hangs up 1.2 s after it has been heard; a caller who speaks over it, or says more in that pause, keeps the line open. A reply that asks something never ends a call.
 - **Hangs up on its own** after 20 seconds of silence, at the call's longest, or when the public demo's budget runs out, after saying why in the caller's language.
 - **Keeps callers' words out of anyone's training**: the call's audio is never recorded, and Deepgram is told not to keep the audio or the text it is sent (`mip_opt_out`).
 - **Logs each call** with the Worker: its length, how it ended and, for every answer, the time from the caller's last word to the agent's first.
@@ -70,7 +71,7 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 uv run pytest                        # the line, the keypad and the brain, against a stand-in Worker
 uv run ruff check .
 uv run python bench/line_check.py    # a French booking call against the local Worker and the real model, without LiveKit
-uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: speech, keypad, timing, what the restaurant heard, the booking checked
+uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: it books the evening the demo suggests, types the number, says goodbye, and passes when the restaurant hangs up
 uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to call the local demo restaurant yourself
 ```
 
