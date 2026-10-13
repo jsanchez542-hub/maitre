@@ -189,7 +189,7 @@ class PhoneCall:
         self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
         self._tts = build_tts(settings.tts, started.language)
         self.session: AgentSession = AgentSession(
-            stt=build_stt(settings.stt, started.language, settings.end_of_turn),
+            stt=build_stt(settings.stt, started.language, settings.end_of_turn, started.keyterms),
             tts=self._tts,
             vad=vad,
             llm=RestaurantBrain(self._state),

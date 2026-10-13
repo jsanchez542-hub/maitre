@@ -16,6 +16,7 @@ import {
 import { isLanguage, messages, type Language } from '../../src/i18n/index.js';
 import { randomIds } from '../../src/ids.js';
 import { formatPhone, normalizePhone } from '../../src/phone.js';
+import { speechKeyterms } from '../../src/speech.js';
 import type { PhoneSource } from '../../src/store.js';
 import { errandOf, runTool, type ToolOutput } from '../../src/tools.js';
 import { CALL_ENDINGS, Conversations, RETENTION_DAYS, type CallEndedBy, type CallLog, type TurnLog } from './conversations.js';
@@ -63,8 +64,12 @@ export interface CallStart {
   callerId?: string;
 }
 
-/** What the caller hears first, written by the code: it says the assistant is an AI and that the call may be recorded. */
-export type CallStarted = { status: 'ok'; sessionId: string; language: Language; greeting: string };
+/**
+ * What the caller hears first, written by the code: it says the assistant is an
+ * AI and that the call may be recorded. With the words speech recognition should
+ * expect on this line: the restaurant's name and its dishes.
+ */
+export type CallStarted = { status: 'ok'; sessionId: string; language: Language; greeting: string; keyterms: string[] };
 
 /** What the caller said, as speech recognition heard it, with the id the line gave the turn. */
 export interface CallTurn {
@@ -340,7 +345,13 @@ export class Restaurant extends DurableObject<Env> {
         await this.#keepTidy();
       }
       const spoken = stored?.language ?? language;
-      return { status: 'ok', sessionId: request.sessionId, language: spoken, greeting: messages(spoken).greeting(this.#engine.config.name, 'voice') };
+      return {
+        status: 'ok',
+        sessionId: request.sessionId,
+        language: spoken,
+        greeting: messages(spoken).greeting(this.#engine.config.name, 'voice'),
+        keyterms: speechKeyterms(this.#engine.config, spoken),
+      };
     });
   }
 

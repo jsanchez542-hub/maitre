@@ -92,6 +92,8 @@ describe('a call to the restaurant', () => {
     const started = (await (await step('call-voice-0001', 'start', { language: 'fr', callerId: '+33 6 11 11 11 11' })).json()) as Record<string, string>;
     expect(started).toMatchObject({ status: 'ok', sessionId: 'call-voice-0001', language: 'fr' });
     expect(started['greeting']).toMatch(/intelligence artificielle[\s\S]*enregistré/);
+    // Speech recognition is told the restaurant's name and its dishes, in the call's language.
+    expect(started['keyterms']).toEqual(expect.arrayContaining(['Merrain', 'Soupe à l’oignon gratinée']));
     // Starting the same call again changes nothing.
     expect(await (await step('call-voice-0001', 'start', { language: 'en' })).json()).toEqual(started);
 

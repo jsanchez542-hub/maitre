@@ -34,7 +34,13 @@ class FakeWorker:
             return web.json_response({"error": code}, status=status)
         if step == "start":
             return web.json_response(
-                {"status": "ok", "sessionId": request.match_info["session"], "language": body["language"], "greeting": "Bonjour"}
+                {
+                    "status": "ok",
+                    "sessionId": request.match_info["session"],
+                    "language": body["language"],
+                    "greeting": "Bonjour",
+                    "keyterms": ["Merrain", "Soupe à l’oignon gratinée"],
+                }
             )
         if step == "usage":
             return web.json_response(
@@ -124,6 +130,7 @@ async def test_start_usage_and_end(worker, http):
     line = Line(http, Call.demo_sandbox(url, "sandbox-0000000000000000", "call_4"), TOKEN)
     started = await line.start("en", caller_id=None)
     assert (started.greeting, started.language) == ("Bonjour", "en")
+    assert started.keyterms == ("Merrain", "Soupe à l’oignon gratinée")
     assert (await line.usage(30.04)).carry_on
     stopped = await line.usage(240)
     assert (stopped.carry_on, stopped.reason) == (False, "time_limit")

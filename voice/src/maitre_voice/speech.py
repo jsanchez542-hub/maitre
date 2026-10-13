@@ -12,8 +12,20 @@ from dataclasses import dataclass
 from livekit.agents import inference, stt, tts
 from livekit.plugins import cartesia, deepgram, elevenlabs, mistralai
 
-#: Words speech recognition should expect on a restaurant's line: the name, and what callers ask about.
-KEYTERMS = ["Merrain", "allergie", "allergies", "gluten", "arachides", "fruits à coque", "réservation", "couverts"]
+#: Words speech recognition should expect on any restaurant's line, by language: what callers ask about.
+#: The restaurant's own name and dishes come from the restaurant, at the start of each call.
+KEYTERMS = {
+    "fr": ["allergie", "allergies", "intolérance", "gluten", "arachides", "fruits à coque", "réservation", "couverts"],
+    "en": ["allergy", "allergies", "intolerance", "gluten", "peanuts", "tree nuts", "booking", "reservation"],
+    "es": ["alergia", "alergias", "intolerancia", "gluten", "cacahuetes", "frutos secos", "reserva", "comensales"],
+}
+
+
+def keyterms_for(language: str, restaurant: tuple[str, ...] = ()) -> list[str]:
+    """The restaurant's words first, then the line's own, without repeats."""
+    return list(dict.fromkeys([*restaurant, *KEYTERMS.get(language, KEYTERMS["fr"])]))
+
+
 #: Callers give names, numbers and allergies: Deepgram is told not to keep their audio or text to train its models.
 DEEPGRAM_PRIVACY = {"mip_opt_out": True}
 
@@ -38,28 +50,29 @@ def _split(spec: str, parts: int) -> list[str]:
     return pieces + [""] * (parts - len(pieces))
 
 
-def build_stt(spec: str, language: str, end_of_turn: EndOfTurn | None = None) -> stt.STT:
+def build_stt(spec: str, language: str, end_of_turn: EndOfTurn | None = None, restaurant_terms: tuple[str, ...] = ()) -> stt.STT:
     provider, model = _split(spec, 2)
     end_of_turn = end_of_turn or EndOfTurn()
+    terms = keyterms_for(language, restaurant_terms)
     if provider == "deepgram" and model.startswith("flux"):
         # Flux decides when the caller has finished speaking from how they speak, not only from silence.
         return deepgram.STTv2(
             model=model,
-            keyterm=KEYTERMS,
+            keyterm=terms,
             **({"language_hint": ["fr", "en", "es"]} if model.endswith("multi") else {}),
             **DEEPGRAM_PRIVACY,
             **end_of_turn.options(),
         )
     if provider == "deepgram":
-        return deepgram.STT(model=model or "nova-3", language="multi", keyterm=KEYTERMS, **DEEPGRAM_PRIVACY)
+        return deepgram.STT(model=model or "nova-3", language="multi", keyterm=terms, **DEEPGRAM_PRIVACY)
     if provider == "mistral":
         return mistralai.STT(model=model or "voxtral-mini-latest", language=language)
     if provider == "elevenlabs":
         return elevenlabs.STT(model_id=model or "scribe_v2_realtime", language_code=language)
     if provider == "inference" and model.startswith("deepgram/flux"):
-        return inference.STT(model=model, extra_kwargs={"keyterm": KEYTERMS, **DEEPGRAM_PRIVACY, **end_of_turn.options()})
+        return inference.STT(model=model, extra_kwargs={"keyterm": terms, **DEEPGRAM_PRIVACY, **end_of_turn.options()})
     if provider == "inference" and model.startswith("deepgram/"):
-        return inference.STT(model=model, language="multi", extra_kwargs={"keyterm": KEYTERMS, **DEEPGRAM_PRIVACY})
+        return inference.STT(model=model, language="multi", extra_kwargs={"keyterm": terms, **DEEPGRAM_PRIVACY})
     if provider == "inference":
         return inference.STT.from_model_string(model)
     raise ValueError(f"unknown speech recognition: {spec}")

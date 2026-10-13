@@ -51,6 +51,8 @@ Event = Working | Answer
 class Started:
     greeting: str
     language: str
+    #: Words speech recognition should expect on this restaurant's line: its name and its dishes.
+    keyterms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -137,7 +139,12 @@ class Line:
         if caller_id:
             body["callerId"] = caller_id
         answer = await self._post_json("start", body)
-        return Started(greeting=str(answer["greeting"]), language=str(answer["language"]))
+        keyterms = answer.get("keyterms")
+        return Started(
+            greeting=str(answer["greeting"]),
+            language=str(answer["language"]),
+            keyterms=tuple(str(term) for term in keyterms) if isinstance(keyterms, list) else (),
+        )
 
     def turn(self, turn_id: str, message: str, language: str, heard: str | None = None, unheard: str | None = None) -> AsyncIterator[Event]:
         """A turn of the caller's. `heard`: the part of the last reply they heard, when they cut it short;
