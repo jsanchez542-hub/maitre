@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from .speech import EndOfTurn
+
 LANGUAGES = ("fr", "en", "es")
 
 
@@ -20,6 +22,8 @@ class Settings:
     #: Speech recognition and speech synthesis, as "provider:model[:voice]".
     stt: str
     tts: str
+    #: When Flux decides the caller has finished; tuned from measured calls (VOICE_EOT_THRESHOLD, VOICE_EOT_TIMEOUT_MS).
+    end_of_turn: EndOfTurn
     #: Seconds of silence from both sides before the line says goodbye and hangs up.
     silence_seconds: float
     #: The longest call on the restaurant's own line; the demo's limit comes from the Worker.
@@ -40,6 +44,10 @@ class Settings:
             restaurant_id=values.get("MAITRE_RESTAURANT_ID", "demo"),
             stt=values.get("VOICE_STT", "deepgram:flux-general-multi"),
             tts=values.get("VOICE_TTS", "cartesia:sonic-3"),
+            end_of_turn=EndOfTurn(
+                threshold=float(values["VOICE_EOT_THRESHOLD"]) if values.get("VOICE_EOT_THRESHOLD") else None,
+                timeout_ms=int(values["VOICE_EOT_TIMEOUT_MS"]) if values.get("VOICE_EOT_TIMEOUT_MS") else None,
+            ),
             silence_seconds=float(values.get("VOICE_SILENCE_SECONDS", "20")),
             max_call_seconds=float(values.get("VOICE_MAX_CALL_SECONDS", "900")),
             usage_every_seconds=float(values.get("VOICE_USAGE_EVERY_SECONDS", "30")),

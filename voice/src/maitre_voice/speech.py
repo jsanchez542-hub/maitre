@@ -7,11 +7,30 @@ providers need their own key in the environment.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from livekit.agents import inference, stt, tts
 from livekit.plugins import cartesia, deepgram, elevenlabs, mistralai
 
 #: Words speech recognition should expect on a restaurant's line: the name, and what callers ask about.
 KEYTERMS = ["Merrain", "allergie", "allergies", "gluten", "arachides", "fruits à coque", "réservation", "couverts"]
+#: Callers give names, numbers and allergies: Deepgram is told not to keep their audio or text to train its models.
+DEEPGRAM_PRIVACY = {"mip_opt_out": True}
+
+
+@dataclass(frozen=True)
+class EndOfTurn:
+    """How sure Flux must be that the caller has finished, and how long after their last word it decides anyway.
+
+    None keeps Deepgram's own default (0.7, and 3 to 5 seconds).
+    """
+
+    threshold: float | None = None
+    timeout_ms: int | None = None
+
+    def options(self) -> dict[str, float | int]:
+        chosen = {"eot_threshold": self.threshold, "eot_timeout_ms": self.timeout_ms}
+        return {name: value for name, value in chosen.items() if value is not None}
 
 
 def _split(spec: str, parts: int) -> list[str]:
@@ -19,17 +38,28 @@ def _split(spec: str, parts: int) -> list[str]:
     return pieces + [""] * (parts - len(pieces))
 
 
-def build_stt(spec: str, language: str) -> stt.STT:
+def build_stt(spec: str, language: str, end_of_turn: EndOfTurn | None = None) -> stt.STT:
     provider, model = _split(spec, 2)
+    end_of_turn = end_of_turn or EndOfTurn()
     if provider == "deepgram" and model.startswith("flux"):
         # Flux decides when the caller has finished speaking from how they speak, not only from silence.
-        return deepgram.STTv2(model=model, keyterm=KEYTERMS, **({"language_hint": ["fr", "en", "es"]} if model.endswith("multi") else {}))
+        return deepgram.STTv2(
+            model=model,
+            keyterm=KEYTERMS,
+            **({"language_hint": ["fr", "en", "es"]} if model.endswith("multi") else {}),
+            **DEEPGRAM_PRIVACY,
+            **end_of_turn.options(),
+        )
     if provider == "deepgram":
-        return deepgram.STT(model=model or "nova-3", language="multi", keyterm=KEYTERMS)
+        return deepgram.STT(model=model or "nova-3", language="multi", keyterm=KEYTERMS, **DEEPGRAM_PRIVACY)
     if provider == "mistral":
         return mistralai.STT(model=model or "voxtral-mini-latest", language=language)
     if provider == "elevenlabs":
         return elevenlabs.STT(model_id=model or "scribe_v2_realtime", language_code=language)
+    if provider == "inference" and model.startswith("deepgram/flux"):
+        return inference.STT(model=model, extra_kwargs={"keyterm": KEYTERMS, **DEEPGRAM_PRIVACY, **end_of_turn.options()})
+    if provider == "inference" and model.startswith("deepgram/"):
+        return inference.STT(model=model, language="multi", extra_kwargs={"keyterm": KEYTERMS, **DEEPGRAM_PRIVACY})
     if provider == "inference":
         return inference.STT.from_model_string(model)
     raise ValueError(f"unknown speech recognition: {spec}")
@@ -44,9 +74,11 @@ def build_tts(spec: str, language: str) -> tts.TTS:
     if provider == "mistral":
         return mistralai.TTS(model=model or "voxtral-tts", **({"voice": voice} if voice else {}))
     if provider == "deepgram":
-        return deepgram.TTS(model=model or "aura-2-agathe-fr")
+        return deepgram.TTS(model=model or "aura-2-agathe-fr", **DEEPGRAM_PRIVACY)
     if provider == "inference":
-        return inference.TTS.from_model_string(f"{model}:{voice}" if voice else model)
+        # Through LiveKit Inference, paid from the LiveKit project's own credit: no other provider's key needed.
+        extra = {"extra_kwargs": DEEPGRAM_PRIVACY} if model.startswith("deepgram/") else {}
+        return inference.TTS(model=model, language=language, **({"voice": voice} if voice else {}), **extra)
     raise ValueError(f"unknown speech synthesis: {spec}")
 
 

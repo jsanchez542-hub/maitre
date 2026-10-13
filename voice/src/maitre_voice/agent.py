@@ -15,11 +15,25 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
 
+import numpy as np
 from dotenv import load_dotenv
 from livekit import rtc
-from livekit.agents import Agent, AgentServer, AgentSession, JobContext, JobProcess, cli, room_io, utils
+from livekit.agents import (
+    Agent,
+    AgentServer,
+    AgentSession,
+    APIConnectOptions,
+    JobContext,
+    JobProcess,
+    ModelSettings,
+    cli,
+    room_io,
+    tts,
+    utils,
+)
 from livekit.agents.voice.background_audio import AudioConfig, BackgroundAudioPlayer, BuiltinAudioClip
 from livekit.agents.voice.events import CloseEvent, UserInputTranscribedEvent, UserStateChangedEvent
 from livekit.plugins import noise_cancellation, silero
@@ -39,6 +53,10 @@ server = AgentServer()
 KEYPAD_PAUSE_SECONDS = 4.0
 #: Words a transcript needs before the conversation follows it into another language: "OK" is not a switch.
 WORDS_TO_SWITCH = 3
+#: Seconds after the caller's last word before the turn is theirs no more, on top of what speech recognition decides.
+ENDPOINTING_SECONDS = 0.25
+#: Below this peak (16-bit samples, about -44 dBFS) a frame of synthesized speech is silence.
+SILENT_PEAK = 200
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -72,6 +90,83 @@ class Dispatch:
         return cls(Call.restaurant(settings.api_url, settings.restaurant_id, session_id), language)
 
 
+class RestaurantLine(Agent):
+    """The agent of the call: the restaurant's line answers every turn, through the brain."""
+
+    def __init__(self, state: CallState, engine: tts.TTS) -> None:
+        super().__init__(instructions="The restaurant's line answers every turn.")
+        self._state = state
+        self._engine = engine
+
+    async def tts_node(self, text: AsyncIterable[str], model_settings: ModelSettings) -> AsyncIterable[rtc.AudioFrame]:
+        """As the framework's own, except that the short line said while the tools run is spoken at once.
+
+        Speech synthesis gathers text into sentences and holds the last one back until the next one starts:
+        "Je regarde." was spoken with the reply, seconds later, which defeated its purpose. The line now ends
+        a synthesis of its own, and the reply opens the next one when it comes. Flushing a single synthesis
+        instead would leave its connection waiting on the restaurant, and it gives up after ten seconds.
+        """
+        if not self._engine.capabilities.streaming:
+            async for frame in Agent.default.tts_node(self, text, model_settings):
+                yield frame
+            return
+        async for frame in self._speak(text, self.session.conn_options.tts_conn_options):
+            yield frame
+
+    async def _speak(self, text: AsyncIterable[str], conn_options: APIConnectOptions) -> AsyncIterator[rtc.AudioFrame]:
+        """The reply's audio, one synthesis per part: a waiting line ends one."""
+        source = aiter(text)
+        more = True
+        while more and (first := await _next_words(source)) is not None:
+            async with self._engine.stream(conn_options=conn_options) as stream:
+                forward = asyncio.create_task(self._forward_part(first, source, stream))
+                try:
+                    async for frame in _audible(stream):
+                        yield frame
+                    more = await forward
+                finally:
+                    await utils.aio.cancel_and_wait(forward)
+
+    async def _forward_part(self, first: str, source: AsyncIterator[str], stream: tts.SynthesizeStream) -> bool:
+        """Hands the synthesis the text up to the end of a waiting line, or to the end. Whether more may follow."""
+        said = ""
+        chunk: str | None = first
+        while chunk is not None:
+            stream.push_text(chunk)
+            said += chunk
+            # The text arrives cut where the markdown filter cut it: the line is looked for at the end of all of it.
+            if said.rstrip().endswith(tuple(self._state.working_lines)):
+                stream.end_input()
+                return True
+            chunk = await anext(source, None)
+        stream.end_input()
+        return False
+
+
+async def _audible(stream: AsyncIterable[tts.SynthesizedAudio]) -> AsyncIterator[rtc.AudioFrame]:
+    """The frames of one synthesis, from its first sound on: some voices open short sentences with silence.
+
+    Aura-2 put 0.9 s of it before "Je regarde." and 1.2 s before "Je m’en occupe.": the line meant to be heard
+    at once was heard a second late. Silences inside the speech are kept.
+    """
+    heard = False
+    async for event in stream:
+        if not heard:
+            samples = np.frombuffer(event.frame.data, dtype=np.int16)
+            if samples.size == 0 or int(np.abs(samples).max()) < SILENT_PEAK:
+                continue
+            heard = True
+        yield event.frame
+
+
+async def _next_words(source: AsyncIterator[str]) -> str | None:
+    """The next piece of text with something to say, or None once the text is over."""
+    async for chunk in source:
+        if chunk.strip():
+            return chunk
+    return None
+
+
 class PhoneCall:
     """One call, from the greeting to the hang-up."""
 
@@ -87,7 +182,7 @@ class PhoneCall:
         self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
         self._tts = build_tts(settings.tts, started.language)
         self.session: AgentSession = AgentSession(
-            stt=build_stt(settings.stt, started.language),
+            stt=build_stt(settings.stt, started.language, settings.end_of_turn),
             tts=self._tts,
             vad=vad,
             llm=RestaurantBrain(self._state),
@@ -95,6 +190,8 @@ class PhoneCall:
                 **({"turn_detection": "stt"} if ends_turns_itself(settings.stt) else {}),
                 # Never on a phrase the caller has not finished: every turn reaches the restaurant, which may set a table aside.
                 "preemptive_generation": {"enabled": False},
+                # Flux already hears when the caller has finished, from how they speak: the extra wait on top stays short.
+                "endpointing": {"min_delay": ENDPOINTING_SECONDS},
             },
             user_away_timeout=settings.silence_seconds,
         )
@@ -103,7 +200,7 @@ class PhoneCall:
     async def run(self, caller: rtc.RemoteParticipant) -> None:
         telephone = caller.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
         await self.session.start(
-            Agent(instructions="The restaurant's line answers every turn."),
+            RestaurantLine(self._state, self._tts),
             room=self._ctx.room,
             room_options=room_io.RoomOptions(
                 audio_input=room_io.AudioInputOptions(
@@ -235,11 +332,38 @@ class PhoneCall:
                     measured.append(latency * 1000)
         return measured
 
+    def latencies(self) -> list[dict[str, int]]:
+        """For each answer, where its time went, in milliseconds, as LiveKit measured it.
+
+        endOfTurn: from the caller's last word to the turn being theirs no more; transcript: to the final words;
+        firstWords: from the turn to the restaurant's first words (the waiting line, when there is one);
+        firstSound: from those words to the first audio; total: from the caller's last word to the agent's first.
+        """
+        report = []
+        heard: dict[str, float] = {}
+        for item in self.session.history.items:
+            if item.type != "message":
+                continue
+            if item.role == "user":
+                heard = dict(item.metrics)
+            elif item.role == "assistant" and "e2e_latency" in item.metrics:
+                measured = {
+                    "endOfTurn": heard.get("end_of_turn_delay"),
+                    "transcript": heard.get("transcription_delay"),
+                    "firstWords": item.metrics.get("llm_node_ttft"),
+                    "firstSound": item.metrics.get("tts_node_ttfb"),
+                    "total": item.metrics.get("e2e_latency"),
+                }
+                report.append({name: round(value * 1000) for name, value in measured.items() if value is not None})
+                heard = {}
+        return report
+
     async def end(self, ended_by: EndedBy) -> None:
         """Logs the call with the restaurant, says the last words when the line hangs up on its own, and hangs up."""
         if self._ending:
             return
         self._ending = True
+        logger.info("call latencies", extra={"turns": self.latencies(), "endedBy": ended_by})
         try:
             last_words = await self._line.end(ended_by, self.seconds, self.voice_to_voice_ms())
         except LineError as error:
