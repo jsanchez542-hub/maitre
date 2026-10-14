@@ -265,7 +265,10 @@ export interface StaffBookRequest {
   walkIn?: boolean;
   /** A table the staff choose, by its number. Otherwise the plan gives one. */
   table?: string;
+  /** The dashboard's language: the booking it returns and the times it offers are written in it. */
   language?: Language;
+  /** The guest's own language, for what is said to them later. The dashboard's when not given. */
+  guestLanguage?: Language;
 }
 
 export interface FloorTableView {
@@ -347,10 +350,14 @@ function unseated(booking: Booking): Booking {
   return copy;
 }
 
-/** Collapses whitespace and refuses control characters, empty text and anything too long. */
+/**
+ * Collapses whitespace and refuses control characters, empty text and anything
+ * too long. The no-break spaces stay: French puts a narrow one inside « » and
+ * before : ; ! ?, and without it a guillemet wraps alone onto the next line.
+ */
 function cleanText(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string' || value.length > max * 4) return undefined;
-  const collapsed = value.replace(/\s+/g, ' ').trim();
+  const collapsed = value.replace(/[^\S  ]+/g, ' ').trim();
   if (collapsed === '' || collapsed.length > max) return undefined;
   for (const char of collapsed) {
     const code = char.codePointAt(0) ?? 0;
@@ -942,7 +949,7 @@ export class BookingEngine {
         // A party standing in the restaurant has nothing left to confirm.
         status: walkIn ? 'confirmed' : 'booked',
         channel: 'staff',
-        language,
+        language: request.guestLanguage ?? language,
         ...(notes ? { notes } : {}),
         allergies,
         ...(walkIn ? { walkIn: true, arrivedAt: stamp, seatedAt: stamp } : {}),

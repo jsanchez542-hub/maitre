@@ -59,6 +59,15 @@ describe('the demo evening', () => {
     expect(view()).toBe(view());
   });
 
+  it('gives its guests numbers from the range ARCEP keeps for fiction, which the panel can show whole', () => {
+    const { engine } = demoEvening();
+    const day = engine.serviceDay(DEMO_EVENING_DATE, 'fr');
+    const numbers = [...day.bookings.map((booking) => booking.phone), ...day.callbacks.list.map((callback) => callback.phone)].filter(Boolean);
+    expect(numbers.length).toBeGreaterThan(20);
+    // 06 39 98 00 00 to 06 39 98 99 99, as the panel writes them.
+    for (const number of numbers) expect(number).toMatch(/^\+33 6 39 98 \d\d \d\d$/);
+  });
+
   it('carries on when the dashboard moves the clock: the held table lapses and the late guest sits down', () => {
     const { engine, clock } = demoEvening();
     clock.set(new Date('2026-10-16T18:10:00Z'));

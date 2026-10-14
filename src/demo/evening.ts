@@ -227,7 +227,8 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
       id: `demo-guest-${guests}`,
       channel,
       language,
-      phone: { e164: `+3360000${String(guests).padStart(4, '0')}`, source: PHONE_SOURCES[channel] },
+      // ARCEP keeps 06 39 98 00 00 to 06 39 98 99 99 for fiction: the panel shows these numbers whole, with a link that dials.
+      phone: { e164: `+3363998${String(1000 + guests)}`, source: PHONE_SOURCES[channel] },
     };
   };
   // Booking reminders are answered on WhatsApp, whatever channel the booking came from.

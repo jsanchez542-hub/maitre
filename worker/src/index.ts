@@ -280,6 +280,7 @@ async function staff(
       ...(input['walkIn'] === true ? { walkIn: true } : {}),
       ...(typeof input['table'] === 'string' ? { table: input['table'] } : {}),
       ...(isLanguage(input['language']) ? { language: input['language'] } : {}),
+      ...(isLanguage(input['guestLanguage']) ? { guestLanguage: input['guestLanguage'] } : {}),
     });
     return json(result, result.status === 'invalid' ? 400 : result.status === 'unavailable' || result.status === 'table_taken' ? 409 : 201);
   }

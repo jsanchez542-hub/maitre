@@ -89,6 +89,20 @@ describe('bookings entered by the staff', () => {
     });
   });
 
+  it('keep the guest’s own language for what is said to them later, and answer in the dashboard’s', () => {
+    const h = harness();
+    const result = h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Clarke', language: 'fr', guestLanguage: 'en' });
+    expect(result).toMatchObject({ status: 'booked', booking: { language: 'en', readBack: expect.stringContaining('vendredi 16 octobre') } });
+    expect(h.store.snapshot().bookings[0]?.language).toBe('en');
+  });
+
+  it('keep the no-break spaces of a note, as French writes them inside « » and before : ; ! ?', () => {
+    const h = harness();
+    const note = `Anniversaire ! Gâteau « surprise »,  pas de bougie`;
+    h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin', notes: note });
+    expect(h.store.snapshot().bookings[0]?.notes).toBe(`Anniversaire ! Gâteau « surprise », pas de bougie`);
+  });
+
   it('refuse a past date and a party too large for one table', () => {
     const h = harness();
     expect(h.engine.staffBook({ date: '2026-10-13', time: '20:00', partySize: 2, guestName: 'Martin' })).toMatchObject({
