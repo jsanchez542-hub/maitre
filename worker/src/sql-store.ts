@@ -80,6 +80,19 @@ export class SqlStore implements BookingStore {
     );
   }
 
+  /** Bookings made between two instants, whatever their date, for the restaurant's activity. */
+  bookingsCreatedBetween(fromIso: string, toIso: string): Booking[] {
+    return parse<Booking>(
+      this.#storage.sql
+        .exec(`SELECT data FROM bookings WHERE json_extract(data, '$.createdAt') >= ? AND json_extract(data, '$.createdAt') < ?`, fromIso, toIso)
+        .toArray(),
+    );
+  }
+
+  callbacksCreatedBetween(fromIso: string, toIso: string): CallbackRequest[] {
+    return parse<CallbackRequest>(this.#storage.sql.exec(`SELECT data FROM callbacks WHERE created_at >= ? AND created_at < ?`, fromIso, toIso).toArray());
+  }
+
   /** Whether any hold is stored, expired or not: tells the alarm when to come back. */
   hasHolds(): boolean {
     return this.#storage.sql.exec(`SELECT 1 AS present FROM holds LIMIT 1`).toArray().length > 0;

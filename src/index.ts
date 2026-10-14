@@ -1,3 +1,4 @@
+export * from './activity.js';
 export * from './allergens.js';
 export * from './availability.js';
 export * from './calendar.js';

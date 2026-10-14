@@ -157,6 +157,22 @@ export class Conversations {
       .map((row) => JSON.parse(row.data) as CallLog);
   }
 
+  /** Turns answered between two instants, for the restaurant's activity. */
+  turnsBetween(fromIso: string, toIso: string): TurnLog[] {
+    return this.#sql
+      .exec<{ data: string }>(`SELECT data FROM turns WHERE at >= ? AND at < ?`, fromIso, toIso)
+      .toArray()
+      .map((row) => JSON.parse(row.data) as TurnLog);
+  }
+
+  /** Calls started between two instants, for the restaurant's activity. */
+  callsBetween(fromIso: string, toIso: string): CallLog[] {
+    return this.#sql
+      .exec<{ data: string }>(`SELECT data FROM calls WHERE started_at >= ? AND started_at < ?`, fromIso, toIso)
+      .toArray()
+      .map((row) => JSON.parse(row.data) as CallLog);
+  }
+
   /** Deletes sessions, turns and calls older than the retention period. Returns how many rows went. */
   purgeBefore(cutoffIso: string): number {
     const turns = this.#sql.exec(`DELETE FROM turns WHERE at < ?`, cutoffIso);

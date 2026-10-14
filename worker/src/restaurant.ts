@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { activityOf, type Activity } from '../../src/activity.js';
 import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
 import { withFallback } from '../../src/agent/providers/fallback.js';
@@ -18,7 +19,7 @@ import { isLanguage, messages, type Language } from '../../src/i18n/index.js';
 import { randomIds } from '../../src/ids.js';
 import { formatPhone, normalizePhone } from '../../src/phone.js';
 import { speechKeyterms } from '../../src/speech.js';
-import { localNow } from '../../src/calendar.js';
+import { addDays, localNow, zonedInstant } from '../../src/calendar.js';
 import type { PhoneSource } from '../../src/store.js';
 import { errandOf, runTool, type ToolOutput } from '../../src/tools.js';
 import { CALL_ENDINGS, Conversations, RETENTION_DAYS, type CallEndedBy, type CallLog, type TurnLog } from './conversations.js';
@@ -515,6 +516,27 @@ export class Restaurant extends DurableObject<Env> {
 
   async recentCalls(limit: number): Promise<CallLog[]> {
     return this.#conversations.recentCalls(Number.isInteger(limit) ? limit : 50);
+  }
+
+  /** What the assistant did over the last few days, today included, by the restaurant's own dates: the dashboard's activity. */
+  async activity(days: number): Promise<Activity | Invalid> {
+    if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+      return { status: 'invalid', problems: [`days must be a whole number from 1 to ${RETENTION_DAYS}`] };
+    }
+    const config = this.#engine.config;
+    const to = localNow(this.now(), config.timeZone).date;
+    const from = addDays(to, -(days - 1));
+    const fromIso = zonedInstant(from, '00:00', config.timeZone).toISOString();
+    const toIso = zonedInstant(addDays(to, 1), '00:00', config.timeZone).toISOString();
+    return activityOf({
+      config,
+      from,
+      to,
+      bookings: this.store.bookingsCreatedBetween(fromIso, toIso),
+      turns: this.#conversations.turnsBetween(fromIso, toIso),
+      calls: this.#conversations.callsBetween(fromIso, toIso),
+      callbacks: this.store.callbacksCreatedBetween(fromIso, toIso),
+    });
   }
 
   /** The hooks that say a short line once, the first time the model reaches for its tools in a turn. */

@@ -35,6 +35,8 @@ export { Restaurant } from './restaurant.js';
  *   POST staff/bookings/:ref/left      staff  the table is free again from now
  *   POST staff/bookings/:ref/table     staff  { table } moved there, and kept there
  *   POST staff/callbacks/:id/done      staff
+ *   GET  activity?days=                staff  what the assistant did over the last days (7 by default): bookings by
+ *                                             channel, conversations, calls answered during service and while closed
  *   GET  config                        staff  the restaurant's settings
  *   PUT  config                        staff  { weekly?, exceptions?, menu?, faq?, minNoticeMinutes?, maxAdvanceDays?,
  *                                             maxPartySize? } the settings an owner edits, checked as a whole; the
@@ -63,6 +65,7 @@ export { Restaurant } from './restaurant.js';
  *                                                    deletes itself
  *   GET  sandboxes/:sandbox/day, conversations and calls, POST sandboxes/:sandbox/staff/...  as the staff routes above
  *   GET and PUT sandboxes/:sandbox/config            as above: the visitor changes their own restaurant's settings
+ *   GET  sandboxes/:sandbox/activity?days=            as above
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
  */
@@ -229,7 +232,8 @@ function isStaffRoute(request: Request, rest: readonly string[]): boolean {
     STAFF_ACTIONS.some((action) => is('POST', 'staff', 'bookings', null, action)) ||
     is('POST', 'staff', 'callbacks', null, 'done') ||
     is('GET', 'config') ||
-    is('PUT', 'config')
+    is('PUT', 'config') ||
+    is('GET', 'activity')
   );
 }
 
@@ -249,6 +253,10 @@ async function staff(
   }
   if (rest[0] === 'calls') {
     return json(await restaurant.recentCalls(Number(url.searchParams.get('limit') ?? '50')));
+  }
+  if (rest[0] === 'activity') {
+    const result = await restaurant.activity(Number(url.searchParams.get('days') ?? '7'));
+    return json(result, 'status' in result ? 400 : 200);
   }
   if (rest[0] === 'config') {
     if (request.method === 'GET') return json(await restaurant.config());
