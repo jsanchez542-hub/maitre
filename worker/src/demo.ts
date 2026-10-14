@@ -130,8 +130,9 @@ export class DemoRestaurant extends Restaurant {
       status: 'ok',
       expiresAt: new Date(this.#expiresAt).toISOString(),
       clock: now.toISOString(),
-      day: serviceDayAt(now),
-      suggestion: demoSuggestion(now),
+      // By the restaurant's own hours, which the visitor may have changed in its settings.
+      day: serviceDayAt(now, this.settings),
+      suggestion: demoSuggestion(now, this.settings),
       callsLeft: await this.#callsLeft(),
     };
   }

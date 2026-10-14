@@ -1,3 +1,4 @@
+import type { BusinessConfig } from '../../src/config.js';
 import type { Booking, BookingStore, BookingTx, CallbackRequest, Hold } from '../../src/store.js';
 
 /**
@@ -64,6 +65,19 @@ export class SqlStore implements BookingStore {
     this.#storage = storage;
     migrate(storage.sql);
     this.#tx = this.#makeTx(storage.sql);
+  }
+
+  /** The restaurant's own settings, once it has saved any: until then it runs on the ones it was created with. */
+  config(): BusinessConfig | undefined {
+    const row = this.#storage.sql.exec<{ value: string }>(`SELECT value FROM meta WHERE key = 'config'`).toArray()[0];
+    return row ? (JSON.parse(row.value) as BusinessConfig) : undefined;
+  }
+
+  saveConfig(config: BusinessConfig): void {
+    this.#storage.sql.exec(
+      `INSERT INTO meta (key, value) VALUES ('config', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      JSON.stringify(config),
+    );
   }
 
   /** Whether any hold is stored, expired or not: tells the alarm when to come back. */

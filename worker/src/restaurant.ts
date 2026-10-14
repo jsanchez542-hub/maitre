@@ -3,6 +3,7 @@ import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, waitsForNumber, ty
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
 import { withFallback } from '../../src/agent/providers/fallback.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
+import { validateConfig, type BusinessConfig } from '../../src/config.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import {
   BookingEngine,
@@ -26,6 +27,15 @@ import { SqlStore } from './sql-store.js';
 
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const DAY_MS = 86_400_000;
+/**
+ * What an owner changes from the dashboard: opening hours and closures, the
+ * menu with its allergens, the answers to common questions, and how far ahead,
+ * how late and for how many a table can be booked. The tables and the floor are
+ * not among them: bookings sit on them.
+ */
+export const EDITABLE_SETTINGS = ['weekly', 'exceptions', 'menu', 'faq', 'minNoticeMinutes', 'maxAdvanceDays', 'maxPartySize'] as const;
+/** Settings longer than this are not a restaurant's, whatever they say. */
+const MAX_SETTINGS_CHARS = 100_000;
 /** The longest message speech recognition can hand over in one turn, in characters. */
 const MAX_SPOKEN = 2000;
 /** The longest call the log believes, in seconds: anything above is a broken clock, not a call. */
@@ -181,7 +191,7 @@ interface TurnHooks {
  * that is what makes a double booking impossible rather than unlikely.
  */
 export class Restaurant extends DurableObject<Env> {
-  readonly #engine: BookingEngine;
+  #engine: BookingEngine;
   protected readonly store: SqlStore;
   readonly #conversations: Conversations;
   /** Turns of one conversation run in order, even when a guest sends two messages while the model is thinking. */
@@ -191,7 +201,46 @@ export class Restaurant extends DurableObject<Env> {
     super(ctx, env);
     this.store = new SqlStore(ctx.storage);
     this.#conversations = new Conversations(ctx.storage.sql);
-    this.#engine = new BookingEngine(DEMO_RESTAURANT, this.store, { now: () => this.now(), ids: randomIds });
+    this.#engine = this.#engineFor(this.store.config() ?? DEMO_RESTAURANT);
+  }
+
+  #engineFor(config: BusinessConfig): BookingEngine {
+    return new BookingEngine(config, this.store, { now: () => this.now(), ids: randomIds });
+  }
+
+  /** The restaurant's settings, as the engine and the assistant use them. */
+  protected get settings(): BusinessConfig {
+    return this.#engine.config;
+  }
+
+  /** The restaurant's settings, for the dashboard. */
+  async config(): Promise<BusinessConfig> {
+    return this.#engine.config;
+  }
+
+  /**
+   * Changes the settings an owner edits (EDITABLE_SETTINGS), checked as a whole
+   * before anything is kept. The bookings stay as they are, and the assistant
+   * answers with the new settings from its next turn.
+   */
+  async updateConfig(changes: unknown): Promise<{ status: 'ok'; config: BusinessConfig } | Invalid> {
+    if (typeof changes !== 'object' || changes === null || Array.isArray(changes)) return { status: 'invalid', problems: ['settings must be an object'] };
+    const problems = Object.keys(changes)
+      .filter((key) => !(EDITABLE_SETTINGS as readonly string[]).includes(key))
+      .map((key) => `${key} cannot be changed from the dashboard`);
+    if (problems.length > 0) return { status: 'invalid', problems };
+    const next = { ...this.#engine.config, ...(changes as Partial<BusinessConfig>) };
+    if (JSON.stringify(next).length > MAX_SETTINGS_CHARS) return { status: 'invalid', problems: ['the settings are too long'] };
+    try {
+      problems.push(...validateConfig(next));
+    } catch {
+      // A field of the wrong kind altogether: a list where a number belongs, text where a list does.
+      problems.push('the settings are not in the expected shape');
+    }
+    if (problems.length > 0) return { status: 'invalid', problems };
+    this.store.saveConfig(next);
+    this.#engine = this.#engineFor(next);
+    return { status: 'ok', config: next };
   }
 
   /** The restaurant's clock: the real one, except in a demo restaurant, whose evening keeps its own time. */
@@ -589,13 +638,13 @@ export class Restaurant extends DurableObject<Env> {
     this.#engine.purgeExpiredHolds();
     this.#engine.purgeOlderThan(RETENTION_DAYS);
     this.#conversations.purgeBefore(new Date(Date.now() - RETENTION_DAYS * DAY_MS).toISOString());
-    const next = this.store.hasHolds() ? DEMO_RESTAURANT.holdMinutes * 60_000 : DAY_MS;
+    const next = this.store.hasHolds() ? this.#engine.config.holdMinutes * 60_000 : DAY_MS;
     await this.ctx.storage.setAlarm(Date.now() + next);
   }
 
   async #keepTidy(): Promise<void> {
     if ((await this.ctx.storage.getAlarm()) === null) {
-      await this.ctx.storage.setAlarm(Date.now() + DEMO_RESTAURANT.holdMinutes * 60_000);
+      await this.ctx.storage.setAlarm(Date.now() + this.#engine.config.holdMinutes * 60_000);
     }
   }
 

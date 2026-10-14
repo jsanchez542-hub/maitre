@@ -35,6 +35,10 @@ export { Restaurant } from './restaurant.js';
  *   POST staff/bookings/:ref/left      staff  the table is free again from now
  *   POST staff/bookings/:ref/table     staff  { table } moved there, and kept there
  *   POST staff/callbacks/:id/done      staff
+ *   GET  config                        staff  the restaurant's settings
+ *   PUT  config                        staff  { weekly?, exceptions?, menu?, faq?, minNoticeMinutes?, maxAdvanceDays?,
+ *                                             maxPartySize? } the settings an owner edits, checked as a whole; the
+ *                                             assistant answers with them from its next turn
  *
  * "agent" routes need AGENT_TOKEN and "staff" routes STAFF_TOKEN, as a bearer
  * token. A route whose secret is not configured answers 503 instead of running open.
@@ -58,6 +62,7 @@ export { Restaurant } from './restaurant.js';
  *                                                    could still book, the calls left, and when the restaurant
  *                                                    deletes itself
  *   GET  sandboxes/:sandbox/day, conversations and calls, POST sandboxes/:sandbox/staff/...  as the staff routes above
+ *   GET and PUT sandboxes/:sandbox/config            as above: the visitor changes their own restaurant's settings
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
  */
@@ -222,7 +227,9 @@ function isStaffRoute(request: Request, rest: readonly string[]): boolean {
     is('GET', 'calls') ||
     is('POST', 'staff', 'bookings') ||
     STAFF_ACTIONS.some((action) => is('POST', 'staff', 'bookings', null, action)) ||
-    is('POST', 'staff', 'callbacks', null, 'done')
+    is('POST', 'staff', 'callbacks', null, 'done') ||
+    is('GET', 'config') ||
+    is('PUT', 'config')
   );
 }
 
@@ -242,6 +249,13 @@ async function staff(
   }
   if (rest[0] === 'calls') {
     return json(await restaurant.recentCalls(Number(url.searchParams.get('limit') ?? '50')));
+  }
+  if (rest[0] === 'config') {
+    if (request.method === 'GET') return json(await restaurant.config());
+    const body = await readJson(request);
+    if (!body.ok) return body.response;
+    const updated = await restaurant.updateConfig(body.value['settings']);
+    return json(updated, updated.status === 'ok' ? 200 : 400);
   }
   if (rest.length === 2) {
     const body = await readJson(request);
