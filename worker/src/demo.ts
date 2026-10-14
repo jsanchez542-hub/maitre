@@ -48,18 +48,17 @@ export function newSandboxId(): string {
 
 const EXPIRES_AT = 'demo:expiresAt';
 const MESSAGES = 'demo:messages';
-const CALLS_MADE = 'demo:callsMade';
 const CALL = 'demo:call:';
 /** Time to join a call once its pass is given, before the call's own clock starts, in seconds. */
 const JOIN_SECONDS = 60;
 
 /**
  * A visitor's restaurant: when it deletes itself, its time now, the day of the
- * service its dashboard opens on, and a table a guest could still book, for
- * the site's examples.
+ * service its dashboard opens on, a table a guest could still book, for the
+ * site's examples, and the calls it can still take.
  */
 export type SandboxState =
-  | { status: 'ok'; expiresAt: string; clock: string; day: string; suggestion: DemoSuggestion }
+  | { status: 'ok'; expiresAt: string; clock: string; day: string; suggestion: DemoSuggestion; callsLeft: number }
   | { status: 'not_found' };
 /** Why a demo turn did not run: the restaurant is gone, the visitor writes too fast or has used its messages, or the demo is paused. */
 type Refusal = { status: 'not_found' } | { status: 'rate_limited' } | { status: 'sandbox_limit' } | { status: 'live_paused' };
@@ -74,7 +73,7 @@ interface DemoCall {
   billedSeconds: number;
 }
 
-export type CallAllowance = { status: 'ok'; sessionId: string; maxSeconds: number } | Refusal | { status: 'call_limit' };
+export type CallAllowance = { status: 'ok'; sessionId: string; maxSeconds: number; callsLeft: number } | Refusal | { status: 'call_limit' };
 export type DemoCallTurn = CallStream | Invalid | Refusal | { status: 'not_configured' } | { status: 'time_limit' };
 /** What the line hears each time it says how long the call has lasted: carry on, or say goodbye and why. */
 export type CallUsage = { status: 'ok'; carryOn: true } | { status: 'ok'; carryOn: false; reason: 'time_limit' | 'paused' };
@@ -133,7 +132,22 @@ export class DemoRestaurant extends Restaurant {
       clock: now.toISOString(),
       day: serviceDayAt(now),
       suggestion: demoSuggestion(now),
+      callsLeft: await this.#callsLeft(),
     };
+  }
+
+  /**
+   * The calls this restaurant can still take. A call counts once the restaurant
+   * answered it, or while its pass is still inside its time to join: a call
+   * nobody answered, the line being down, costs the visitor nothing.
+   */
+  async #callsLeft(): Promise<number> {
+    const now = Date.now();
+    let counted = 0;
+    for (const call of (await this.ctx.storage.list<DemoCall>({ prefix: CALL })).values()) {
+      if (call.startedAt !== undefined || now - call.issuedAt < JOIN_SECONDS * 1000) counted += 1;
+    }
+    return Math.max(0, (setting(this.env.DEMO_CALLS_PER_SANDBOX) ?? 0) - counted);
   }
 
   /** One turn of the visitor's conversation with the real assistant, within this restaurant's limits and the demo's budget. */
@@ -167,13 +181,13 @@ export class DemoRestaurant extends Restaurant {
     const maxSeconds = setting(this.env.DEMO_CALL_SECONDS);
     // Without a price for the voice or a longest call, nobody could say what a call costs: the demo stays paused.
     if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined) return { status: 'live_paused' };
-    const made = (await this.ctx.storage.get<number>(CALLS_MADE)) ?? 0;
-    if (made >= (setting(this.env.DEMO_CALLS_PER_SANDBOX) ?? 0)) return { status: 'call_limit' };
+    const left = await this.#callsLeft();
+    if (left === 0) return { status: 'call_limit' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
     const sessionId = `call_${newSandboxId()}`;
-    await this.ctx.storage.put({ [CALLS_MADE]: made + 1, [`${CALL}${sessionId}`]: { issuedAt: Date.now(), billedSeconds: 0 } satisfies DemoCall });
-    return { status: 'ok', sessionId, maxSeconds };
+    await this.ctx.storage.put(`${CALL}${sessionId}`, { issuedAt: Date.now(), billedSeconds: 0 } satisfies DemoCall);
+    return { status: 'ok', sessionId, maxSeconds, callsLeft: left - 1 };
   }
 
   /** The voice agent starting a call this restaurant allowed, with the greeting it says first. */

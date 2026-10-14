@@ -48,12 +48,15 @@ export { Restaurant } from './restaurant.js';
  *   POST sandboxes                                   { turnstile } opens a visitor's own restaurant
  *   POST sandboxes/:sandbox/chat                     { sessionId, message, language } with the real assistant
  *   POST sandboxes/:sandbox/sessions/:session/phone  { phone } typed in the chat's field
- *   POST sandboxes/:sandbox/calls                    { language } the pass to call the restaurant from the browser
+ *   POST sandboxes/:sandbox/calls                    { language } the pass to call the restaurant from the browser, with
+ *                                                    the calls left after it; a call the agent never answered within
+ *                                                    its minute to join does not count
  *   POST sandboxes/:sandbox/calls/:session/...       agent  start, turns, keypad and end as above, and usage
  *                                                    { seconds }: the call's length, which the budget pays for
- *   GET  sandboxes/:sandbox/clock                    { clock, day, suggestion, expiresAt }: the real time, the day of
- *                                                    the service the dashboard opens on, a table a guest could still
- *                                                    book, and when the restaurant deletes itself
+ *   GET  sandboxes/:sandbox/clock                    { clock, day, suggestion, callsLeft, expiresAt }: the real time,
+ *                                                    the day of the service the dashboard opens on, a table a guest
+ *                                                    could still book, the calls left, and when the restaurant
+ *                                                    deletes itself
  *   GET  sandboxes/:sandbox/day, conversations and calls, POST sandboxes/:sandbox/staff/...  as the staff routes above
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
@@ -396,7 +399,7 @@ async function openCall(request: Request, env: Env, sandboxId: string, sandbox: 
     // Long enough to join and to reconnect during the call, not to keep.
     ttlSeconds: allowed.maxSeconds + 120,
   });
-  return json({ url: project.url, token, sessionId: allowed.sessionId, maxSeconds: allowed.maxSeconds }, 201);
+  return json({ url: project.url, token, sessionId: allowed.sessionId, maxSeconds: allowed.maxSeconds, callsLeft: allowed.callsLeft }, 201);
 }
 
 /** The voice agent's side of a demo call, with the agent's token: the visitor's browser never reaches these. */
@@ -442,10 +445,8 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   if (!sandbox) return problem(503, 'not_configured');
   const state = await sandbox.open();
   if (state.status !== 'ok') return problem(500, 'internal_error');
-  return json(
-    { sandbox: sandboxId, expiresAt: state.expiresAt, clock: state.clock, day: state.day, suggestion: state.suggestion, calls: callOffer(env) },
-    201,
-  );
+  const { expiresAt, clock, day, suggestion, callsLeft } = state;
+  return json({ sandbox: sandboxId, expiresAt, clock, day, suggestion, callsLeft, calls: callOffer(env) }, 201);
 }
 
 /**

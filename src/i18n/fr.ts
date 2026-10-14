@@ -80,12 +80,13 @@ export const fr: Messages = {
     return `Allergènes que la fiche du plat ${quoted(dish)} ne précise pas${THIN}: ${allergens.map((allergen) => ALLERGEN_WORDS[allergen].name).join(', ')}.`;
   },
   greeting(business, channel, hour) {
+    // «Bonsoir» from six in the evening, by the restaurant's own hour, on the phone and in the chat alike.
+    const evening = hour !== undefined && hour >= 18;
     if (channel === 'voice') {
-      const hello = hour !== undefined && hour >= 18 ? 'bonsoir' : 'bonjour';
-      return `${business}, ${hello}. Je suis l’assistant de réservation, une intelligence artificielle. Que puis-je faire pour vous${THIN}?`;
+      return `${business}, ${evening ? 'bonsoir' : 'bonjour'}. Je suis l’assistant de réservation, une intelligence artificielle. Que puis-je faire pour vous${THIN}?`;
     }
     return (
-      `Bonjour et bienvenue chez ${business}. Je suis l’assistant de réservation${THIN}: je peux vous trouver ` +
+      `${evening ? 'Bonsoir' : 'Bonjour'} et bienvenue chez ${business}. Je suis l’assistant de réservation${THIN}: je peux vous trouver ` +
       `une table et vous renseigner sur la carte et les horaires. Que puis-je faire pour vous${THIN}?`
     );
   },

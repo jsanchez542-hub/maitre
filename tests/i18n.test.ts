@@ -120,6 +120,12 @@ describe('the first words of a conversation', () => {
     }
   });
 
+  it('greet in the French chat by the hour too: «bonjour» at night would be wrong', () => {
+    expect(messages('fr').greeting('Le Bistro', 'web', 11)).toMatch(/^Bonjour et bienvenue chez Le Bistro\./);
+    expect(messages('fr').greeting('Le Bistro', 'web', 22)).toMatch(/^Bonsoir et bienvenue chez Le Bistro\./);
+    expect(messages('fr').greeting('Le Bistro', 'web')).toMatch(/^Bonjour /);
+  });
+
   it('name the business in every language and channel', () => {
     for (const language of LANGUAGES) {
       for (const channel of ['web', 'whatsapp', 'voice', 'staff'] as const) {

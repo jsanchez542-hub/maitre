@@ -317,6 +317,7 @@ interface Pass {
   token: string;
   sessionId: string;
   maxSeconds: number;
+  callsLeft: number;
 }
 
 async function pass(sandbox: string, language = 'fr'): Promise<Pass> {
@@ -381,9 +382,25 @@ describe('calling the demo restaurant from the browser', () => {
   it('gives a restaurant a few calls, not more', async () => {
     fakeNetwork();
     const sandbox = await openSandbox();
-    for (let made = 0; made < 3; made += 1) await pass(sandbox);
+    expect((await pass(sandbox)).callsLeft).toBe(2);
+    for (let made = 1; made < 3; made += 1) await pass(sandbox);
     const refused = await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/calls`, { method: 'POST', headers: JSON_BODY, body: JSON.stringify({ language: 'fr' }) });
     expect([refused.status, await refused.json()]).toEqual([429, { error: 'call_limit' }]);
+  });
+
+  it('counts a call the restaurant answered, not one nobody answered within its minute to join', async () => {
+    fakeNetwork();
+    const sandbox = await openSandbox();
+    const answered = await pass(sandbox);
+    expect((await demoStep(sandbox, answered.sessionId, 'start', { language: 'fr' })).status).toBe(200);
+    // The line was down for these two: they ring, nobody answers, and the visitor gives up.
+    await pass(sandbox);
+    const last = await pass(sandbox);
+    expect(last.callsLeft).toBe(0);
+    vi.setSystemTime(new Date(Date.now() + 61_000));
+    const clock = (await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()) as Record<string, unknown>;
+    expect(clock['callsLeft']).toBe(2);
+    expect((await pass(sandbox)).callsLeft).toBe(1);
   });
 
   it('pays for the voice by the minute, once, and stops the call at its longest', async () => {
