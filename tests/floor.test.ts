@@ -126,6 +126,29 @@ describe('the evening', () => {
     expect(alone.table).toBe('1');
   });
 
+  it('keeps the table of a party still at it past its time, until the staff see it off', () => {
+    const h = harness('2026-10-14T16:30:00Z', FLOOR_CONFIG);
+    const a = staffBooks(h.engine, { date: TODAY, time: '19:00', partySize: 2, guestName: 'Arnaud' });
+    const b = staffBooks(h.engine, { date: TODAY, time: '19:00', partySize: 2, guestName: 'Blanc' });
+    h.setNow('2026-10-14T17:00:00Z');
+    h.engine.seat(a.reference);
+    h.engine.seat(b.reference);
+    // 20:40: both were booked until 20:30, and both are still at their tables.
+    h.setNow('2026-10-14T18:40:00Z');
+    const arnaud = h.engine.serviceDay(TODAY, 'fr').bookings.find((booking) => booking.reference === a.reference);
+    expect(arnaud).toMatchObject({ stage: 'seated', table: '1', endsAt: '20:41' });
+    // Nobody is given a table with people at it.
+    expect(h.engine.staffBook({ date: TODAY, partySize: 2, walkIn: true, table: '1' })).toMatchObject({ status: 'table_taken' });
+    const onTheSpot = h.engine.staffBook({ date: TODAY, partySize: 2, walkIn: true });
+    expect(onTheSpot.status === 'booked' ? onTheSpot.booking.table : 'none').not.toMatch(/^[12]$/);
+    // Seen off, the table is free at once.
+    h.engine.markLeft(a.reference);
+    expect(staffBooks(h.engine, { date: TODAY, partySize: 2, walkIn: true, table: '1' }).table).toBe('1');
+    // Two hours past its time, a party never seen off is taken to have gone: the staff forgot to say so.
+    h.setNow('2026-10-14T20:45:00Z');
+    expect(h.engine.serviceDay(TODAY, 'fr').bookings.find((booking) => booking.reference === b.reference)).toMatchObject({ stage: 'seated', endsAt: '22:30' });
+  });
+
   it('seats a party on the spot at once, at the table the staff choose', () => {
     const h = harness('2026-10-14T17:30:00Z', FLOOR_CONFIG);
     const walkIn = staffBooks(h.engine, { date: TODAY, partySize: 2, walkIn: true, table: '3' });

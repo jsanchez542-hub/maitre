@@ -110,9 +110,11 @@ describe('the demo restaurant at the real time', () => {
   });
 
   it('goes on through the evening: the late party sits down, and the tables empty', () => {
-    const { service, stage } = stages(demoEvening({ now: paris('2026-11-03', '23:00') }));
-    for (const name of ['Martin', 'Moreau', 'Petit', 'Fournier', 'Client sur place']) expect(stage(name)).toMatchObject({ stage: 'left' });
-    for (const name of ['Girard', 'Lambert']) expect(stage(name)).toMatchObject({ stage: 'seated' });
+    const { service, stage } = stages(demoEvening({ now: paris('2026-11-03', '22:45') }));
+    for (const name of ['Martin', 'Moreau', 'Petit', 'Roux', 'Bernard', 'Client sur place']) expect(stage(name)).toMatchObject({ stage: 'left' });
+    for (const name of ['Fournier', 'Lambert']) expect(stage(name)).toMatchObject({ stage: 'seated' });
+    // The birthday table, booked until 22:30, is still there: it keeps its table until it leaves.
+    expect(stage('Girard')).toMatchObject({ stage: 'seated', endsAt: '22:46' });
     expect(service.bookings.filter((booking) => booking.service === 'déjeuner').every((booking) => booking.stage === 'left')).toBe(true);
   });
 

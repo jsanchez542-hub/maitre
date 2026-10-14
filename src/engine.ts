@@ -331,6 +331,8 @@ const NOTES_MAX = 500;
 const SUMMARY_MAX = 500;
 const ALTERNATIVE_DAYS = 14;
 const HISTORY_LENGTH = 20;
+/** How long past its time a party still at its table keeps it, at most: after that, the staff forgot to see it off. */
+const LONGEST_OVERSTAY_MINUTES = 120;
 
 /** A booking without its table, to be placed again. */
 function unseated(booking: Booking): Booking {
@@ -769,7 +771,7 @@ export class BookingEngine {
         service: shift === 0 ? booking.service : undefined,
         covers: booking.partySize,
         start: toMinutes(booking.time) + shift,
-        end: this.#stayEnd(booking) + shift,
+        end: this.#stayEnd(booking, clock.nowMs) + shift,
       }));
       const coversInRoom = (minute: number): number =>
         present.filter((stay) => stay.start <= minute && minute < stay.end).reduce((sum, stay) => sum + stay.covers, 0);
@@ -1137,14 +1139,25 @@ export class BookingEngine {
     return planGroup([...stays, { id: 'candidate', start, end, fixed: false, order: '~' }], this.#tableNumbers(group)) !== undefined;
   }
 
-  /** When a booking's table is free again, in minutes from midnight of its day: early if the party has left. */
-  #stayEnd(booking: Booking): number {
+  /**
+   * When a booking's table is free again, in minutes from midnight of its day:
+   * early if the party has left, and not before now while it is still there. A
+   * party that stays past its time keeps its table until the staff see it off,
+   * so nobody is given a table with people at it; past two hours over its time,
+   * the staff are taken to have forgotten to mark it gone.
+   */
+  #stayEnd(booking: Booking, nowMs: number): number {
     const start = toMinutes(booking.time);
     const planned = start + booking.stayMinutes;
-    if (!booking.leftAt) return planned;
-    const left = localNow(new Date(booking.leftAt), this.#config.timeZone);
-    const leftMinute = daysBetween(booking.date, left.date) * 1440 + toMinutes(left.time);
-    return Math.min(planned, Math.max(start, leftMinute));
+    if (booking.leftAt) {
+      const left = localNow(new Date(booking.leftAt), this.#config.timeZone);
+      const leftMinute = daysBetween(booking.date, left.date) * 1440 + toMinutes(left.time);
+      return Math.min(planned, Math.max(start, leftMinute));
+    }
+    if (booking.arrivedAt === undefined && booking.seatedAt === undefined) return planned;
+    const now = localNow(new Date(nowMs), this.#config.timeZone);
+    const nowMinute = daysBetween(booking.date, now.date) * 1440 + toMinutes(now.time);
+    return Math.max(planned, Math.min(nowMinute + 1, planned + LONGEST_OVERSTAY_MINUTES));
   }
 
   /** The stays of one table group around a day, as the plan sees them, held tables included. */
@@ -1159,7 +1172,7 @@ export class BookingEngine {
       for (const booking of tx.bookingsOn(day)) {
         if (!isActive(booking) || booking.tableGroup !== group || booking.id === exclusions.bookingId) continue;
         const start = toMinutes(booking.time) + shift;
-        const end = this.#stayEnd(booking) + shift;
+        const end = this.#stayEnd(booking, nowMs) + shift;
         if (end <= start) continue;
         stays.push({
           id: booking.id,
@@ -1201,7 +1214,7 @@ export class BookingEngine {
     const own: Stay = {
       id: booking.id,
       start: toMinutes(booking.time),
-      end: this.#stayEnd(booking),
+      end: this.#stayEnd(booking, nowMs),
       ...(booking.table === undefined ? {} : { table: booking.table }),
       // A party seated without a table chosen takes the one the plan gives, then keeps it.
       fixed: booking.tableFixed === true && booking.table !== undefined,
@@ -1236,7 +1249,7 @@ export class BookingEngine {
 
   #freeTablesAt(tx: BookingTx, date: PlainDate, time: PlainTime, partySize: number, nowMs: number, booking?: Booking): string[] {
     const start = toMinutes(time);
-    const end = booking ? this.#stayEnd(booking) : start + stayMinutes(this.#config, partySize);
+    const end = booking ? this.#stayEnd(booking, nowMs) : start + stayMinutes(this.#config, partySize);
     return physicalTables(this.#config)
       .filter((table) => table.seats >= partySize && table.number !== booking?.table)
       .filter((table) => {
@@ -1260,7 +1273,7 @@ export class BookingEngine {
         if (!isActive(booking) || booking.id === exclusions.bookingId) continue;
         const start = toMinutes(booking.time) + shift;
         // A party that has left frees its table there and then.
-        const end = this.#stayEnd(booking) + shift;
+        const end = this.#stayEnd(booking, nowMs) + shift;
         if (end > start) occupations.push({ tableGroup: booking.tableGroup, start, end });
       }
       for (const hold of tx.holdsOn(day, nowMs)) {
@@ -1419,7 +1432,7 @@ export class BookingEngine {
       reference: booking.reference,
       date: booking.date,
       time: booking.time,
-      endsAt: fromMinutes(((this.#stayEnd(booking) % 1440) + 1440) % 1440),
+      endsAt: fromMinutes(((this.#stayEnd(booking, clock.nowMs) % 1440) + 1440) % 1440),
       partySize: booking.partySize,
       stayMinutes: booking.stayMinutes,
       tableGroup: booking.tableGroup,

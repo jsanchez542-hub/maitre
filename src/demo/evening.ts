@@ -159,24 +159,27 @@ const DINNER: readonly DinnerBooking[] = [
 
 /**
  * The rest of dinner, after the recorded 20:05: the late party sits down, the
- * later ones come, and the tables empty. Name, seated at, left at.
+ * later ones come, and the tables empty, each a little before its time (90
+ * minutes for two, two hours up to four, two and a half up to six). Girard's
+ * birthday table stays twenty minutes past its time, as one table does on a
+ * real evening: it keeps its table until it leaves. Name, seated at, left at.
  */
 const LATER_DINNER: readonly [string, string, string][] = [
-  ['Moreau', '20:06', '22:10'],
-  ['Petit', '20:09', '22:15'],
-  ['Bernard', '20:17', '22:20'],
-  ['Roux', '20:32', '22:40'],
-  ['Fournier', '20:34', '22:55'],
-  ['Girard', '21:02', '23:05'],
-  ['Lambert', '21:34', '23:25'],
+  ['Moreau', '20:06', '21:40'],
+  ['Petit', '20:09', '21:24'],
+  ['Bernard', '20:17', '22:08'],
+  ['Roux', '20:32', '21:55'],
+  ['Fournier', '20:34', '22:48'],
+  ['Girard', '21:02', '22:50'],
+  ['Lambert', '21:34', '22:56'],
 ];
 
 /** When the parties seated before 20:05 leave. */
 const FIRST_SITTING_LEAVES: readonly [string, string][] = [
-  ['Martin', '20:52'],
-  ['Lefèvre', '21:05'],
-  ['Dubois', '21:10'],
-  ['Garcia', '21:45'],
+  ['Martin', '20:26'],
+  ['Lefèvre', '20:52'],
+  ['Dubois', '20:41'],
+  ['Garcia', '21:50'],
 ];
 
 /**
