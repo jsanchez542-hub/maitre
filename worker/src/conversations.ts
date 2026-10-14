@@ -1,3 +1,4 @@
+import type { TurnEvents } from '../../src/agent/agent.js';
 import type { TranscriptEntry, Usage } from '../../src/agent/model.js';
 import type { Language } from '../../src/i18n/index.js';
 import type { Channel, PhoneSource } from '../../src/store.js';
@@ -70,6 +71,14 @@ export interface TurnLog {
   /** Tool names and their status only: the full outputs stay out of the log. */
   tools: { name: string; status: string }[];
   corrections: string[];
+  /** What the turn did, as the dashboard tells the conversation: bookings made, with their names, moved and cancelled. */
+  booked?: TurnEvents['booked'];
+  changed?: TurnEvents['changed'];
+  cancelled?: TurnEvents['cancelled'];
+  /** The turn passed a request to the team, which calls the guest back. */
+  passedToTeam?: true;
+  /** The guest's number as the conversation knows it (caller ID, WhatsApp, or typed on the website), written for the staff. */
+  phone?: string;
 }
 
 const MIGRATIONS: readonly string[] = [

@@ -70,6 +70,32 @@ export function turnEffects(tools: readonly { name: string; output: ToolOutput }
   };
 }
 
+/** What a turn did to bookings, for the conversation as the dashboard shows it: each one made, moved or cancelled. */
+export interface TurnEvents {
+  /** Bookings made in this turn, with the name each is under. A booking asked for again is not a new one. */
+  booked: { reference: string; date: string; time: string; partySize: number; guestName: string }[];
+  /** Bookings moved in this turn, as they are now. */
+  changed: { reference: string; date: string; time: string; partySize: number }[];
+  cancelled: { reference: string }[];
+}
+
+export function turnEvents(tools: readonly { name: string; output: ToolOutput }[]): TurnEvents {
+  const events: TurnEvents = { booked: [], changed: [], cancelled: [] };
+  for (const tool of tools) {
+    const booking = tool.output['booking'] as { reference?: unknown; date?: unknown; time?: unknown; partySize?: unknown; guestName?: unknown } | undefined;
+    if (!booking || typeof booking.reference !== 'string') continue;
+    const when = typeof booking.date === 'string' && typeof booking.time === 'string' ? { date: booking.date, time: booking.time } : undefined;
+    if (tool.name === 'book_table' && tool.output.status === 'booked' && when) {
+      events.booked.push({ reference: booking.reference, ...when, partySize: Number(booking.partySize), guestName: String(booking.guestName ?? '') });
+    } else if (tool.name === 'change_booking' && tool.output.status === 'changed' && when) {
+      events.changed.push({ reference: booking.reference, ...when, partySize: Number(booking.partySize) });
+    } else if (tool.name === 'cancel_booking' && tool.output.status === 'cancelled') {
+      events.cancelled.push({ reference: booking.reference });
+    }
+  }
+  return events;
+}
+
 /** What end_call answers on the phone: the reply the model writes is the last of the call. */
 const ENDING: ToolOutput = { status: 'ending', instruction: 'Write your goodbye now: the line hangs up once it has been heard.' };
 

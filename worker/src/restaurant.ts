@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { activityOf, type Activity } from '../../src/activity.js';
-import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
+import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, turnEvents, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
 import { withFallback } from '../../src/agent/providers/fallback.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
@@ -685,6 +685,7 @@ export class Restaurant extends DurableObject<Env> {
   }
 
   #turnLog(session: Session, guest: string, result: TurnResult, at: string): TurnLog {
+    const events = turnEvents(result.tools);
     return {
       at,
       sessionId: session.id,
@@ -701,6 +702,11 @@ export class Restaurant extends DurableObject<Env> {
       ...(result.costUsd === undefined ? {} : { costUsd: result.costUsd }),
       tools: result.tools.map((tool) => ({ name: tool.name, status: String(tool.output.status) })),
       corrections: result.corrections,
+      ...(events.booked.length > 0 ? { booked: events.booked } : {}),
+      ...(events.changed.length > 0 ? { changed: events.changed } : {}),
+      ...(events.cancelled.length > 0 ? { cancelled: events.cancelled } : {}),
+      ...(turnEffects(result.tools).passedToTeam ? { passedToTeam: true as const } : {}),
+      ...(session.phone ? { phone: formatPhone(session.phone.e164) } : {}),
     };
   }
 }

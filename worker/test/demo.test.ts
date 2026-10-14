@@ -155,6 +155,12 @@ describe('the public demo', () => {
 
     expect((await day(mine)).bookings.find((booking) => booking['guestName'] === 'Moulin')).toMatchObject({ channel: 'web', phoneSource: 'form' });
     expect((await day(theirs)).bookings.some((booking) => booking['guestName'] === 'Moulin')).toBe(false);
+    // The conversation as the dashboard reads it: who, and what the turn booked.
+    const turns = (await (await SELF.fetch(`${DEMO}/sandboxes/${mine}/conversations`)).json()) as Record<string, unknown>[];
+    expect(turns.find((turn) => turn['booked'])).toMatchObject({
+      booked: [{ date: EVENING, time: '21:30', partySize: 2, guestName: 'Moulin' }],
+      phone: '+33 6 39 98 00 31',
+    });
 
     expect(requests).toHaveLength(5);
     for (const request of requests) expect(request.authorization).toBe('Bearer test-demo-openrouter-key');

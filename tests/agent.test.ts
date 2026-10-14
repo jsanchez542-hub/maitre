@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { respond, trimTranscript, turnEffects } from '../src/agent/agent.js';
+import { respond, trimTranscript, turnEffects, turnEvents } from '../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../src/agent/model.js';
 import { buildSystemPrompt } from '../src/agent/prompt.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
@@ -215,6 +215,24 @@ describe('what a turn did', () => {
   it('says when the phone line hangs up after the reply, and not when the call was kept open', () => {
     expect(turnEffects([{ name: 'end_call', output: { status: 'ending' } }]).hangUp).toBe(true);
     expect(turnEffects([{ name: 'end_call', output: { status: 'kept_open' } }]).hangUp).toBe(false);
+  });
+
+  it('tells the dashboard each booking made, with its name, moved and cancelled; one asked for again is not new', () => {
+    const view = { reference: 'ACDEFH', date: '2026-10-16', time: '21:30', partySize: 2, guestName: 'Moulin' };
+    expect(
+      turnEvents([
+        { name: 'find_table', output: { status: 'available', holdId: 'h1' } },
+        { name: 'book_table', output: { status: 'booked', booking: view } },
+        { name: 'book_table', output: { status: 'duplicate', booking: { ...view, reference: 'BCDEFG' } } },
+        { name: 'change_booking', output: { status: 'changed', booking: { ...view, reference: 'CDEFGH', time: '21:00' } } },
+        { name: 'cancel_booking', output: { status: 'cancelled', booking: { ...view, reference: 'DEFGHJ' } } },
+        { name: 'cancel_booking', output: { status: 'not_found' } },
+      ]),
+    ).toEqual({
+      booked: [view],
+      changed: [{ reference: 'CDEFGH', date: '2026-10-16', time: '21:00', partySize: 2 }],
+      cancelled: [{ reference: 'DEFGHJ' }],
+    });
   });
 });
 
