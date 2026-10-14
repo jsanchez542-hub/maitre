@@ -171,8 +171,13 @@ export interface StaffBookingView {
   reference: string;
   date: PlainDate;
   time: PlainTime;
-  /** When the table is free again, on the 24-hour clock: the time the party left, if it has. */
+  /**
+   * When the table is free again, on the 24-hour clock: the time the party left,
+   * if it has, and not before now while a party past its time is still at it.
+   */
   endsAt: PlainTime;
+  /** When the stay was planned to end: a party still at its table after it has stayed past its time. */
+  plannedEndsAt: PlainTime;
   partySize: number;
   stayMinutes: number;
   tableGroup: string;
@@ -1433,6 +1438,7 @@ export class BookingEngine {
       date: booking.date,
       time: booking.time,
       endsAt: fromMinutes(((this.#stayEnd(booking, clock.nowMs) % 1440) + 1440) % 1440),
+      plannedEndsAt: fromMinutes((toMinutes(booking.time) + booking.stayMinutes) % 1440),
       partySize: booking.partySize,
       stayMinutes: booking.stayMinutes,
       tableGroup: booking.tableGroup,

@@ -136,7 +136,8 @@ describe('the evening', () => {
     // 20:40: both were booked until 20:30, and both are still at their tables.
     h.setNow('2026-10-14T18:40:00Z');
     const arnaud = h.engine.serviceDay(TODAY, 'fr').bookings.find((booking) => booking.reference === a.reference);
-    expect(arnaud).toMatchObject({ stage: 'seated', table: '1', endsAt: '20:41' });
+    // Held until now, and the time it was booked until, for the host to see it has stayed past it.
+    expect(arnaud).toMatchObject({ stage: 'seated', table: '1', endsAt: '20:41', plannedEndsAt: '20:30' });
     // Nobody is given a table with people at it.
     expect(h.engine.staffBook({ date: TODAY, partySize: 2, walkIn: true, table: '1' })).toMatchObject({ status: 'table_taken' });
     const onTheSpot = h.engine.staffBook({ date: TODAY, partySize: 2, walkIn: true });
