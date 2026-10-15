@@ -8,12 +8,14 @@ from dataclasses import dataclass, field
 from .speech import EndOfTurn
 
 LANGUAGES = ("fr", "en", "es")
-#: A voice for each language the line speaks: a synthesized voice speaks the one language it was made for. Aura-2's
-#: Agathe, asked for Spanish, made every call in Spanish silent (13 October).
+#: A voice for each language the line speaks, native to it: Aura-2's Agathe, asked for Spanish, made every call in
+#: Spanish silent (13 October). French is Cartesia's "French Conversational Lady", chosen by ear in a blind test
+#: (15 October); English is its "British Customer Support Lady" and Spanish its "Spanish Narrator Lady", from Spain.
+#: Read back to speech recognition, each was heard at 97 to 98 % of its words (bench/tts_languages.py).
 DEFAULT_VOICES = {
-    "fr": "inference:deepgram/aura-2:agathe",
-    "en": "inference:deepgram/aura-2:athena",
-    "es": "inference:deepgram/aura-2:carina",
+    "fr": "inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
+    "en": "inference:cartesia/sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70",
+    "es": "inference:cartesia/sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2",
 }
 #: The keys each speech provider needs, by name. LiveKit Inference is paid from the LiveKit project's own credit.
 PROVIDER_KEYS = {

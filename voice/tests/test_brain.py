@@ -125,20 +125,21 @@ def test_says_which_key_the_chosen_speech_is_missing_without_its_value():
     livekit = {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"}
     missing = Settings.from_env(base).problems()
     assert "LIVEKIT_API_KEY is missing, for inference:deepgram/nova-3" in missing
-    assert "LIVEKIT_API_SECRET is missing, for inference:deepgram/aura-2:carina" in missing
+    assert "LIVEKIT_API_SECRET is missing, for inference:cartesia/sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2" in missing
     configured = Settings.from_env(base | livekit)
     assert configured.problems() == []
     assert "secret" not in repr(configured.keys)
-    direct = Settings.from_env(base | livekit | {"VOICE_TTS": "cartesia:sonic-3"})
+    direct = Settings.from_env(base | livekit | {"VOICE_TTS": "cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"})
     assert direct.problems() == [
-        "CARTESIA_API_KEY is missing, for cartesia:sonic-3",
-        "the voices must come from one provider, not cartesia, inference:deepgram",
+        "CARTESIA_API_KEY is missing, for cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
+        "the voices must come from one provider, not cartesia, inference:cartesia",
     ]
 
 
 def test_each_language_has_a_voice_of_its_own():
-    settings = Settings.from_env({"VOICE_TTS_ES": "inference:deepgram/aura-2:diana"})
-    assert settings.voice_for("fr") == "inference:deepgram/aura-2:agathe"
-    assert settings.voice_for("en") == "inference:deepgram/aura-2:athena"
-    assert settings.voice_for("es") == "inference:deepgram/aura-2:diana"
+    # Cartesia's "French Conversational Lady", chosen by ear, then a British and a Spanish voice of the same family.
+    settings = Settings.from_env({"VOICE_TTS_ES": "inference:cartesia/sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"})
+    assert settings.voice_for("fr") == "inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"
+    assert settings.voice_for("en") == "inference:cartesia/sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70"
+    assert settings.voice_for("es") == "inference:cartesia/sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"
     assert settings.voice_for("de") == settings.voice_for("fr")

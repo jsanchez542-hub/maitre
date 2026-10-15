@@ -110,6 +110,10 @@ def switch_voice(engine: tts.TTS, spec: str, language: str) -> None:
     if provider == "inference":
         update(model=model, language=language, **({"voice": voice} if voice else {}))
         return
+    if provider == "cartesia":
+        # With Cartesia's own key the voice changes with the language too, as through LiveKit Inference.
+        update(**({"model": model} if model else {}), language=language, **({"voice": voice} if voice else {}))
+        return
     try:
         update(language=language)
     except TypeError:
