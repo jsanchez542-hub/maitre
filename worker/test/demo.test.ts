@@ -234,6 +234,21 @@ describe('the public demo', () => {
     expect((await day(sandbox)).bookings.find((booking) => booking['guestName'] === 'Bernard')).toMatchObject({ stage: 'arrived' });
   });
 
+  it('lets the visitor change, confirm and place the restaurant’s bookings as its owner would', async () => {
+    fakeNetwork();
+    const sandbox = await opened();
+    const expected = (await day(sandbox)).bookings.find((booking) => booking['stage'] === 'expected');
+    const reference = String(expected?.['reference']);
+    const free = await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/staff/bookings/${reference}/tables`);
+    expect(free.status).toBe(200);
+    expect(await free.json()).toMatchObject({ status: 'ok' });
+    expect(await (await send(sandbox, `staff/bookings/${reference}/confirm`, {})).json()).toMatchObject({ status: 'done', booking: { status: 'confirmed' } });
+    expect(await (await send(sandbox, `staff/bookings/${reference}/change`, { notes: 'Table au calme' })).json()).toMatchObject({
+      status: 'booked',
+      booking: { notes: 'Table au calme' },
+    });
+  });
+
   it('deletes the whole restaurant a day after it opened', async () => {
     fakeNetwork();
     const sandbox = await opened();

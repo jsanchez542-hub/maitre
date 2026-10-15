@@ -389,6 +389,40 @@ describe('the floor', () => {
     expect(await (await act(second.booking.reference, 'arrived')).json()).toEqual({ status: 'not_allowed', reason: 'not_today' });
   });
 
+  it('lets the staff change a booking, confirm it, and ask which tables would take it', async () => {
+    const friday = nextWeek('friday');
+    const created = (await (await staffBook({ date: friday, time: '20:00', partySize: 2, guestName: 'Martin' })).json()) as {
+      booking: { reference: string; table: string };
+    };
+    const reference = created.booking.reference;
+    const tables = (path: string) => SELF.fetch(`${BASE}/staff/bookings/${path}/tables`, { headers: STAFF });
+
+    const free = await tables(reference);
+    expect(free.status).toBe(200);
+    const listed = ((await free.json()) as { status: string; free: string[] }).free;
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed).not.toContain(created.booking.table);
+
+    const changed = await act(reference, 'change', { time: '20:30', partySize: 4, notes: 'Anniversaire', allergies: ['nuts'], language: 'en' });
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toMatchObject({
+      status: 'booked',
+      booking: { time: '20:30', partySize: 4, notes: 'Anniversaire', allergies: [{ id: 'nuts', name: 'tree nuts' }], history: [{ channel: 'staff' }] },
+    });
+    // A field left out stays; null removes a note; a list that is not one is refused, not read as no change.
+    expect(await (await act(reference, 'change', { notes: null })).json()).not.toHaveProperty('booking.notes');
+    expect(await (await act(reference, 'change', { allergies: 'nuts' })).json()).toEqual({ status: 'invalid', problems: ['allergies must be a list'] });
+    expect((await act(reference, 'change', { partySize: 40 })).status).toBe(400);
+    expect((await act('NOPE42', 'change', { time: '21:00' })).status).toBe(404);
+    expect((await tables('NOPE42')).status).toBe(404);
+
+    expect(await (await act(reference, 'confirm')).json()).toMatchObject({ status: 'done', booking: { status: 'confirmed', partySize: 4 } });
+    expect((await act(reference, 'cancel')).status).toBe(200);
+    expect(await (await act(reference, 'change', { time: '21:00' })).json()).toEqual({ status: 'not_allowed', reason: 'already_cancelled' });
+    expect((await tables(reference)).status).toBe(409);
+    expect((await SELF.fetch(`${BASE}/staff/bookings/${reference}/change`, { headers: STAFF })).status).toBe(405);
+  });
+
   it('follows a party from the door to its table and out, on the evening itself', async () => {
     const friday = nextWeek('friday');
     // 20:15 in Paris in summer time, 19:15 in winter time: inside the dinner service either way.

@@ -8,11 +8,14 @@ import { validateConfig, type BusinessConfig } from '../../src/config.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import {
   BookingEngine,
+  type FreeTablesResult,
   type ServiceDay,
   type Session,
   type StaffActionResult,
   type StaffBookRequest,
   type StaffBookResult,
+  type StaffChangeRequest,
+  type StaffChangeResult,
   type TableActionResult,
 } from '../../src/engine.js';
 import { isLanguage, messages, type Language } from '../../src/i18n/index.js';
@@ -617,6 +620,18 @@ export class Restaurant extends DurableObject<Env> {
   // The staff actions answer in the dashboard's language: the booking they return, and the times offered when one fails.
   async staffBook(request: StaffBookRequest): Promise<StaffBookResult> {
     return this.#engine.staffBook(request);
+  }
+
+  async staffChange(reference: string, request: StaffChangeRequest): Promise<StaffChangeResult> {
+    return this.#engine.staffChange(reference, request);
+  }
+
+  async staffConfirm(reference: string, language?: string): Promise<StaffActionResult> {
+    return this.#engine.staffConfirm(reference, dashboardLanguage(language));
+  }
+
+  async freeTables(reference: string): Promise<FreeTablesResult> {
+    return this.#engine.freeTablesFor(reference);
   }
 
   async staffCancel(reference: string, language?: string): Promise<StaffActionResult> {

@@ -1,6 +1,7 @@
 import { localNow } from '../../src/calendar.js';
 import { demoSuggestion, serviceDayAt } from '../../src/demo/evening.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
+import type { StaffChangeRequest } from '../../src/engine.js';
 import { isLanguage } from '../../src/i18n/index.js';
 import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
@@ -230,6 +231,8 @@ function isStaffRoute(request: Request, rest: readonly string[]): boolean {
     is('GET', 'calls') ||
     is('POST', 'staff', 'bookings') ||
     STAFF_ACTIONS.some((action) => is('POST', 'staff', 'bookings', null, action)) ||
+    is('POST', 'staff', 'bookings', null, 'change') ||
+    is('GET', 'staff', 'bookings', null, 'tables') ||
     is('POST', 'staff', 'callbacks', null, 'done') ||
     is('GET', 'config') ||
     is('PUT', 'config') ||
@@ -289,6 +292,19 @@ async function staff(
     const done = await restaurant.completeCallback(target);
     return json(done, done.status === 'not_found' ? 404 : 200);
   }
+  if (rest[3] === 'tables') {
+    const tables = await restaurant.freeTables(target);
+    return json(tables, { ok: 200, not_found: 404, not_allowed: 409 }[tables.status]);
+  }
+  if (rest[3] === 'change') {
+    const body = await readJson(request);
+    if (!body.ok) return body.response;
+    const change = staffChangeOf(body.value);
+    if ('problems' in change) return json({ status: 'invalid', problems: change.problems }, 400);
+    const result = await restaurant.staffChange(target, change);
+    const status = { booked: 200, invalid: 400, not_found: 404, not_allowed: 409, unavailable: 409, table_taken: 409 }[result.status];
+    return json(result, status);
+  }
   // Every action may name the dashboard's language; "seated" and "table" also a table.
   const body = await readJson(request);
   if (!body.ok) return body.response;
@@ -296,6 +312,9 @@ async function staff(
   const language = typeof body.value['language'] === 'string' ? body.value['language'] : undefined;
   let action;
   switch (rest[3] as StaffAction) {
+    case 'confirm':
+      action = await restaurant.staffConfirm(target, language);
+      break;
     case 'cancel':
       action = await restaurant.staffCancel(target, language);
       break;
@@ -320,8 +339,30 @@ async function staff(
   return json(action, status);
 }
 
-const STAFF_ACTIONS = ['cancel', 'no-show', 'arrived', 'seated', 'left', 'table'] as const;
+const STAFF_ACTIONS = ['confirm', 'cancel', 'no-show', 'arrived', 'seated', 'left', 'table'] as const;
 type StaffAction = (typeof STAFF_ACTIONS)[number];
+
+/**
+ * A change from the dashboard. A field left out stays as it is; null or an
+ * empty value removes a phone or a note, and null clears the allergies. A list
+ * of allergies that is not a list is refused rather than read as no change.
+ */
+function staffChangeOf(input: Record<string, unknown>): StaffChangeRequest | { problems: string[] } {
+  const allergies = input['allergies'];
+  if (allergies !== undefined && allergies !== null && !Array.isArray(allergies)) return { problems: ['allergies must be a list'] };
+  const change: StaffChangeRequest = {};
+  if (input['date'] !== undefined) change.date = String(input['date']);
+  if (input['time'] !== undefined) change.time = String(input['time']);
+  if (input['partySize'] !== undefined) change.partySize = Number(input['partySize']);
+  if (input['guestName'] !== undefined) change.guestName = String(input['guestName'] ?? '');
+  if (input['phone'] !== undefined) change.phone = String(input['phone'] ?? '');
+  if (input['notes'] !== undefined) change.notes = String(input['notes'] ?? '');
+  if (allergies !== undefined) change.allergies = (allergies ?? []).map(String);
+  if (typeof input['table'] === 'string') change.table = input['table'];
+  if (isLanguage(input['language'])) change.language = input['language'];
+  if (isLanguage(input['guestLanguage'])) change.guestLanguage = input['guestLanguage'];
+  return change;
+}
 
 /** The public demo: a visitor opens a restaurant of their own and uses it as a guest and as its owner. */
 async function demo(request: Request, env: Env, url: URL, rest: readonly string[]): Promise<Response> {

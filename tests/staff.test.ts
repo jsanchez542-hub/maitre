@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { BookingEngine } from '../src/engine.js';
 import { FRIDAY, guest, harness } from './fixtures.js';
 
 // Friday 16 October 2026 at 20:07 in Paris.
@@ -116,12 +117,200 @@ describe('bookings entered by the staff', () => {
   });
 });
 
+describe('changes made by the staff', () => {
+  function staffBooks(h: ReturnType<typeof harness>, request: Parameters<BookingEngine['staffBook']>[0]): string {
+    const result = h.engine.staffBook(request);
+    if (result.status !== 'booked') throw new Error(`setup failed: ${JSON.stringify(result)}`);
+    return result.booking.reference;
+  }
+
+  function guestBooks(h: ReturnType<typeof harness>): string {
+    const held = h.engine.findTable(guest('g1'), { date: FRIDAY, time: '20:00', partySize: 2 });
+    if (held.status !== 'available') throw new Error('setup failed');
+    const booked = h.engine.book(guest('g1'), { holdId: held.holdId, guestName: 'Dupont' });
+    if (booked.status !== 'booked') throw new Error('setup failed');
+    return booked.booking.reference;
+  }
+
+  it('change the guest’s details alone, at the same table, and keep a number typed again as it came', () => {
+    const h = harness();
+    const reference = guestBooks(h);
+    const result = h.engine.staffChange(reference, {
+      guestName: 'Dupont-Moreau',
+      phone: '+33 6 12 34 56 78',
+      notes: 'Près de la fenêtre',
+      allergies: ['gluten', 'nuts', 'gluten'],
+      guestLanguage: 'en',
+    });
+    expect(result).toMatchObject({
+      status: 'booked',
+      booking: {
+        guestName: 'Dupont-Moreau',
+        phone: '+33 6 12 34 56 78',
+        phoneSource: 'whatsapp',
+        notes: 'Près de la fenêtre',
+        allergies: [{ id: 'gluten' }, { id: 'nuts' }],
+        language: 'en',
+        channel: 'whatsapp',
+        table: 't2-1',
+        status: 'booked',
+        history: [],
+      },
+    });
+
+    // An empty note removes it, an empty list clears the allergies, and another number is the staff's.
+    const cleared = h.engine.staffChange(reference, { notes: '', allergies: [] });
+    expect(cleared.status === 'booked' && cleared.booking).not.toHaveProperty('notes');
+    expect(cleared).toMatchObject({ booking: { allergies: [] } });
+    expect(h.engine.staffChange(reference, { phone: '07 00 00 00 01' })).toMatchObject({ booking: { phone: '+33 7 00 00 00 01', phoneSource: 'staff' } });
+    const withoutPhone = h.engine.staffChange(reference, { phone: '' });
+    expect(withoutPhone.status === 'booked' && withoutPhone.booking).not.toHaveProperty('phone');
+    expect(h.store.snapshot().bookings[0]).not.toHaveProperty('phoneSource');
+  });
+
+  it('move a booking without the notice period, keep its status, and write where it was', () => {
+    const h = harness(FRIDAY_EVENING);
+    const reference = staffBooks(h, { date: '2026-10-16', time: '20:30', partySize: 2, guestName: 'Martin' });
+    h.engine.staffConfirm(reference);
+    // 20:20 is thirteen minutes away and off the quarter-hour grid: too soon for a guest, fine for the staff.
+    expect(h.engine.staffChange(reference, { time: '20:20' })).toMatchObject({
+      status: 'booked',
+      booking: {
+        time: '20:20',
+        status: 'confirmed',
+        history: [{ at: '2026-10-16T18:07:00.000Z', from: { date: '2026-10-16', time: '20:30', partySize: 2 }, channel: 'staff' }],
+      },
+    });
+    // The same change asked twice moves the booking once.
+    h.engine.staffChange(reference, { time: '20:20' });
+    expect(h.store.snapshot().bookings[0]?.history).toHaveLength(1);
+  });
+
+  it('keep the table the staff gave the party when it still fits, and let the plan find another when it does not', () => {
+    const h = harness();
+    // Two people the staff put at a table for four: the plan alone would give them a table for two.
+    const reference = staffBooks(h, { date: '2026-10-16', time: '21:00', partySize: 2, guestName: 'Martin', table: 't4-1' });
+    expect(h.engine.staffChange(reference, { time: '21:15' })).toMatchObject({
+      status: 'booked',
+      booking: { time: '21:15', table: 't4-1', tableFixed: true },
+    });
+
+    staffBooks(h, { date: '2026-10-16', time: '19:00', partySize: 4, guestName: 'Durand', table: 't4-1' });
+    // At 20:00 Durand still has that table, until 21:00.
+    expect(h.engine.staffChange(reference, { time: '20:00' })).toMatchObject({
+      status: 'booked',
+      booking: { time: '20:00', tableGroup: 't2', table: 't2-1', tableFixed: false },
+    });
+  });
+
+  it('give a party that grows a table that seats it, for the longer stay, and write its old size', () => {
+    const h = harness();
+    const reference = staffBooks(h, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin' });
+    expect(h.engine.staffChange(reference, { partySize: 4 })).toMatchObject({
+      status: 'booked',
+      booking: {
+        partySize: 4,
+        tableGroup: 't4',
+        table: 't4-1',
+        stayMinutes: 120,
+        endsAt: '22:00',
+        history: [{ from: { date: '2026-10-16', time: '20:00', partySize: 2 }, channel: 'staff' }],
+      },
+    });
+  });
+
+  it('need the same capacity as a new booking, without the booking being in its own way', () => {
+    const h = harness();
+    // The only table for six moves with its party.
+    const six = staffBooks(h, { date: '2026-10-16', time: '20:00', partySize: 6, guestName: 'Martin' });
+    expect(h.engine.staffChange(six, { time: '20:30' })).toMatchObject({ status: 'booked', booking: { time: '20:30', table: 't6-1' } });
+
+    // Six from 19:00 would stay until 21:30, and the table for six is taken from 20:30: nothing that evening fits.
+    const four = staffBooks(h, { date: '2026-10-16', time: '19:00', partySize: 4, guestName: 'Durand' });
+    const result = h.engine.staffChange(four, { partySize: 6 });
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'full' });
+    expect(result.status === 'unavailable' && result.alternatives.map((offer) => `${offer.date} ${offer.time}`)).toEqual(['2026-10-17 19:00']);
+    expect(h.store.snapshot().bookings.find((booking) => booking.reference === four)).toMatchObject({ partySize: 4, history: [] });
+  });
+
+  it('put the party at the table the staff choose, or say which tables would take it', () => {
+    const h = harness();
+    const martin = staffBooks(h, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin' });
+    staffBooks(h, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Petit', table: 't4-1' });
+    // Its own table is among them: at another time or size it is a choice like the others.
+    expect(h.engine.staffChange(martin, { table: 't4-1' })).toEqual({ status: 'table_taken', free: ['t2-1', 't2-2', 't4-2', 't6-1'] });
+    expect(h.engine.staffChange(martin, { time: '20:15', table: 't4-2' })).toMatchObject({
+      status: 'booked',
+      booking: { time: '20:15', table: 't4-2', tableFixed: true },
+    });
+    expect(h.engine.staffChange(martin, { table: 't9-9' })).toEqual({ status: 'invalid', problems: ['there is no table "t9-9"'] });
+    expect(h.engine.staffChange(martin, { partySize: 6, table: 't4-2' })).toEqual({ status: 'invalid', problems: ['table t4-2 seats 4, not 6'] });
+  });
+
+  it('let a party already in the restaurant grow or shrink at a table that seats it, but not move to another time', () => {
+    const h = harness(FRIDAY_EVENING);
+    const reference = staffBooks(h, { date: '2026-10-16', partySize: 2, walkIn: true });
+    expect(h.engine.staffChange(reference, { time: '20:30' })).toEqual({ status: 'not_allowed', reason: 'already_arrived' });
+    // Three no longer fit at the table for two they sit at: the staff say where they go.
+    expect(h.engine.staffChange(reference, { partySize: 3 })).toEqual({ status: 'table_taken', free: ['t4-1', 't4-2', 't6-1'] });
+    expect(h.engine.staffChange(reference, { partySize: 3, table: 't4-1' })).toMatchObject({
+      status: 'booked',
+      booking: { partySize: 3, table: 't4-1', tableFixed: true, stage: 'seated' },
+    });
+    expect(h.engine.staffChange(reference, { partySize: 1 })).toMatchObject({ status: 'booked', booking: { partySize: 1, table: 't4-1' } });
+    // A party on the spot may be named, then nameless again.
+    expect(h.engine.staffChange(reference, { guestName: 'Garnier' })).toMatchObject({ booking: { guestName: 'Garnier' } });
+    expect(h.engine.staffChange(reference, { guestName: '' })).toMatchObject({ booking: { guestName: 'Client sur place' } });
+  });
+
+  it('refuse what cannot be read, a booking that is over, and one that is not there', () => {
+    const h = harness();
+    const reference = staffBooks(h, { date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin' });
+    expect(
+      h.engine.staffChange(reference, { date: '2026-10-13', time: '8h', partySize: 9, guestName: ' ', phone: '0612', allergies: ['plutonium'] }),
+    ).toEqual({
+      status: 'invalid',
+      problems: [
+        'date is in the past',
+        'time must be written HH:mm',
+        'parties larger than 6 need tables joined, which bookings do not handle',
+        'guestName must be 1 to 80 characters of plain text',
+        'phone cannot be read: write it like 06 12 34 56 78 or +44 7700 900123',
+        'unknown allergen "plutonium"',
+      ],
+    });
+    expect(h.engine.staffChange('AAAAAA', { time: '21:00' })).toEqual({ status: 'not_found' });
+    h.engine.staffCancel(reference);
+    expect(h.engine.staffChange(reference, { time: '21:00' })).toEqual({ status: 'not_allowed', reason: 'already_cancelled' });
+  });
+});
+
 describe('staff actions', () => {
   function booked(h: ReturnType<typeof harness>) {
     const result = h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin' });
     if (result.status !== 'booked') throw new Error('setup failed');
     return result.booking.reference;
   }
+
+  it('confirm a booking the guest confirmed to them, as often as they press it', () => {
+    const h = harness();
+    const reference = booked(h);
+    expect(h.engine.staffConfirm(reference)).toMatchObject({ status: 'done', booking: { status: 'confirmed' } });
+    expect(h.engine.staffConfirm(reference)).toMatchObject({ status: 'done', booking: { status: 'confirmed' } });
+    h.engine.staffCancel(reference);
+    expect(h.engine.staffConfirm(reference)).toEqual({ status: 'not_allowed', reason: 'already_cancelled' });
+    expect(h.engine.staffConfirm('AAAAAA')).toEqual({ status: 'not_found' });
+  });
+
+  it('say which other tables would take a booking for its whole stay, without trying one', () => {
+    const h = harness();
+    const reference = booked(h);
+    h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Petit', table: 't4-1' });
+    expect(h.engine.freeTablesFor(reference)).toEqual({ status: 'ok', free: ['t2-2', 't4-2', 't6-1'] });
+    h.engine.staffCancel(reference);
+    expect(h.engine.freeTablesFor(reference)).toEqual({ status: 'not_allowed', reason: 'already_cancelled' });
+    expect(h.engine.freeTablesFor('AAAAAA')).toEqual({ status: 'not_found' });
+  });
 
   it('cancel any booking, once', () => {
     const h = harness();

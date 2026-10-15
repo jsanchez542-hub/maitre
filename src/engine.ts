@@ -292,6 +292,34 @@ export type StaffBookResult =
   | TableTaken
   | { status: 'invalid'; problems: string[] };
 
+/**
+ * What the staff change on a booking. A field left out stays as it is; an
+ * empty phone or note removes it, and an empty list of allergies clears them.
+ */
+export interface StaffChangeRequest {
+  date?: PlainDate;
+  time?: PlainTime;
+  partySize?: number;
+  guestName?: string;
+  phone?: string;
+  notes?: string;
+  allergies?: readonly string[];
+  /** A table the staff choose, by its number: the booking is fixed there. Left out, the party keeps its table when it still fits. */
+  table?: string;
+  /** The dashboard's language: the booking it returns and the times it offers are written in it. */
+  language?: Language;
+  /** The guest's own language, for what is said to them later. */
+  guestLanguage?: Language;
+}
+
+/** Answered like a booking made by the staff, or refused for a booking that cannot change any more. */
+export type StaffChangeResult = StaffBookResult | { status: 'not_found' } | { status: 'not_allowed'; reason: StaffRefusal };
+
+export type FreeTablesResult =
+  | { status: 'ok'; free: string[] }
+  | { status: 'not_found' }
+  | { status: 'not_allowed'; reason: StaffRefusal };
+
 export type StaffRefusal =
   | 'already_cancelled'
   | 'not_active'
@@ -364,6 +392,41 @@ function cleanText(value: unknown, max: number): string | undefined {
     if (code < 32 || code === 127) return undefined;
   }
   return collapsed;
+}
+
+/** A guest's name as the staff type it: a party on the spot may stay nameless, and every view then calls it a walk-in. */
+function staffName(value: string, walkIn: boolean, problems: string[]): string | undefined {
+  const name = value.trim() ? cleanText(value, NAME_MAX) : '';
+  if (name === undefined || (name === '' && !walkIn)) {
+    problems.push(`guestName must be 1 to ${NAME_MAX} characters of plain text`);
+    return undefined;
+  }
+  return name;
+}
+
+/** A number as the staff type it, in E.164; empty when the field was left empty. */
+function staffPhone(value: string, problems: string[]): string | undefined {
+  if (value.trim() === '') return '';
+  const phone = normalizePhone(value);
+  if (!phone) problems.push('phone cannot be read: write it like 06 12 34 56 78 or +44 7700 900123');
+  return phone;
+}
+
+/** A note as the staff type it; empty when the field was left empty. */
+function staffNotes(value: string, problems: string[]): string | undefined {
+  if (value.trim() === '') return '';
+  const notes = cleanText(value, NOTES_MAX);
+  if (!notes) problems.push(`notes must be at most ${NOTES_MAX} characters of plain text`);
+  return notes;
+}
+
+function staffAllergies(values: readonly string[], problems: string[]): Allergen[] {
+  const allergies: Allergen[] = [];
+  for (const allergen of values) {
+    if (!isAllergen(allergen)) problems.push(`unknown allergen "${String(allergen).slice(0, 40)}"`);
+    else if (!allergies.includes(allergen)) allergies.push(allergen);
+  }
+  return allergies;
 }
 
 /** "k7q f3m" and "K7Q-F3M" both mean K7QF3M. Anything else is not a reference. */
@@ -888,36 +951,12 @@ export class BookingEngine {
     if (time === undefined || !isPlainTime(time)) problems.push('time must be written HH:mm');
 
     const { partySize } = request;
-    if (!Number.isInteger(partySize) || partySize < 1) problems.push('partySize must be a whole number from 1');
-    else if (partySize > this.#config.maxPartySize) {
-      problems.push(`parties larger than ${this.#config.maxPartySize} need tables joined, which bookings do not handle`);
-    }
-
-    // A party on the spot may stay nameless: every view then calls it a walk-in, in the language it is read in.
-    const guestName = request.guestName?.trim() ? cleanText(request.guestName, NAME_MAX) : '';
-    if (guestName === undefined || (guestName === '' && !walkIn)) problems.push(`guestName must be 1 to ${NAME_MAX} characters of plain text`);
-
-    let phone: string | undefined;
-    if (request.phone !== undefined && request.phone.trim() !== '') {
-      phone = normalizePhone(request.phone);
-      if (!phone) problems.push('phone cannot be read: write it like 06 12 34 56 78 or +44 7700 900123');
-    }
-
-    let notes: string | undefined;
-    if (request.notes !== undefined && request.notes.trim() !== '') {
-      notes = cleanText(request.notes, NOTES_MAX);
-      if (!notes) problems.push(`notes must be at most ${NOTES_MAX} characters of plain text`);
-    }
-    const allergies: Allergen[] = [];
-    for (const allergen of request.allergies ?? []) {
-      if (!isAllergen(allergen)) problems.push(`unknown allergen "${String(allergen).slice(0, 40)}"`);
-      else if (!allergies.includes(allergen)) allergies.push(allergen);
-    }
-    const chosen = request.table === undefined ? undefined : this.#physicalTable(request.table);
-    if (request.table !== undefined && !chosen) problems.push(`there is no table "${String(request.table).slice(0, 20)}"`);
-    else if (chosen && Number.isInteger(partySize) && chosen.seats < partySize) {
-      problems.push(`table ${chosen.number} seats ${chosen.seats}, not ${partySize}`);
-    }
+    this.#checkPartySize(partySize, problems);
+    const guestName = staffName(request.guestName ?? '', walkIn, problems);
+    const phone = request.phone === undefined ? undefined : staffPhone(request.phone, problems);
+    const notes = request.notes === undefined ? undefined : staffNotes(request.notes, problems);
+    const allergies = staffAllergies(request.allergies ?? [], problems);
+    const chosen = this.#chosenTable(request.table, partySize, problems);
     if (problems.length > 0 || time === undefined || guestName === undefined) return { status: 'invalid', problems };
 
     return this.#store.transaction((tx): StaffBookResult => {
@@ -960,6 +999,143 @@ export class BookingEngine {
       const seated = this.#seatAndSave(tx, booking, exclusions, clock.nowMs);
       if (!seated) return { status: 'table_taken', free: this.#freeTablesAt(tx, date, time, partySize, clock.nowMs) };
       return { status: 'booked', booking: this.#staffView(seated, language, clock) };
+    });
+  }
+
+  /**
+   * The staff change a booking, usually with the guest on the phone: its day,
+   * time or size, its table, or the guest's details. A new time or size needs a
+   * table as a new booking does, without the notice period, and the party keeps
+   * its table when it still fits. A party already in the restaurant can grow or
+   * shrink but not move to another time. The status stays as it was: the staff
+   * know what they agreed with the guest.
+   */
+  staffChange(reference: string, request: StaffChangeRequest): StaffChangeResult {
+    const normalized = normalizeReference(reference);
+    if (!normalized) return { status: 'not_found' };
+    const clock = this.#clock();
+    const language = request.language ?? this.#config.defaultLanguage;
+
+    return this.#store.transaction((tx): StaffChangeResult => {
+      const booking = tx.bookingByReference(normalized);
+      if (!booking) return { status: 'not_found' };
+      const refusal = this.#movingRefusal(booking, clock);
+      if (refusal) return { status: 'not_allowed', reason: refusal };
+
+      const problems: string[] = [];
+      const date = request.date ?? booking.date;
+      if (date !== booking.date) {
+        if (!isPlainDate(date)) problems.push('date must be a calendar date written YYYY-MM-DD');
+        else if (compareDates(date, clock.today) < 0) problems.push('date is in the past');
+      }
+      const time = request.time ?? booking.time;
+      if (!isPlainTime(time)) problems.push('time must be written HH:mm');
+      const partySize = request.partySize ?? booking.partySize;
+      // A size the restaurant no longer takes stays on the bookings it took before.
+      if (partySize !== booking.partySize) this.#checkPartySize(partySize, problems);
+      const guestName = request.guestName === undefined ? booking.guestName : staffName(request.guestName, booking.walkIn === true, problems);
+      const phone = request.phone === undefined ? (booking.phone ?? '') : staffPhone(request.phone, problems);
+      const notes = request.notes === undefined ? (booking.notes ?? '') : staffNotes(request.notes, problems);
+      const allergies = request.allergies === undefined ? booking.allergies : staffAllergies(request.allergies, problems);
+      const chosen = this.#chosenTable(request.table, partySize, problems);
+      if (problems.length > 0 || guestName === undefined || phone === undefined || notes === undefined) return { status: 'invalid', problems };
+
+      const moving = date !== booking.date || time !== booking.time;
+      const resizing = partySize !== booking.partySize;
+      if (moving && booking.arrivedAt) return { status: 'not_allowed', reason: 'already_arrived' };
+
+      const stamp = new Date(clock.nowMs).toISOString();
+      const changed: Booking = { ...booking, guestName, allergies, language: request.guestLanguage ?? booking.language, updatedAt: stamp };
+      if (phone === '') {
+        delete changed.phone;
+        delete changed.phoneSource;
+      } else if (phone !== booking.phone) {
+        // The same number typed again keeps where it came from: a caller ID is worth more than a number read aloud.
+        changed.phone = phone;
+        changed.phoneSource = 'staff';
+      }
+      if (notes === '') delete changed.notes;
+      else changed.notes = notes;
+      if (!moving && !resizing && !chosen) {
+        tx.saveBooking(changed);
+        return { status: 'booked', booking: this.#staffView(changed, language, clock) };
+      }
+
+      const moved: Booking = {
+        ...changed,
+        date,
+        time,
+        partySize,
+        ...(moving || resizing
+          ? {
+              stayMinutes: stayMinutes(this.#config, partySize),
+              history: [
+                ...booking.history,
+                { at: stamp, from: { date: booking.date, time: booking.time, partySize: booking.partySize }, channel: 'staff' as const },
+              ].slice(-HISTORY_LENGTH),
+            }
+          : {}),
+      };
+      const exclusions: Exclusions = { sessionId: '', bookingId: booking.id };
+      const cache = newCache();
+      const placed = (saved: Booking): StaffChangeResult => ({ status: 'booked', booking: this.#staffView(saved, language, clock) });
+      const taken = (): StaffChangeResult => ({ status: 'table_taken', free: this.#freeTablesAt(tx, date, time, partySize, clock.nowMs, unseated(moved)) });
+      const unavailable = (reason: UnavailableReason): StaffChangeResult => ({
+        status: 'unavailable',
+        reason,
+        alternatives: reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true),
+      });
+
+      // A table the staff chose: there or nowhere.
+      if (chosen) {
+        const check = this.#check(tx, date, time, partySize, clock, exclusions, cache, true, chosen.group);
+        if (!check.ok) return check.reason === 'full' ? taken() : unavailable(check.reason);
+        const fixed: Booking = { ...moved, tableGroup: chosen.group, table: chosen.number, tableFixed: true, service: check.sitting.service };
+        const saved = this.#seatAndSave(tx, fixed, exclusions, clock.nowMs);
+        return saved ? placed(saved) : taken();
+      }
+
+      // Its own table first, when the party still fits it: the staff may have put it there on purpose.
+      const own = booking.table === undefined ? undefined : this.#physicalTable(booking.table);
+      if (own && own.seats >= partySize) {
+        const check = this.#check(tx, date, time, partySize, clock, exclusions, cache, true, own.group);
+        if (!check.ok && check.reason !== 'full') return unavailable(check.reason);
+        if (check.ok) {
+          const saved = this.#seatAndSave(tx, { ...moved, tableGroup: own.group, service: check.sitting.service }, exclusions, clock.nowMs);
+          if (saved) return placed(saved);
+        }
+      }
+      // A party sitting at its table moves only to a table the staff choose.
+      if (booking.seatedAt) return taken();
+
+      const check = this.#check(tx, date, time, partySize, clock, exclusions, cache, true);
+      if (!check.ok) return unavailable(check.reason);
+      const saved = this.#seatAndSave(tx, { ...unseated(moved), tableGroup: check.group.id, service: check.sitting.service }, exclusions, clock.nowMs);
+      return saved ? placed(saved) : taken();
+    });
+  }
+
+  /** The guest told the staff they are coming: the booking no longer waits for confirmation. */
+  staffConfirm(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
+    return this.#staffUpdate(reference, language, (booking, clock) => {
+      if (booking.status === 'confirmed') return { update: {} };
+      const refusal = this.#movingRefusal(booking, clock);
+      if (refusal) return { reason: refusal };
+      return { update: { status: 'confirmed' } };
+    });
+  }
+
+  /** The other tables that would take a booking for its whole stay, the rest of the plan still working: where the staff can move it. */
+  freeTablesFor(reference: string): FreeTablesResult {
+    const normalized = normalizeReference(reference);
+    if (!normalized) return { status: 'not_found' };
+    const clock = this.#clock();
+    return this.#store.transaction((tx): FreeTablesResult => {
+      const booking = tx.bookingByReference(normalized);
+      if (!booking) return { status: 'not_found' };
+      const refusal = this.#movingRefusal(booking, clock);
+      if (refusal) return { status: 'not_allowed', reason: refusal };
+      return { status: 'ok', free: this.#freeTables(tx, booking, clock.nowMs) };
     });
   }
 
@@ -1214,6 +1390,22 @@ export class BookingEngine {
   #physicalTable(number: string): PhysicalTable | undefined {
     if (typeof number !== 'string') return undefined;
     return physicalTables(this.#config).find((table) => table.number.toLowerCase() === number.trim().toLowerCase());
+  }
+
+  #checkPartySize(partySize: number, problems: string[]): void {
+    if (!Number.isInteger(partySize) || partySize < 1) problems.push('partySize must be a whole number from 1');
+    else if (partySize > this.#config.maxPartySize) {
+      problems.push(`parties larger than ${this.#config.maxPartySize} need tables joined, which bookings do not handle`);
+    }
+  }
+
+  /** A table the staff chose by its number, if there is one and it seats the party. */
+  #chosenTable(number: string | undefined, partySize: number, problems: string[]): PhysicalTable | undefined {
+    if (number === undefined) return undefined;
+    const chosen = this.#physicalTable(number);
+    if (!chosen) problems.push(`there is no table "${String(number).slice(0, 20)}"`);
+    else if (Number.isInteger(partySize) && chosen.seats < partySize) problems.push(`table ${chosen.number} seats ${chosen.seats}, not ${partySize}`);
+    return chosen;
   }
 
   /**
