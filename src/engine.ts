@@ -853,6 +853,16 @@ export class BookingEngine {
       const coversInRoom = (minute: number): number =>
         present.filter((stay) => stay.start <= minute && minute < stay.end).reduce((sum, stay) => sum + stay.covers, 0);
       const step = this.#config.slotMinutes;
+      // A booking counts in the sitting its time falls in. One that hours changed since no longer
+      // cover counts in the nearest sitting of its own service: the party is still expected.
+      const sittingOf = (booking: Booking): Sitting | undefined => {
+        const minute = toMinutes(booking.time);
+        const within = sittings.find((sitting) => minute >= toMinutes(sitting.firstSeating) && minute <= toMinutes(sitting.lastSeating));
+        if (within) return within;
+        const distance = (sitting: Sitting): number =>
+          Math.min(Math.abs(minute - toMinutes(sitting.firstSeating)), Math.abs(minute - toMinutes(sitting.lastSeating)));
+        return sittings.filter((sitting) => sitting.service === booking.service).sort((a, b) => distance(a) - distance(b))[0];
+      };
 
       return {
         date,
@@ -868,9 +878,7 @@ export class BookingEngine {
             .map((waiter) => ({ service: sitting.service, waiter: waiter.id, waiterName: waiter.name, tables: [...waiter.tables] })),
         ),
         sittings: sittings.map((sitting) => {
-          const first = toMinutes(sitting.firstSeating);
-          const last = toMinutes(sitting.lastSeating);
-          const inSitting = active.filter((booking) => toMinutes(booking.time) >= first && toMinutes(booking.time) <= last);
+          const inSitting = active.filter((booking) => sittingOf(booking) === sitting);
           return {
             service: sitting.service,
             name: this.#serviceName(sitting.service, language),

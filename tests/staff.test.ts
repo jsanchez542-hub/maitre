@@ -319,10 +319,13 @@ describe('opening hours changed after bookings were made', () => {
       [late, '21:15', true],
       [saturday, '20:00', true],
     ]);
-    expect(engine.serviceDay('2026-10-16', 'fr').bookings.map((booking) => [booking.guestName, booking.outsideHours ?? false])).toEqual([
+    const friday = engine.serviceDay('2026-10-16', 'fr');
+    expect(friday.bookings.map((booking) => [booking.guestName, booking.outsideHours ?? false])).toEqual([
       ['Durand', false],
       ['Martin', true],
     ]);
+    // Martin is still expected for dinner, so the dinner's counts include him.
+    expect(friday.sittings.map((sitting) => [sitting.service, sitting.bookings, sitting.covers])).toEqual([['dinner', 2, 4]]);
 
     // At 12:30 today's lunch has begun, too late to warn anyone; the others are moved or cancelled.
     now = new Date('2026-10-14T10:30:00Z');
