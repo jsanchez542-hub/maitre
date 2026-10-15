@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { BookingEngine } from '../src/engine.js';
-import { FRIDAY, guest, harness } from './fixtures.js';
+import { BookingEngine } from '../src/engine.js';
+import { FRIDAY, TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
 
 // Friday 16 October 2026 at 20:07 in Paris.
 const FRIDAY_EVENING = '2026-10-16T18:07:00Z';
@@ -282,6 +282,53 @@ describe('changes made by the staff', () => {
     expect(h.engine.staffChange('AAAAAA', { time: '21:00' })).toEqual({ status: 'not_found' });
     h.engine.staffCancel(reference);
     expect(h.engine.staffChange(reference, { time: '21:00' })).toEqual({ status: 'not_allowed', reason: 'already_cancelled' });
+  });
+});
+
+describe('opening hours changed after bookings were made', () => {
+  it('flag the bookings still to come that the new hours leave out, until the staff move or cancel them', () => {
+    const h = harness();
+    const book = (date: string, time: string, guestName: string): string => {
+      const result = h.engine.staffBook({ date, time, partySize: 2, guestName });
+      if (result.status !== 'booked') throw new Error('setup failed');
+      return result.booking.reference;
+    };
+    const late = book('2026-10-16', '21:15', 'Martin');
+    book('2026-10-16', '19:30', 'Durand');
+    const saturday = book('2026-10-17', '20:00', 'Petit');
+    h.engine.staffCancel(book('2026-10-17', '19:30', 'Roux'));
+    const lunch = book('2026-10-14', '12:00', 'Leroy');
+
+    // The owner closes today and Saturday, and stops Friday's dinner bookings at 21:00.
+    let now = new Date('2026-10-14T08:00:00Z');
+    const engine = new BookingEngine(
+      {
+        ...TEST_CONFIG,
+        exceptions: [
+          ...TEST_CONFIG.exceptions,
+          { date: '2026-10-14', sittings: [] },
+          { date: '2026-10-16', sittings: [{ service: 'dinner', firstSeating: '19:00', lastSeating: '21:00' }] },
+          { date: '2026-10-17', sittings: [] },
+        ],
+      },
+      h.store,
+      { now: () => now, ids: sequentialIds() },
+    );
+    expect(engine.bookingsOutsideHours().map((booking) => [booking.reference, booking.time, booking.outsideHours])).toEqual([
+      [lunch, '12:00', true],
+      [late, '21:15', true],
+      [saturday, '20:00', true],
+    ]);
+    expect(engine.serviceDay('2026-10-16', 'fr').bookings.map((booking) => [booking.guestName, booking.outsideHours ?? false])).toEqual([
+      ['Durand', false],
+      ['Martin', true],
+    ]);
+
+    // At 12:30 today's lunch has begun, too late to warn anyone; the others are moved or cancelled.
+    now = new Date('2026-10-14T10:30:00Z');
+    engine.staffChange(late, { time: '20:45' });
+    engine.staffCancel(saturday);
+    expect(engine.bookingsOutsideHours()).toEqual([]);
   });
 });
 

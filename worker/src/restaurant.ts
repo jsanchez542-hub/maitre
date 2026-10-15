@@ -12,6 +12,7 @@ import {
   type ServiceDay,
   type Session,
   type StaffActionResult,
+  type StaffBookingView,
   type StaffBookRequest,
   type StaffBookResult,
   type StaffChangeRequest,
@@ -225,9 +226,13 @@ export class Restaurant extends DurableObject<Env> {
   /**
    * Changes the settings an owner edits (EDITABLE_SETTINGS), checked as a whole
    * before anything is kept. The bookings stay as they are, and the assistant
-   * answers with the new settings from its next turn.
+   * answers with the new settings from its next turn. The answer lists the
+   * bookings to come that the new hours leave out, for the staff to call.
    */
-  async updateConfig(changes: unknown): Promise<{ status: 'ok'; config: BusinessConfig } | Invalid> {
+  async updateConfig(
+    changes: unknown,
+    language?: string,
+  ): Promise<{ status: 'ok'; config: BusinessConfig; outsideHours: StaffBookingView[] } | Invalid> {
     if (typeof changes !== 'object' || changes === null || Array.isArray(changes)) return { status: 'invalid', problems: ['settings must be an object'] };
     const problems = Object.keys(changes)
       .filter((key) => !(EDITABLE_SETTINGS as readonly string[]).includes(key))
@@ -244,7 +249,12 @@ export class Restaurant extends DurableObject<Env> {
     if (problems.length > 0) return { status: 'invalid', problems };
     this.store.saveConfig(next);
     this.#engine = this.#engineFor(next);
-    return { status: 'ok', config: next };
+    return { status: 'ok', config: next, outsideHours: this.#engine.bookingsOutsideHours(dashboardLanguage(language)) };
+  }
+
+  /** The bookings to come that the opening hours no longer cover, until the staff move or cancel them. */
+  async outsideHours(language?: string): Promise<StaffBookingView[]> {
+    return this.#engine.bookingsOutsideHours(dashboardLanguage(language));
   }
 
   /** The restaurant's clock: the real one, except in a demo restaurant, whose evening keeps its own time. */

@@ -236,6 +236,7 @@ function isStaffRoute(request: Request, rest: readonly string[]): boolean {
     is('POST', 'staff', 'callbacks', null, 'done') ||
     is('GET', 'config') ||
     is('PUT', 'config') ||
+    is('GET', 'outside-hours') ||
     is('GET', 'activity')
   );
 }
@@ -265,8 +266,12 @@ async function staff(
     if (request.method === 'GET') return json(await restaurant.config());
     const body = await readJson(request);
     if (!body.ok) return body.response;
-    const updated = await restaurant.updateConfig(body.value['settings']);
+    const language = typeof body.value['language'] === 'string' ? body.value['language'] : undefined;
+    const updated = await restaurant.updateConfig(body.value['settings'], language);
     return json(updated, updated.status === 'ok' ? 200 : 400);
+  }
+  if (rest[0] === 'outside-hours') {
+    return json({ bookings: await restaurant.outsideHours(url.searchParams.get('language') ?? undefined) });
   }
   if (rest.length === 2) {
     const body = await readJson(request);

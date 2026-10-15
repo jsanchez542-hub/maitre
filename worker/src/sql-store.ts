@@ -114,6 +114,7 @@ export class SqlStore implements BookingStore {
       bookingByHold: (holdId) => parse<Booking>(rows(`SELECT data FROM bookings WHERE hold_id = ?`, holdId))[0],
       bookingsForPhone: (phone, fromDate) =>
         parse<Booking>(rows(`SELECT data FROM bookings WHERE phone = ? AND date >= ? ORDER BY date, time`, phone, fromDate)),
+      bookingsFrom: (fromDate) => parse<Booking>(rows(`SELECT data FROM bookings WHERE date >= ? ORDER BY date, time`, fromDate)),
       saveBooking: (booking) => {
         sql.exec(
           `INSERT INTO bookings (id, reference, hold_id, date, time, phone, data) VALUES (?, ?, ?, ?, ?, ?, ?)

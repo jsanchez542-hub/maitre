@@ -78,6 +78,37 @@ describe('a restaurant’s settings', () => {
     expect(await read(BASE)).toMatchObject({ weekly: { 1: [DINNER] } });
   });
 
+  it('say which bookings to come the new hours leave out, until the staff have dealt with each one', async () => {
+    const monday = nextMonday();
+    const { weekly } = (await read(BASE)) as { weekly: Record<string, unknown[]> };
+    expect((await change(BASE, { weekly: { ...weekly, 1: [DINNER] } })).status).toBe(200);
+    const created = await SELF.fetch(`${BASE}/staff/bookings`, {
+      method: 'POST',
+      headers: STAFF,
+      body: JSON.stringify({ date: monday, time: '20:00', partySize: 2, guestName: 'Lundi', phone: '06 39 98 10 02' }),
+    });
+    const reference = ((await created.json()) as { booking: { reference: string } }).booking.reference;
+    const outside = async (): Promise<string[]> => {
+      const response = await SELF.fetch(`${BASE}/outside-hours?language=fr`, { headers: STAFF });
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { bookings: { reference: string }[] }).bookings.map((booking) => booking.reference);
+    };
+    expect(await outside()).toEqual([]);
+
+    // Closed on Mondays again: the booking stays, and the answer names the guest to call.
+    const closed = await SELF.fetch(`${BASE}/config`, { method: 'PUT', headers: STAFF, body: JSON.stringify({ settings: { weekly }, language: 'en' }) });
+    expect(closed.status).toBe(200);
+    expect(await closed.json()).toMatchObject({
+      status: 'ok',
+      outsideHours: [{ reference, guestName: 'Lundi', phone: '+33 6 39 98 10 02', outsideHours: true, readBack: expect.stringContaining('Monday') }],
+    });
+    expect(await outside()).toEqual([reference]);
+    expect((await SELF.fetch(`${BASE}/outside-hours`)).status).toBe(401);
+
+    expect((await SELF.fetch(`${BASE}/staff/bookings/${reference}/cancel`, { method: 'POST', headers: STAFF })).status).toBe(200);
+    expect(await outside()).toEqual([]);
+  });
+
   it('refuse what does not hold, or what an owner does not change from the dashboard, and keep nothing of it', async () => {
     const negative = await change(BASE, { minNoticeMinutes: -5 });
     expect([negative.status, await negative.json()]).toEqual([400, { status: 'invalid', problems: ['minNoticeMinutes must be from 0 to 10080'] }]);

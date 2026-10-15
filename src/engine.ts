@@ -201,6 +201,8 @@ export interface StaffBookingView {
   notes?: string;
   allergies: { id: Allergen; name: string }[];
   walkIn: boolean;
+  /** Still to come, on a day the restaurant now closes or at a time outside its services: the staff tell the guest. */
+  outsideHours?: true;
   /** Oldest first: where the booking was before each move. */
   history: { at: string; from: SlotOffer & { partySize: number }; channel: Channel }[];
   createdAt: string;
@@ -1139,6 +1141,22 @@ export class BookingEngine {
     });
   }
 
+  /**
+   * The bookings still to come that the opening hours no longer cover, in
+   * order: a day the restaurant now closes, or a time outside its services.
+   * They stay booked, so no guest is dropped without a word: the staff call
+   * them, then move or cancel each one.
+   */
+  bookingsOutsideHours(language: Language = this.#config.defaultLanguage): StaffBookingView[] {
+    const clock = this.#clock();
+    return this.#store.transaction((tx) =>
+      tx
+        .bookingsFrom(clock.today)
+        .filter((booking) => this.#outsideHours(booking, clock))
+        .map((booking) => this.#staffView(booking, language, clock)),
+    );
+  }
+
   /** The staff cancel any booking, whoever made it. */
   staffCancel(reference: string, language: Language = this.#config.defaultLanguage): StaffActionResult {
     return this.#staffUpdate(reference, language, (booking) => {
@@ -1561,6 +1579,12 @@ export class BookingEngine {
     return daysBetween(clock.today, booking.date) * 1440 + toMinutes(booking.time) <= clock.nowMinutes;
   }
 
+  /** A booking still to come that the opening hours, changed since it was made, no longer cover. */
+  #outsideHours(booking: Booking, clock: Clock): boolean {
+    if (!isActive(booking) || this.#hasStarted(booking, clock)) return false;
+    return !isOpenOn(this.#config, booking.date) || sittingAt(this.#config, booking.date, booking.time) === undefined;
+  }
+
   #newReference(tx: BookingTx): string {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const reference = this.#deps.ids.reference();
@@ -1658,6 +1682,7 @@ export class BookingEngine {
       ...(booking.notes ? { notes: booking.notes } : {}),
       allergies: booking.allergies.map((id) => ({ id, name: words.allergen(id) })),
       walkIn: booking.walkIn === true,
+      ...(this.#outsideHours(booking, clock) ? { outsideHours: true as const } : {}),
       history: booking.history.map((change) => ({
         at: change.at,
         from: { ...this.#offer(change.from.date, change.from.time, language, clock), partySize: change.from.partySize },

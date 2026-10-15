@@ -106,6 +106,8 @@ export interface BookingTx {
   bookingByReference(reference: string): Booking | undefined;
   bookingByHold(holdId: string): Booking | undefined;
   bookingsForPhone(phone: string, fromDate: PlainDate): Booking[];
+  /** Every booking from that day on, in order of date and time. */
+  bookingsFrom(fromDate: PlainDate): Booking[];
   saveBooking(booking: Booking): void;
   referenceTaken(reference: string): boolean;
 
@@ -196,6 +198,10 @@ export class MemoryStore implements BookingStore {
       bookingsForPhone: (phone, fromDate) =>
         [...state().bookings.values()]
           .filter((b) => b.phone === phone && compareDates(b.date, fromDate) >= 0)
+          .sort((a, b) => compareDates(a.date, b.date) || a.time.localeCompare(b.time)),
+      bookingsFrom: (fromDate) =>
+        [...state().bookings.values()]
+          .filter((b) => compareDates(b.date, fromDate) >= 0)
           .sort((a, b) => compareDates(a.date, b.date) || a.time.localeCompare(b.time)),
       saveBooking: (booking) => {
         state().bookings.set(
