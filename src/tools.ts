@@ -242,7 +242,7 @@ export function errandOf(names: readonly string[]): Errand {
 }
 
 const PHONE_INSTRUCTIONS: Record<Channel, string> = {
-  web: 'Ask the guest to type their phone number in the field shown below the chat. Do not ask them to write it in the conversation.',
+  web: 'Ask the guest to type their phone number in the phone number field at the bottom of the chat, rather than in a message.',
   voice: 'Ask the caller to type their phone number on the keypad, then press the hash key.',
   whatsapp: 'The number of this conversation is missing. Apologise and use hand_over.',
   staff: 'Enter the guest’s phone number in the booking form.',

@@ -209,6 +209,24 @@ Miguel used the chat in Spanish and found two things; a third came from the fall
 | All channels, as a fallback | GPT-5.6 Luna | 31/33 | 97/99 | 3.8 s | 6.3 s | 2.3 s | 3.2 s | $0.054 |
 | Phone, as a fallback | GPT-5.6 Luna | 19/20 | 59/60 | 4.3 s | 6.9 s | 2.6 s | 3.4 s | $0.035 |
 
+### Run N: the sheet speaks alone, French spacing, and the phone field (15 October)
+
+Three things seen in the dashboard's conversations, from live use.
+
+- **The allergen answer said it twice.** Besides the sheet's «La fiche du plat « Mousse au chocolat » ne précise pas s’il contient des fruits à coque», the model wrote «La fiche de la mousse au chocolat ne précise pas…»: 87 % of the sheet's words, under the 90 % the guard asked of a restatement. The guard now lets only the sheet speak for a dish and an allergen it was asked about. Any sentence of the model's that names them both goes, a restatement or a claim of its own, and what followed it goes on from the sheet's sentences.
+- **French spacing.** A sentence of the engine's already had its narrow spaces inside « », and the cleaning added a second one after «. A time copied with its no-break spaces lost the space after it: «21 h 30est disponible». Both are fixed in `frenchSpacing`.
+- **«et non dans le chat».** Told not to ask for the number "in the conversation", the model said so, and the field is in the chat. The tool now says "the phone number field at the bottom of the chat, rather than in a message".
+
+The one failure, `web-allergen-unknown-en` run 2, was the evaluator's: «I cannot confirm the mousse is nut-free» counted as a claim. The check now reads a doubt like a condition, and the run was scored again without calling a model.
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| All channels | Claude Haiku 5.5 | **41/41** | **123/123** | 2.8 s | 5.8 s | 1.6 s | 2.5 s | $0.080 |
+| Phone | Claude Haiku 5.5, Vertex Europe first | **26/26** | **78/78** | 1.7 s | 3.7 s | 0.9 s | 2.1 s | $0.057 |
+| All channels, as a fallback | GPT-6 Luna | 41/41 | 123/123 | 3.4 s | 6.7 s | 1.8 s | 3.7 s | $0.037 |
+
+GPT-6 Luna passed everything as a fallback, which GPT-5.6 Luna did not in run M. Mistral Small 2603 got 429 from OpenRouter on 216 turns of 255: no verdict on the model.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -247,4 +265,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10, run L $0.13 and run M, with the fallback's test and the rule that was dropped, $0.31: $7.02 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10, run L $0.13, run M, with the fallback's test and the rule that was dropped, $0.31, and run N $0.19: $7.21 in all.

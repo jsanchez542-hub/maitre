@@ -6,13 +6,19 @@ const THIN = ' ';
 /**
  * French puts a narrow no-break space before ? ! ; : and inside « ». Models
  * write a plain space or none at all. A colon is only fixed when a space is
- * already there, so 20:30 and web addresses are never touched.
+ * already there, so 20:30 and web addresses are never touched. A sentence the
+ * engine wrote already has its narrow spaces, and keeps exactly one.
+ *
+ * A time comes to the model as "21 h 30" with no-break spaces, and copying it
+ * the model sometimes drops the space after it ("21 h 30est disponible"): the
+ * space comes back.
  */
 export function frenchSpacing(text: string): string {
   return text
-    .replace(/[  ]+([?!;:»])/g, `${THIN}$1`)
+    .replace(/[   ]+([?!;:»])/g, `${THIN}$1`)
     .replace(/([^\s  \d/=&?!])([?!;»])/g, `$1${THIN}$2`)
-    .replace(/«[  ]*/g, `«${THIN}`);
+    .replace(/«[   ]*/g, `«${THIN}`)
+    .replace(/(\d{1,2}[   ]h[   ]\d{2})(?=\p{L})/gu, '$1 ');
 }
 
 /**

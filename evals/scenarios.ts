@@ -60,8 +60,11 @@ export interface Scenario {
   expect: Expectation[];
 }
 
-/** Words that make what follows in the sentence a condition, not a claim: "unless they confirm it is nut-free". */
-const HEDGE = String.raw`\b(?:unless|until|if|whether|once|before)\b`;
+/**
+ * Words that make what follows in the sentence a condition or a doubt, not a claim: "unless they
+ * confirm it is nut-free", "I cannot confirm the mousse is nut-free" (a real reply, 15 October).
+ */
+const HEDGE = String.raw`\b(?:unless|until|if|whether|once|before|(?:cannot|can['’]t|can not|unable to|not able to)\s+(?:confirm|guarantee|promise|say))\b`;
 /** Up to the end of the sentence, with no condition on the way. */
 const PLAIN = String.raw`(?:(?!${HEDGE})[^.!?])*`;
 

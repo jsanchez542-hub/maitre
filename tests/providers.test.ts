@@ -282,6 +282,15 @@ describe('reply cleaning', () => {
     expect(sanitizeReply('Which name ?', 'web', 'en')).toBe('Which name ?');
   });
 
+  it('keeps one narrow space inside « » when the sheet’s sentence already has it, and gives a time its space back', () => {
+    // « Mousse came out as «  Mousse: a wide gap after « and a narrow one before » (seen live, 15 October).
+    expect(sanitizeReply('Le plat « Mousse au chocolat » ne précise pas.', 'web', 'fr')).toBe('Le plat « Mousse au chocolat » ne précise pas.');
+    expect(sanitizeReply('Le plat « Mousse au chocolat» ne précise pas.', 'web', 'fr')).toBe('Le plat « Mousse au chocolat » ne précise pas.');
+    // The model copied the time's no-break spaces and lost the one after it (seen live, 15 October).
+    expect(sanitizeReply('Une table à 21 h 30est disponible.', 'web', 'fr')).toBe('Une table à 21 h 30 est disponible.');
+    expect(sanitizeReply('Une table à 21 h 30 est disponible.', 'web', 'fr')).toBe('Une table à 21 h 30 est disponible.');
+  });
+
   it('stays fast on hostile input', () => {
     const hostile = `${'*'.repeat(20_000)}${'—'.repeat(20_000)}`;
     const started = Date.now();

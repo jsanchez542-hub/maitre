@@ -1,3 +1,5 @@
+import { isAllergen, type Allergen } from '../allergens.js';
+import { messages } from '../i18n/index.js';
 import type { ToolOutput } from '../tools.js';
 
 /** Collapses every kind of space, apostrophe and quotation mark, so a comparison is about words, not typography. */
@@ -167,34 +169,86 @@ export function dropSpokenReferences(reply: string, references: readonly string[
   return { reply: text, corrected: true };
 }
 
+/** Everyday words for an allergen besides its names on the sheet, as models use them. */
+const EVERYDAY_NAMES: Partial<Record<Allergen, readonly string[]>> = {
+  nuts: ['noix', 'nuts', 'frutos secos'],
+  milk: ['lactose', 'lactosa', 'dairy', 'lácteos', 'produits laitiers'],
+  peanuts: ['cacahuètes', 'cacahuates', 'maní'],
+  crustaceans: ['shellfish', 'fruits de mer', 'mariscos'],
+};
+
+/** The words an allergen may be named by, in every language the assistant speaks. */
+function allergenNames(allergen: unknown): string[] {
+  if (typeof allergen !== 'string' || !isAllergen(allergen)) return [];
+  const names = (['fr', 'en', 'es'] as const).map((language) => messages(language).allergen(allergen));
+  return [...names, ...(EVERYDAY_NAMES[allergen] ?? [])].map((name) => wordsOf(name).join(' ')).filter(Boolean);
+}
+
+/** What one allergen check was about: the dish's own words, and the names of the allergens asked about. */
+interface Checked {
+  dish: string[];
+  allergens: string[];
+}
+
+function checkedOf(output: ToolOutput): Checked {
+  const findings = Array.isArray(output['findings']) ? (output['findings'] as unknown[]) : [];
+  return {
+    // "Mousse au chocolat" is named by "mousse" or "chocolat", not by "au".
+    dish: wordsOf(typeof output['dish'] === 'string' ? output['dish'] : '').filter((word) => word.length >= 4),
+    allergens: findings.flatMap((finding) => allergenNames((finding as Record<string, unknown> | null)?.['allergen'])),
+  };
+}
+
+/** Whether a sentence names a dish the sheet was asked about together with one of the allergens asked about. */
+function speaksForTheSheet(sentence: string, checks: readonly Checked[]): boolean {
+  const words = wordsOf(sentence);
+  const text = ` ${words.join(' ')} `;
+  return checks.some((check) => check.dish.some((word) => words.includes(word)) && check.allergens.some((name) => text.includes(` ${name} `)));
+}
+
 /**
- * Allergen answers must reach the guest word for word. The tool hands the model
- * the sentences to repeat, and the model usually does; when it does not, the
- * exact sentences go first, and the model's own sentences that only restate
- * them are dropped so the guest does not read the same thing twice. Everything
- * else the model wrote is kept, so a reply that also answered something else
- * still does.
+ * Allergen answers must reach the guest word for word, and only the sheet
+ * speaks for an allergen of a dish it was asked about. The tool hands the model
+ * the sentences to repeat, and the model usually does. When it does not, or
+ * also writes its own sentence about that dish and allergen, the exact
+ * sentences go first and the model's own about them are dropped: a restatement
+ * would make the guest read the same thing twice, and a claim of its own could
+ * contradict the sheet. What followed them goes on from the sheet's sentences,
+ * and the model's other paragraphs are kept, so a reply that also answered
+ * something else still does.
  */
 export function enforceAllergenRelay(
   reply: string,
   tools: readonly { name: string; output: ToolOutput }[],
 ): { reply: string; corrected: boolean } {
-  const sentences = tools
-    .filter((tool) => tool.name === 'check_dish' && tool.output.status === 'ok')
-    .flatMap((tool) => (Array.isArray(tool.output['sayExactly']) ? (tool.output['sayExactly'] as unknown[]) : []))
-    .filter((sentence): sentence is string => typeof sentence === 'string');
-  const unique = [...new Set(sentences)];
-  const target = comparable(reply);
-  if (unique.every((sentence) => target.includes(comparable(sentence)))) return { reply, corrected: false };
+  const checks = tools.filter((tool) => tool.name === 'check_dish' && tool.output.status === 'ok').map((tool) => tool.output);
+  const unique = [
+    ...new Set(
+      checks
+        .flatMap((output) => (Array.isArray(output['sayExactly']) ? (output['sayExactly'] as unknown[]) : []))
+        .filter((sentence): sentence is string => typeof sentence === 'string'),
+    ),
+  ];
+  if (unique.length === 0) return { reply, corrected: false };
 
   const exact = unique.flatMap(sentencesOf);
-  const rest = reply
-    .split(/\n{2,}/)
-    .map((paragraph) =>
-      sentencesOf(paragraph)
-        .filter((sentence) => !exact.some((candidate) => restates(sentence, candidate)))
-        .join(' '),
-    )
-    .filter(Boolean);
-  return { reply: [unique.join(' '), ...rest].join('\n\n').trim(), corrected: true };
+  const checked = checks.map(checkedOf);
+  const isExact = (sentence: string): boolean => exact.some((candidate) => comparable(candidate) === comparable(sentence));
+  const ownWords = (sentence: string): boolean =>
+    !isExact(sentence) && (exact.some((candidate) => restates(sentence, candidate)) || speaksForTheSheet(sentence, checked));
+  const paragraphs = reply.split(/\n{2,}/).map(sentencesOf);
+  const target = comparable(reply);
+  if (unique.every((sentence) => target.includes(comparable(sentence))) && !paragraphs.flat().some(ownWords)) {
+    return { reply, corrected: false };
+  }
+
+  const following: string[] = [];
+  const others: string[] = [];
+  for (const sentences of paragraphs) {
+    const kept = sentences.filter((sentence) => !isExact(sentence) && !ownWords(sentence));
+    if (kept.length === 0) continue;
+    // After the model's own words about the dish: "Elle reviendra vers vous" goes on from the sheet's sentences.
+    (kept.length < sentences.length ? following : others).push(kept.join(' '));
+  }
+  return { reply: [[unique.join(' '), ...following].join(' '), ...others].join('\n\n').trim(), corrected: true };
 }

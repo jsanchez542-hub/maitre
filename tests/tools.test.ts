@@ -61,7 +61,7 @@ describe('running tools', () => {
     const found = runTool(h.engine, web, 'find_table', { day: 'day after tomorrow', time: '20:00', partySize: 2 });
     const book = runTool(h.engine, web, 'book_table', { holdId: found['holdId'], guestName: 'Dupont', allergies: [] });
     expect(book).toMatchObject({ status: 'phone_required' });
-    expect(String(book['instruction'])).toContain('field shown below the chat');
+    expect(String(book['instruction'])).toContain('phone number field at the bottom of the chat');
 
     const caller = guest('v1', null, 'fr', 'voice');
     expect(String(runTool(h.engine, caller, 'my_bookings', {})['instruction'])).toContain('keypad');
@@ -124,10 +124,10 @@ describe('running tools', () => {
     const web = guest('w1', null, 'fr', 'web');
     const mousse = runTool(h.engine, web, 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] });
     expect(mousse).toMatchObject({ passedToTeam: true, needsPhone: true });
-    expect(String(mousse['instruction'])).toContain('field shown below the chat');
+    expect(String(mousse['instruction'])).toContain('phone number field at the bottom of the chat');
     const handOver = runTool(h.engine, web, 'hand_over', { reason: 'complaint', summary: 'Plat froid hier soir' });
     expect(handOver).toMatchObject({ status: 'recorded', needsPhone: true });
-    expect(String(handOver['instruction'])).toContain('field shown below the chat');
+    expect(String(handOver['instruction'])).toContain('phone number field at the bottom of the chat');
   });
 
   it('lists safe and undocumented dishes apart', () => {

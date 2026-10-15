@@ -111,7 +111,7 @@ export const fr: Messages = {
   bookingNeedsNumber(channel) {
     return channel === 'voice'
       ? 'Pour confirmer la réservation, tapez votre numéro de téléphone sur le clavier, puis la touche dièse.'
-      : 'Pour confirmer la réservation, indiquez votre numéro de téléphone dans le champ sous la conversation.';
+      : 'Pour confirmer la réservation, indiquez votre numéro de téléphone dans le champ prévu en bas de la conversation.';
   },
   callEnding(reason) {
     return {

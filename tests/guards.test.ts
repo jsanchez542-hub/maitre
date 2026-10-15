@@ -6,7 +6,13 @@ import { guest, harness } from './fixtures.js';
 
 const SENTENCE =
   'The allergen sheet for “Chocolate mousse” does not say whether it contains tree nuts. I would rather pass your question on to the team than guess.';
-const checked = [{ name: 'check_dish', output: { status: 'ok', sayExactly: [SENTENCE] } }];
+// As check_dish answers: the dish's name, the allergens asked about, and the sentences to repeat.
+const checked = [
+  {
+    name: 'check_dish',
+    output: { status: 'ok', dish: 'Chocolate mousse', sayExactly: [SENTENCE], findings: [{ allergen: 'nuts', answer: 'unknown' }] },
+  },
+];
 
 describe('the allergen relay guard', () => {
   it('leaves a reply that already repeats the sheet alone', () => {
@@ -14,12 +20,15 @@ describe('the allergen relay guard', () => {
     expect(enforceAllergenRelay(reply, checked)).toEqual({ reply, corrected: false });
   });
 
-  it('puts the exact sentences in front of a paraphrase that adds a reason, and keeps it (seen in a real run)', () => {
+  it('lets only the sheet speak for the dish and the allergen, even when the model adds a reason (seen in a real run)', () => {
     const paraphrase =
       'The allergen sheet does not say whether the chocolate mousse contains tree nuts, so I cannot confirm it is safe for you.';
-    const result = enforceAllergenRelay(paraphrase, checked);
-    expect(result.corrected).toBe(true);
-    expect(result.reply).toBe(`${SENTENCE}\n\n${paraphrase}`);
+    expect(enforceAllergenRelay(paraphrase, checked)).toEqual({ reply: SENTENCE, corrected: true });
+  });
+
+  it('drops a claim of the model’s own about the dish and the allergen, even after the exact sentences', () => {
+    const reply = `${SENTENCE} That said, our chocolate mousse is usually free of nuts.`;
+    expect(enforceAllergenRelay(reply, checked)).toEqual({ reply: SENTENCE, corrected: true });
   });
 
   it('does not say the same thing twice when the model only restated the sheet (seen in a real run)', () => {
@@ -27,9 +36,19 @@ describe('the allergen relay guard', () => {
       'The allergen sheet for the chocolate mousse does not say whether it contains tree nuts. I would rather pass your question on to the team than guess. ' +
       'Your question has been passed to the team, who will get back to you. Please do not order the chocolate mousse until you have their answer.';
     expect(enforceAllergenRelay(reply, checked)).toEqual({
-      reply: `${SENTENCE}\n\nYour question has been passed to the team, who will get back to you. Please do not order the chocolate mousse until you have their answer.`,
+      reply: `${SENTENCE} Your question has been passed to the team, who will get back to you. Please do not order the chocolate mousse until you have their answer.`,
       corrected: true,
     });
+  });
+
+  it('does not say it twice in French either, and what followed goes on from the sheet (seen live, 15 October)', () => {
+    const sheet =
+      'La fiche du plat « Mousse au chocolat » ne précise pas s’il contient des fruits à coque. Je préfère transmettre votre question à l’équipe plutôt que de deviner.';
+    const tools = [
+      { name: 'check_dish', output: { status: 'ok', dish: 'Mousse au chocolat', sayExactly: [sheet], findings: [{ allergen: 'nuts', answer: 'unknown' }] } },
+    ];
+    const reply = 'La fiche de la mousse au chocolat ne précise pas s’il contient des fruits à coque. Elle reviendra vers vous.';
+    expect(enforceAllergenRelay(reply, tools)).toEqual({ reply: `${sheet} Elle reviendra vers vous.`, corrected: true });
   });
 
   it('keeps the model’s other paragraphs, and adds the sheet to a reply that left it out (seen in a real run)', () => {
