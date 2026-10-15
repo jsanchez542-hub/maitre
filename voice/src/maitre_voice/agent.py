@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import time
 from collections.abc import AsyncIterable, AsyncIterator
 from dataclasses import dataclass
@@ -33,15 +34,23 @@ from livekit.agents import (
     inference,
     llm,
     room_io,
+    stt,
     tts,
     utils,
 )
 from livekit.agents.voice.background_audio import AudioConfig, BackgroundAudioPlayer, BuiltinAudioClip
-from livekit.agents.voice.events import CloseEvent, ConversationItemAddedEvent, UserInputTranscribedEvent, UserStateChangedEvent
+from livekit.agents.voice.events import (
+    CloseEvent,
+    ConversationItemAddedEvent,
+    ErrorEvent,
+    UserInputTranscribedEvent,
+    UserStateChangedEvent,
+)
 from livekit.plugins import noise_cancellation, silero
 
 from .brain import TURN, UNREACHABLE, CallState, Goodbye, RestaurantBrain, Spoken
 from .config import LANGUAGES, Settings
+from .health import failure_reason, report, start_checking_in
 from .keypad import Keypad
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
 from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
@@ -226,6 +235,7 @@ class PhoneCall:
         self.session.on("user_input_transcribed", self._on_transcript)
         self.session.on("user_state_changed", self._on_user_state)
         self.session.on("close", self._on_close)
+        self.session.on("error", self._on_error)
         self.session.on("conversation_item_added", self._on_item)
         self._ctx.room.on("sip_dtmf_received", self._on_key)
         if settings.thinking_sound:
@@ -236,7 +246,7 @@ class PhoneCall:
                     AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.4, fade_in=0.15, fade_out=0.25),
                 ],
             ).start(room=self._ctx.room, agent_session=self.session)
-        # The law asks the caller to hear it all: that this is an AI, and that the call may be recorded.
+        # The law asks the caller to hear it all: that this is an AI.
         self.session.say(self._greeting, allow_interruptions=False)
         self._spawn(self._watch_the_clock())
 
@@ -262,6 +272,14 @@ class PhoneCall:
     def _on_close(self, _event: CloseEvent) -> None:
         if not self._ending:
             self._spawn(self.end("caller"))
+
+    def _on_error(self, event: ErrorEvent) -> None:
+        # Speech that fails for good leaves the caller unheard or unanswered: the demo stops offering calls for a while.
+        error = event.error
+        if isinstance(error, stt.STTError | tts.TTSError) and not error.recoverable:
+            reason = failure_reason(error.error)
+            logger.error("speech failed during a call", extra={"reason": reason})
+            self._spawn(report(utils.http_context.http_session(), settings, "call-failed", {"reason": reason}))
 
     def _on_item(self, event: ConversationItemAddedEvent) -> None:
         # A reply of the brain's names its turn: the framework keeps it with what played of the reply.
@@ -438,4 +456,7 @@ async def answer_call(ctx: JobContext) -> None:
 
 
 if __name__ == "__main__":
+    # The process that takes calls tells the Worker it is there, and whether its speech works; download-files does not.
+    if len(sys.argv) > 1 and sys.argv[1] in ("dev", "start"):
+        start_checking_in(settings)
     cli.run_app(server)

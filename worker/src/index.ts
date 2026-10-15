@@ -3,7 +3,7 @@ import { demoSuggestion, serviceDayAt } from '../../src/demo/evening.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import type { StaffChangeRequest } from '../../src/engine.js';
 import { isLanguage } from '../../src/i18n/index.js';
-import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoCallTurn, type DemoRestaurant } from './demo.js';
+import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoBudget, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
 import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
 import { callPass, liveKitProject } from './livekit.js';
@@ -373,6 +373,8 @@ function staffChangeOf(input: Record<string, unknown>): StaffChangeRequest | { p
 async function demo(request: Request, env: Env, url: URL, rest: readonly string[]): Promise<Response> {
   if (matcher(request, rest)('GET')) return demoStatus(env);
   if (matcher(request, rest)('POST', 'sandboxes')) return openSandbox(request, env);
+  const voiceReport = VOICE_REPORTS.find((report) => matcher(request, rest)('POST', 'voice', report));
+  if (voiceReport) return reportVoice(request, env, voiceReport);
   if (rest[0] !== 'sandboxes' || rest.length < 3) return problem(404, 'not_found');
 
   const sandboxId = rest[1] ?? '';
@@ -447,6 +449,9 @@ async function openCall(request: Request, env: Env, sandboxId: string, sandbox: 
   const body = await readJson(request);
   if (!body.ok) return body.response;
   const language = isLanguage(body.value['language']) ? body.value['language'] : 'fr';
+  // A page that still shows the button after the voice went down: the call would ring with nobody to answer.
+  const budget = budgetStub(env);
+  if (!budget || !(await budget.voiceReady())) return problem(409, 'calls_unavailable');
   const allowed = await sandbox.allowCall();
   switch (allowed.status) {
     case 'ok':
@@ -515,7 +520,7 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   const state = await sandbox.open();
   if (state.status !== 'ok') return problem(500, 'internal_error');
   const { expiresAt, clock, day, suggestion, callsLeft } = state;
-  return json({ sandbox: sandboxId, expiresAt, clock, day, suggestion, callsLeft, calls: callOffer(env) }, 201);
+  return json({ sandbox: sandboxId, expiresAt, clock, day, suggestion, callsLeft, calls: await callOffer(env, budget) }, 201);
 }
 
 /**
@@ -530,7 +535,7 @@ async function demoStatus(env: Env): Promise<Response> {
   const now = new Date();
   return json({
     live,
-    calls: live ? callOffer(env) : null,
+    calls: live ? await callOffer(env, budget) : null,
     now: now.toISOString(),
     today: localNow(now, DEMO_RESTAURANT.timeZone).date,
     day: serviceDayAt(now),
@@ -538,10 +543,35 @@ async function demoStatus(env: Env): Promise<Response> {
   });
 }
 
-/** Whether the demo can take calls, and on what terms: the page shows its call button only then, never one that would fail. */
-function callOffer(env: Env): { perRestaurant: number; maxSeconds: number } | null {
+/**
+ * Whether the demo can take calls, and on what terms: the page shows its call
+ * button only then, never one that would fail. Configured is not enough: a
+ * voice agent must have checked in lately, with speech that works.
+ */
+async function callOffer(env: Env, budget: DurableObjectStub<DemoBudget> | undefined): Promise<{ perRestaurant: number; maxSeconds: number } | null> {
   const perRestaurant = Number(env.DEMO_CALLS_PER_SANDBOX);
   const maxSeconds = Number(env.DEMO_CALL_SECONDS);
   if (!liveKitProject(env) || !env.AGENT_TOKEN || !(perRestaurant > 0) || !(maxSeconds > 0)) return null;
+  if (!budget || !(await budget.voiceReady())) return null;
   return { perRestaurant, maxSeconds };
+}
+
+const VOICE_REPORTS = ['check-in', 'call-failed'] as const;
+
+/**
+ * The voice agent's word on itself, with the agent's token: every minute it
+ * checks in, saying whether its speech works, and a call that failed on its
+ * speech says so at once.
+ */
+async function reportVoice(request: Request, env: Env, report: (typeof VOICE_REPORTS)[number]): Promise<Response> {
+  const denied = await authorized(request, env, 'agent');
+  if (denied) return denied;
+  const budget = budgetStub(env);
+  if (!budget) return problem(503, 'not_configured');
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+  const reason = typeof body.value['reason'] === 'string' ? body.value['reason'] : undefined;
+  if (report === 'call-failed') await budget.voiceFailed(reason ?? 'speech_error');
+  else await budget.voiceCheckIn({ ready: body.value['ready'] === true, ...(reason ? { reason } : {}) });
+  return json({ status: 'ok', calls: await budget.voiceReady() });
 }

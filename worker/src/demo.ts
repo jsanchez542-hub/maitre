@@ -310,12 +310,57 @@ interface Spent {
   usd: number;
 }
 
+/** What the voice agent last said of itself, and until when a call that failed keeps calls off. Times in ms. */
+interface VoiceStatus {
+  at: number;
+  ready: boolean;
+  reason?: string;
+  offUntil?: number;
+}
+
+/** The agent checks in every minute: past two missed check-ins it is gone, and no call is offered. */
+const VOICE_CHECK_IN_MS = 150_000;
+/** After a call that failed on its speech, how long no call is offered, whatever the agent says meanwhile. */
+const VOICE_PAUSE_MS = 15 * 60_000;
+/** Why the voice is down, as the agent names it: a word, never a provider's message. */
+const VOICE_REASON = /^[a-z_]{1,40}$/;
+
 /**
  * What the public demo has spent and who opened what, in one place. The day and
  * the month are UTC. Visitors are counted by a keyed hash of their address that
  * changes every day, never by the address itself.
  */
 export class DemoBudget extends DurableObject<Env> {
+  /** The voice agent is there, and says whether its speech works: speech recognition and synthesis. */
+  async voiceCheckIn(report: { ready: boolean; reason?: string }): Promise<void> {
+    const previous = await this.ctx.storage.get<VoiceStatus>('voice');
+    const reason = report.reason !== undefined && VOICE_REASON.test(report.reason) ? report.reason : undefined;
+    await this.ctx.storage.put('voice', {
+      at: Date.now(),
+      ready: report.ready,
+      ...(reason ? { reason } : {}),
+      ...(previous?.offUntil ? { offUntil: previous.offUntil } : {}),
+    } satisfies VoiceStatus);
+  }
+
+  /** A call failed on its speech: no call is offered for a while, so the next visitor does not reach a silent line. */
+  async voiceFailed(reason: string): Promise<void> {
+    const previous = await this.ctx.storage.get<VoiceStatus>('voice');
+    await this.ctx.storage.put('voice', {
+      at: previous?.at ?? 0,
+      ready: previous?.ready ?? false,
+      reason: VOICE_REASON.test(reason) ? reason : 'speech_error',
+      offUntil: Date.now() + VOICE_PAUSE_MS,
+    } satisfies VoiceStatus);
+  }
+
+  /** Whether a call made now would be answered and heard: an agent checked in lately, its speech works, and no call just failed. */
+  async voiceReady(): Promise<boolean> {
+    const status = await this.ctx.storage.get<VoiceStatus>('voice');
+    const now = Date.now();
+    return status !== undefined && status.ready && now - status.at < VOICE_CHECK_IN_MS && !(status.offUntil !== undefined && status.offUntil > now);
+  }
+
   async allowSandbox(visitor: string): Promise<'ok' | 'too_many_sandboxes' | 'live_paused'> {
     if (await this.#paused()) return 'live_paused';
     const limit = setting(this.env.DEMO_SANDBOXES_PER_IP) ?? 0;

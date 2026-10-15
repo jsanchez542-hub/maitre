@@ -299,7 +299,13 @@ describe('the pass to call through LiveKit', () => {
   });
 });
 
+/** The voice agent says it is there and its speech works, as it does every minute. */
+function checkIn(body: object = { ready: true }, report = 'check-in', headers: Record<string, string> = AGENT): Promise<Response> {
+  return SELF.fetch(`${DEMO}/voice/${report}`, { method: 'POST', headers, body: JSON.stringify(body) });
+}
+
 async function openSandbox(): Promise<string> {
+  expect((await checkIn()).status).toBe(200);
   const response = await SELF.fetch(`${DEMO}/sandboxes`, {
     method: 'POST',
     headers: { ...JSON_BODY, 'cf-connecting-ip': '203.0.113.9' },
@@ -329,6 +335,60 @@ async function pass(sandbox: string, language = 'fr'): Promise<Pass> {
 function demoStep(sandbox: string, sessionId: string, name: string, body: object, headers: Record<string, string> = AGENT): Promise<Response> {
   return SELF.fetch(`${DEMO}/sandboxes/${sandbox}/calls/${sessionId}/${name}`, { method: 'POST', headers, body: JSON.stringify(body) });
 }
+
+describe('the call button', () => {
+  // The demo restaurant lives at the real time: the tests fix it at 20:05 on Friday 16 October, in the middle of dinner.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-16T18:05:00Z'));
+  });
+
+  const offer = async (): Promise<unknown> => ((await (await SELF.fetch(DEMO)).json()) as Record<string, unknown>)['calls'];
+
+  it('shows only while a voice agent checks in with speech that works, and a call is refused otherwise', async () => {
+    fakeNetwork([]);
+    // Configured, but no agent is running: a call would ring with nobody to answer.
+    expect(await offer()).toBeNull();
+    const sandbox = await openSandbox();
+    expect(await offer()).toEqual({ perRestaurant: 3, maxSeconds: 240 });
+
+    // Its speech answers 429: the free allowance is spent.
+    expect(await (await checkIn({ ready: false, reason: 'speech_quota' })).json()).toEqual({ status: 'ok', calls: false });
+    expect(await offer()).toBeNull();
+    const refused = await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/calls`, { method: 'POST', headers: JSON_BODY, body: '{}' });
+    expect([refused.status, ((await refused.json()) as { error: string }).error]).toEqual([409, 'calls_unavailable']);
+
+    // Speech works again; then the agent stops checking in, and after two missed check-ins it is gone.
+    await checkIn();
+    expect(await offer()).not.toBeNull();
+    vi.setSystemTime(new Date('2026-10-16T18:07:40Z'));
+    expect(await offer()).toBeNull();
+  });
+
+  it('turns calls off for a quarter of an hour after a call fails on its speech, whatever the agent says meanwhile', async () => {
+    fakeNetwork([]);
+    await checkIn();
+    expect(await (await checkIn({ reason: 'speech_quota' }, 'call-failed')).json()).toEqual({ status: 'ok', calls: false });
+    await checkIn();
+    expect(await offer()).toBeNull();
+    vi.setSystemTime(new Date('2026-10-16T18:20:30Z'));
+    await checkIn();
+    expect(await offer()).toEqual({ perRestaurant: 3, maxSeconds: 240 });
+  });
+
+  it('takes the agent’s word only with the agent’s token, and a reason only as a word', async () => {
+    fakeNetwork([]);
+    expect((await checkIn({ ready: true }, 'check-in', JSON_BODY)).status).toBe(401);
+    expect((await checkIn({ ready: true }, 'check-in', { ...JSON_BODY, authorization: 'Bearer test-staff-token' })).status).toBe(401);
+    expect(await offer()).toBeNull();
+    await checkIn({ ready: false, reason: 'Error: 429 at wss://agent-gateway <html>' });
+    const budget = budgetStub(env);
+    if (!budget) throw new Error('the test config must set DATA_JURISDICTION');
+    await runInDurableObject(budget, async (_instance, state) => {
+      expect(await state.storage.get('voice')).not.toHaveProperty('reason');
+    });
+  });
+});
 
 describe('calling the demo restaurant from the browser', () => {
   // The demo restaurant lives at the real time: the tests fix it at 20:05 on Friday 16 October, in the middle of dinner.

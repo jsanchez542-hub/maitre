@@ -176,6 +176,10 @@ describe('the public demo', () => {
     // At 20:05 tonight's 20:30 is within the hour's notice: the example is tomorrow's dinner.
     const suggestion = { date: '2026-10-17', time: '20:30', partySize: 2 };
     const time = { now: FRIDAY_EVENING, today: EVENING, day: EVENING, suggestion };
+    // Calls are offered once a voice agent has checked in, with speech that works.
+    expect(await status()).toEqual({ live: true, calls: null, ...time });
+    const agent = { authorization: 'Bearer test-agent-token', 'content-type': 'application/json' };
+    await SELF.fetch(`${DEMO}/voice/check-in`, { method: 'POST', headers: agent, body: JSON.stringify({ ready: true }) });
     expect(await status()).toEqual({ live: true, calls: { perRestaurant: 3, maxSeconds: 240 }, ...time });
     const sandbox = await opened();
     const budget = budgetStub(env);
