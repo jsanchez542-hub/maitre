@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import os
 import statistics
 import sys
 import time
@@ -45,7 +46,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
             "Merci beaucoup, au revoir.",
         ],
         "dupont",
-        "inference:deepgram/aura-2:hector",
+        "hector",
     ),
     "es": (
         [
@@ -55,7 +56,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
             "Muchas gracias, adiós.",
         ],
         "ortega",
-        "inference:deepgram/aura-2:nestor",
+        "nestor",
     ),
     "en": (
         [
@@ -65,7 +66,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
             "Thank you very much, goodbye.",
         ],
         "clarke",
-        "inference:deepgram/aura-2:orion",
+        "orion",
     ),
 }
 LANGUAGE = sys.argv[1] if len(sys.argv) > 1 else "fr"
@@ -106,9 +107,14 @@ KEYPAD = "maitre.keypad"
 OUT = Path(__file__).with_name("runs")
 
 
+def caller_voice(voice: str) -> str:
+    """Deepgram's own Aura-2 voice with Deepgram's key, else the same voice through LiveKit Inference."""
+    return f"deepgram:aura-2-{voice}-{LANGUAGE}" if os.environ.get("DEEPGRAM_API_KEY") else f"inference:deepgram/aura-2:{voice}"
+
+
 async def synthesize_lines(lines: list[str]) -> list[np.ndarray]:
     """The caller's lines as 48 kHz mono 16-bit samples."""
-    engine = build_tts(CALLER_VOICE, LANGUAGE)
+    engine = build_tts(caller_voice(CALLER_VOICE), LANGUAGE)
     clips = []
     async with http_context.open():
         for line in lines:

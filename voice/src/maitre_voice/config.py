@@ -12,10 +12,12 @@ LANGUAGES = ("fr", "en", "es")
 #: Spanish silent (13 October). French is Cartesia's "French Conversational Lady", chosen by ear in a blind test
 #: (15 October); English is its "British Customer Support Lady" and Spanish its "Spanish Narrator Lady", from Spain.
 #: Read back to speech recognition, each was heard at 97 to 98 % of its words (bench/tts_languages.py).
+#: With Cartesia's own key: LiveKit's free plan has $2.50 a month of Inference, a hard cap that testing spent on
+#: 15 October. The same voices through LiveKit Inference are "inference:cartesia/sonic-3.5:<voice>".
 DEFAULT_VOICES = {
-    "fr": "inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
-    "en": "inference:cartesia/sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70",
-    "es": "inference:cartesia/sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2",
+    "fr": "cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
+    "en": "cartesia:sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70",
+    "es": "cartesia:sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2",
 }
 #: The keys each speech provider needs, by name. LiveKit Inference is paid from the LiveKit project's own credit.
 PROVIDER_KEYS = {
@@ -65,9 +67,9 @@ class Settings:
             agent_token=token,
             agent_name=values.get("MAITRE_AGENT_NAME", "maitre-voice"),
             restaurant_id=values.get("MAITRE_RESTAURANT_ID", "demo"),
-            # Through LiveKit Inference, paid from the LiveKit project's credit, with no other provider's key. Nova-3 with
-            # LiveKit's turn detector answered sooner than Flux on measured calls and cut fewer sentences in two.
-            stt=values.get("VOICE_STT", "inference:deepgram/nova-3"),
+            # With Deepgram's own key, as the voices with Cartesia's. Nova-3 with LiveKit's turn detector answered sooner
+            # than Flux on measured calls and cut fewer sentences in two.
+            stt=values.get("VOICE_STT", "deepgram:nova-3"),
             end_of_turn=EndOfTurn(
                 threshold=float(values["VOICE_EOT_THRESHOLD"]) if values.get("VOICE_EOT_THRESHOLD") else None,
                 timeout_ms=int(values["VOICE_EOT_TIMEOUT_MS"]) if values.get("VOICE_EOT_TIMEOUT_MS") else None,

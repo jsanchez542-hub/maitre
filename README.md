@@ -170,4 +170,4 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 - Data cannot be pinned to the EU when running locally, because workerd does not implement jurisdictions; the local configuration has to say so explicitly.
 - The dashboard does not reply to guests on their channel: the staff call them.
 - The dashboard's routes share one token, and there is no staff login. A real restaurant needs one, and a real deployment puts Cloudflare Access in front of them.
-- The voice line needs speech recognition and synthesis with an allowance to spend. On LiveKit's free plan, the $2.50 a month of Inference ran out during testing on 15 October; calls are then not offered until it comes back or the providers' own keys are set.
+- The voice line spends the speech providers' allowance: Deepgram's credit and Cartesia's monthly plan. When either runs out, calls are not offered until it comes back. LiveKit's own $2.50 a month of Inference ran out during testing on 15 October, which is why speech now goes to the providers directly.

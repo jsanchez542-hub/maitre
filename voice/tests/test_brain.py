@@ -123,23 +123,27 @@ def test_a_demo_pass_goes_to_the_visitors_restaurant_and_anything_else_to_the_re
 def test_says_which_key_the_chosen_speech_is_missing_without_its_value():
     base = {"MAITRE_API_URL": "http://127.0.0.1:8787", "MAITRE_AGENT_TOKEN": "t"}
     livekit = {"LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"}
+    own = {"DEEPGRAM_API_KEY": "d", "CARTESIA_API_KEY": "c"}
     missing = Settings.from_env(base).problems()
-    assert "LIVEKIT_API_KEY is missing, for inference:deepgram/nova-3" in missing
-    assert "LIVEKIT_API_SECRET is missing, for inference:cartesia/sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2" in missing
-    configured = Settings.from_env(base | livekit)
+    assert "DEEPGRAM_API_KEY is missing, for deepgram:nova-3" in missing
+    assert "CARTESIA_API_KEY is missing, for cartesia:sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2" in missing
+    configured = Settings.from_env(base | own)
     assert configured.problems() == []
     assert "secret" not in repr(configured.keys)
-    direct = Settings.from_env(base | livekit | {"VOICE_TTS": "cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"})
-    assert direct.problems() == [
-        "CARTESIA_API_KEY is missing, for cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
+    # The same voice through LiveKit Inference cannot answer beside Cartesia's own: options do not mix.
+    mixed = Settings.from_env(base | own | {"VOICE_TTS": "inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"})
+    assert mixed.problems() == [
+        "LIVEKIT_API_KEY is missing, for inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
+        "LIVEKIT_API_SECRET is missing, for inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41",
         "the voices must come from one provider, not cartesia, inference:cartesia",
     ]
+    assert Settings.from_env(base | own | livekit | {"VOICE_STT": "inference:deepgram/nova-3"}).problems() == []
 
 
 def test_each_language_has_a_voice_of_its_own():
     # Cartesia's "French Conversational Lady", chosen by ear, then a British and a Spanish voice of the same family.
-    settings = Settings.from_env({"VOICE_TTS_ES": "inference:cartesia/sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"})
-    assert settings.voice_for("fr") == "inference:cartesia/sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"
-    assert settings.voice_for("en") == "inference:cartesia/sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70"
-    assert settings.voice_for("es") == "inference:cartesia/sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"
+    settings = Settings.from_env({"VOICE_TTS_ES": "cartesia:sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"})
+    assert settings.voice_for("fr") == "cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"
+    assert settings.voice_for("en") == "cartesia:sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70"
+    assert settings.voice_for("es") == "cartesia:sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"
     assert settings.voice_for("de") == settings.voice_for("fr")

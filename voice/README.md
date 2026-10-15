@@ -38,6 +38,7 @@ Measured on real calls through LiveKit Cloud with `bench/caller.py`, from the ca
 | The conversation stays cached | | The time sat before the conversation in the prompt and spoiled its cache every minute. |
 | The model answers from the EU | 3.3 s | Vertex in Europe ended a call in 0.77 s where "fastest now" routing took 1.13 s (`npm run eval:providers`). |
 | Nova-3 with LiveKit's turn detector | 2.6 to 3.0 s | Flux took 1.0 to 2.1 s to hear that a sentence was over; LiveKit's detector, from the voice, about 0.9 s, and cut fewer sentences in two. |
+| Deepgram and Cartesia with their own keys (15 October) | 2.2 to 2.4 s | The voices chosen by ear, and no gateway between the agent and the providers. In French, English and Spanish, the longest wait was 3.0, 3.2 and 2.3 s, and the line hung up 6 to 7 s after the caller's goodbye. |
 
 Where the time goes now, per answer: the end of the caller's turn (0.9 s, up to 1.8 s when the detector hears an unfinished sentence), the restaurant's first words (about 1 s: a model call), the first audio (0.2 s), and the network to the caller (0.4 s from this laptop; less from a server next to LiveKit's region). The agent logs that breakdown at the end of every call ("call latencies").
 
@@ -60,10 +61,10 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 |---|---|
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The LiveKit project. The Worker needs the same three to sign the browser's pass. |
 | `MAITRE_API_URL`, `MAITRE_AGENT_TOKEN` | The Worker and the token of its "agent" routes. |
-| `VOICE_STT` | Speech recognition as `provider:model`. By default Nova-3 through LiveKit Inference, paid from the LiveKit project's credit. |
-| `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Cartesia Sonic 3.5's French Conversational Lady (chosen by ear), British Customer Support Lady and Spanish Narrator Lady, through LiveKit Inference. With Cartesia's own key, the same voices are `cartesia:sonic-3.5:<voice>`. |
+| `VOICE_STT` | Speech recognition as `provider:model`. By default Deepgram's Nova-3, with Deepgram's own key. |
+| `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Cartesia Sonic 3.5's French Conversational Lady (chosen by ear), British Customer Support Lady and Spanish Narrator Lady, with Cartesia's own key. Through LiveKit Inference, the same voices are `inference:cartesia/sonic-3.5:<voice>`. |
 | `VOICE_EOT_THRESHOLD`, `VOICE_EOT_TIMEOUT_MS` | With Flux only: when it decides the caller has finished. |
-| `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `MISTRAL_API_KEY`, `ELEVEN_API_KEY` | Only for a provider called directly. The agent refuses calls, and says which key is missing, when the chosen speech lacks one. |
+| `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `MISTRAL_API_KEY`, `ELEVEN_API_KEY` | The keys of the providers called directly: by default Deepgram's and Cartesia's. The agent refuses calls, and says which key is missing, when the chosen speech lacks one. |
 
 ## Tests
 
@@ -76,7 +77,7 @@ uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to 
 uv run python bench/tts_languages.py es "<voice>" ...   # each voice reads the restaurant's lines; speech recognition says what it heard
 ```
 
-LiveKit's free plan includes $2.50 of Inference a month, a hard cap: past it every request answers 429 and calls go silent until the first of the next month. Testing used it up on 15 October. A public line needs the providers' own keys (`deepgram:nova-3`, `cartesia:sonic-3.5:<voice>`) or a paid plan.
+Speech goes to Deepgram and Cartesia with their own keys. LiveKit's free plan includes $2.50 of Inference a month, a hard cap that testing spent on 15 October: past it every request answers 429. Whatever the provider, the agent checks in with the Worker every minute (`health.py`), and the demo offers calls only while its speech works.
 
 The model the phone uses is chosen with the evaluation's phone set (`MAITRE_EVAL_SET=voice`, see `evals/RESULTS.md`, run I).
 

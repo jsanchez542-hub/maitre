@@ -36,7 +36,7 @@ async def worker(aiohttp_server):
 
 
 def settings_for(url: str, token: str = TOKEN) -> Settings:
-    return Settings.from_env({"MAITRE_API_URL": url, "MAITRE_AGENT_TOKEN": token, "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"})
+    return Settings.from_env({"MAITRE_API_URL": url, "MAITRE_AGENT_TOKEN": token, "DEEPGRAM_API_KEY": "d", "CARTESIA_API_KEY": "c"})
 
 
 class Refused(Exception):
@@ -89,7 +89,7 @@ async def test_an_agent_without_its_settings_says_so_and_never_tries_speech(work
         tried.append(True)
         return None
 
-    unconfigured = Settings.from_env({"MAITRE_API_URL": url, "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s"})
+    unconfigured = Settings.from_env({"MAITRE_API_URL": url, "DEEPGRAM_API_KEY": "d", "CARTESIA_API_KEY": "c"})
     task = asyncio.create_task(check_in_forever(unconfigured, probe, every=0.02, retry_after=0.01))
     await asyncio.sleep(0.3)
     task.cancel()
