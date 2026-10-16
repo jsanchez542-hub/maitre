@@ -77,7 +77,7 @@ uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to 
 uv run python bench/tts_languages.py es "<voice>" ...   # each voice reads the restaurant's lines; speech recognition says what it heard
 ```
 
-Speech goes to Deepgram and Cartesia with their own keys. LiveKit's free plan includes $2.50 of Inference a month, a hard cap that testing spent on 15 October: past it every request answers 429. Whatever the provider, the agent checks in with the Worker every minute (`health.py`), and the demo offers calls only while its speech works.
+Speech goes to Deepgram and Cartesia with their own keys. LiveKit's free plan includes $2.50 of Inference a month, a hard cap that testing spent on 15 October: past it every request answers 429. Whatever the provider, the agent checks in with the Worker every minute (`health.py`), tries its speech again every hour with one word, and the demo offers calls only while its speech works.
 
 The model the phone uses is chosen with the evaluation's phone set (`MAITRE_EVAL_SET=voice`, see `evals/RESULTS.md`, run I).
 

@@ -71,13 +71,32 @@ async def test_checks_in_with_whether_speech_works_and_tries_again_while_it_fail
         tried.append(True)
         return next(answers)
 
-    task = asyncio.create_task(check_in_forever(settings_for(url), probe, every=0.02, retry_after=0.05))
+    task = asyncio.create_task(check_in_forever(settings_for(url), probe, every=0.02, retry_after=0.05, recheck_after=10))
     await asyncio.sleep(0.3)
     task.cancel()
     checks = [body for kind, body, _authorization in reports.received if kind == "check-in"]
     assert checks[0] == {"ready": False, "reason": "speech_quota"}
     assert checks[-1] == {"ready": True}
-    # Tried again only while it failed: once at the start, once after.
+    # Tried again after the half hour of a failure, then left for the hour of speech that works.
+    assert len(tried) == 2
+
+
+async def test_tries_speech_again_while_it_works_so_an_allowance_spent_turns_calls_off(worker):
+    reports, url = worker
+    answers = iter([None, "speech_quota"])
+    tried = []
+
+    async def probe(_settings: Settings) -> str | None:
+        tried.append(True)
+        return next(answers)
+
+    task = asyncio.create_task(check_in_forever(settings_for(url), probe, every=0.02, retry_after=10, recheck_after=0.05))
+    await asyncio.sleep(0.3)
+    task.cancel()
+    checks = [body for kind, body, _authorization in reports.received if kind == "check-in"]
+    assert checks[0] == {"ready": True}
+    assert checks[-1] == {"ready": False, "reason": "speech_quota"}
+    # Once at the start, once after the hour, and not again before the half hour of the failure.
     assert len(tried) == 2
 
 

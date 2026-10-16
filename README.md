@@ -129,7 +129,7 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 - **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
 - **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.
-- **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech.
+- **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech. The agent tries its speech again every hour, so a provider allowance spent mid-month turns calls off within the hour.
 - **Nothing to steal from a page:** the browser holds only Turnstile's public site key, and every secret is a platform secret of the Worker or the agent.
 
 To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.

@@ -4,7 +4,9 @@ The demo shows its call button only while an agent checks in every minute
 with speech that works, and a call that fails on its speech turns calls off at
 once. Without this, a visitor could call a line nobody answers, or one that
 cannot speak: on 15 October LiveKit's free allowance ran out, every speech
-request answered 429, and the button still showed.
+request answered 429, and the button still showed. Speech is tried again every
+hour while it works, so an allowance spent in the middle of the month turns
+calls off within the hour rather than failing a caller every quarter of an hour.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ logger = logging.getLogger("maitre.voice")
 CHECK_IN_SECONDS = 60.0
 #: While speech fails, how often it is tried again. One word each time: the allowance it waits for is not spent on it.
 RETRY_SECONDS = 30 * 60.0
+#: While speech works, how often it is tried anyway: a call that fails turns calls off for a quarter of an hour only.
+RECHECK_SECONDS = 60 * 60.0
 #: Silence handed to speech recognition to see that it opens, in seconds.
 PROBE_SILENCE_SECONDS = 0.2
 PROBE_SAMPLE_RATE = 16_000
@@ -61,7 +65,7 @@ async def speech_works(settings: Settings) -> str | None:
     try:
         engine = build_tts(settings.voice_for("fr"), "fr")
         try:
-            async for _ in engine.synthesize("Bonjour."):
+            async for _ in engine.synthesize("Oui."):
                 break
         finally:
             await engine.aclose()
@@ -100,14 +104,15 @@ async def check_in_forever(
     *,
     every: float = CHECK_IN_SECONDS,
     retry_after: float = RETRY_SECONDS,
+    recheck_after: float = RECHECK_SECONDS,
 ) -> None:
-    """Checks in every minute, saying whether speech works: tried once at the start, then again while it fails."""
+    """Checks in every minute, saying whether speech works: tried at the start, then hourly while it works, half-hourly while not."""
     async with http_context.open(), aiohttp.ClientSession() as http:
         problems = settings.problems()
         failing = "not_configured" if problems else await probe(settings)
         tried = time.monotonic()
         while True:
-            if failing is not None and not problems and time.monotonic() - tried >= retry_after:
+            if not problems and time.monotonic() - tried >= (retry_after if failing is not None else recheck_after):
                 failing = await probe(settings)
                 tried = time.monotonic()
             await report(http, settings, "check-in", {"ready": failing is None, **({"reason": failing} if failing else {})})
