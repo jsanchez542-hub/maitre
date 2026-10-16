@@ -69,7 +69,8 @@ function step(sessionId: string, name: string, body: object, headers: Record<str
 async function lines(response: Response): Promise<Record<string, unknown>[]> {
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toContain('application/x-ndjson');
-  return (await response.text())
+  return new TextDecoder()
+    .decode(await response.arrayBuffer())
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line) as Record<string, unknown>);

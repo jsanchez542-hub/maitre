@@ -113,8 +113,7 @@ export class DemoRestaurant extends Restaurant {
     return this.#expiresAt > Date.now();
   }
 
-  /** Writes the day's service into this restaurant's database, once, at the real time, and sets the day after which it deletes itself. */
-  /** Seeds the evening once, with what its guests asked written in the visitor's language. */
+  /** Seeds the day's service once, at the real time and in the visitor's language, and sets when the restaurant deletes itself. */
   async open(language?: Language): Promise<SandboxState> {
     if (this.#expiresAt === 0) {
       demoEvening({ store: this.store, now: this.now(), ...(language ? { language } : {}) });
