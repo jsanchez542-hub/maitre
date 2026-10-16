@@ -123,7 +123,14 @@ Each restaurant is one Durable Object, which handles one request at a time: that
 
 Each group has its own bearer token. A route whose secret is not set answers 503 instead of running open, and so does every route if the deployment does not say where data may live.
 
-The public demo has its own routes under `/v1/demo`. A visitor opens a restaurant of their own, a Durable Object deleted after a day, behind Turnstile, a daily limit per visitor and a spending cap that pauses the demo. They chat with it, call it and run its dashboard. Calls are offered only while a voice agent checks in every minute with speech that works, and not for a quarter of an hour after a call fails on its speech.
+The public demo has its own routes under `/v1/demo`. A visitor opens a restaurant of their own, a Durable Object deleted after a day, and chats with it, calls it and runs its dashboard. What keeps it up and within budget when anyone can reach it:
+
+- **Turnstile** before a restaurant is opened, and **five restaurants per visitor a day**, counted by a keyed hash of the address that changes daily, never by the address itself.
+- **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
+- **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
+- **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.
+- **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech.
+- **Nothing to steal from a page:** the browser holds only Turnstile's public site key, and every secret is a platform secret of the Worker or the agent.
 
 To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.
 
@@ -155,6 +162,10 @@ To run it locally:
 - build `web/` with `npm run build`;
 - start the Worker in `worker/` with `npx wrangler dev --port 8787`, which serves the pages and the API;
 - or run `npm run dev` in `web/` with `web/.env` copied from `.env.example`, which passes `/v1` and `/media` to the Worker on port 8787.
+
+## Licence
+
+All rights reserved: the code is published to be read and evaluated, not reused. See [LICENSE](LICENSE), and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Languages
 
