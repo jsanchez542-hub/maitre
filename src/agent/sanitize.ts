@@ -1,5 +1,6 @@
 import type { Language } from '../i18n/index.js';
 import type { Channel } from '../store.js';
+import { spaceBefore } from './spaces.js';
 
 const THIN = ' ';
 
@@ -14,8 +15,7 @@ const THIN = ' ';
  * space comes back.
  */
 export function frenchSpacing(text: string): string {
-  return text
-    .replace(/[   ]+([?!;:»])/g, `${THIN}$1`)
+  return spaceBefore(text, (char) => ' \u00a0\u202f'.includes(char), '?!;:»', THIN)
     .replace(/([^\s  \d/=&?!])([?!;»])/g, `$1${THIN}$2`)
     .replace(/«[   ]*/g, `«${THIN}`)
     .replace(/(\d{1,2}[   ]h[   ]\d{2})(?=\p{L})/gu, '$1 ');

@@ -1,16 +1,17 @@
 import { isAllergen, type Allergen } from '../allergens.js';
 import { messages } from '../i18n/index.js';
 import type { ToolOutput } from '../tools.js';
+import { isWhitespace, spaceBefore } from './spaces.js';
 
 /** Collapses every kind of space, apostrophe and quotation mark, so a comparison is about words, not typography. */
 export function comparable(text: string): string {
-  return text
-    .replace(/[    \s]+/g, ' ')
+  // \s takes in the no-break and thin spaces as well.
+  const plain = text
+    .replace(/\s+/g, ' ')
     .replace(/[’‘ʼ]/g, "'")
-    .replace(/[«»"“”]/g, '"')
-    .replace(/\s+([.,!?;:])/g, '$1')
+    .replace(/[«»"“”]/g, '"');
+  return spaceBefore(plain, isWhitespace, '.,!?;:"', '')
     .replace(/"\s+/g, '"')
-    .replace(/\s+"/g, '"')
     .trim()
     .toLowerCase();
 }
@@ -108,7 +109,7 @@ const PROMISES: readonly RegExp[] = [
   /\b(i['’]ve (just )?passed|i have (just )?passed|i['’]m passing|i am passing|i['’]ll pass|i will pass|(your request|your question|it) (has been|is being|was) passed|the team will (call|get back|contact|be in touch)|someone (from the team )?will (call|get back|contact))/i,
   /\b(he pasado|he trasladado|he enviado|paso (su|tu) (solicitud|petici[oó]n|consulta)|traslado (su|tu)|(su|tu) (solicitud|petici[oó]n|consulta) (ha sido|fue) (trasladada|enviada|pasada)|el equipo (le |te )?(llamar[áa]|contactar[áa]|se pondr[áa] en contacto))/i,
 ];
-const OFFER = /^\s*(si|if)\b|souhaitez-vous|voulez-vous|would you like|do you want|¿?\s*desea|¿?\s*quiere/i;
+const OFFER = /^\s*(si|if)\b|souhaitez-vous|voulez-vous|would you like|do you want|desea|quiere/i;
 
 /** Whether a reply tells the guest, without asking, that the team has their request. */
 export function promisesTeam(reply: string): boolean {
@@ -155,9 +156,8 @@ export function dropSpokenReferences(reply: string, references: readonly string[
     if (!spoken.some((pattern) => pattern.test(sentence))) return [sentence];
     // A sentence that opens with the reference is about it ("Votre référence est 4XKZ2P, notez-la."): it goes whole.
     if (mentions.some((mention) => sentence.search(new RegExp(mention.source, 'iu')) === 0)) return [];
-    const without = mentions
-      .reduce((text, mention) => text.replace(mention, ''), sentence)
-      .replace(/\s+([.,!?;:…])/g, '$1')
+    const cut = mentions.reduce((text, mention) => text.replace(mention, ''), sentence);
+    const without = spaceBefore(cut, isWhitespace, '.,!?;:…', '')
       .replace(/^[\s,;:]+/, '')
       .trim();
     // What is left is kept when it still says something and no longer reads the reference.

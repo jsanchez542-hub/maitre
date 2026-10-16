@@ -481,7 +481,10 @@ export class Restaurant extends DurableObject<Env> {
       if (!stored) throw new Error('The call vanished between its check and its turn');
       if (stored.lastTurn?.id === request.turnId) return send({ type: 'answer', ...(stored.lastTurn.answer as ChatAnswer) });
       const now = new Date().toISOString();
-      const e164 = normalizePhone(request.digits.replace(/#+$/, ''));
+      // The # that closes a number comes off one key at a time, not with a regular expression: linear on any input.
+      let digits = request.digits;
+      while (digits.endsWith('#')) digits = digits.slice(0, -1);
+      const e164 = normalizePhone(digits);
       if (!e164) {
         const answer: ChatAnswer = {
           status: 'ok',
