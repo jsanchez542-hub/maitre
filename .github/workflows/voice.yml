@@ -1,0 +1,27 @@
+name: Voice
+
+on:
+  push:
+    branches: [main]
+    paths: ['voice/**', '.github/workflows/voice.yml']
+  pull_request:
+    paths: ['voice/**', '.github/workflows/voice.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: voice
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv sync --locked
+      - run: uv run --with pip-audit pip-audit --progress-spinner off --skip-editable
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q

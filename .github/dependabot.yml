@@ -47,6 +47,24 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
 
+  - package-ecosystem: uv
+    directory: /voice
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # The agents framework and its plugins are released together and only work together.
+      livekit:
+        patterns: ["livekit*"]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /voice
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

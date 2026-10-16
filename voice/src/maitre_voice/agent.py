@@ -58,7 +58,9 @@ from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
 load_dotenv(".env.local")
 logger = logging.getLogger("maitre.voice")
 settings = Settings.from_env()
-server = AgentServer()
+# A call takes 200 to 300 MB. One that grows past 700 MB is ended alone, before the container reaches its own limit
+# and before the services it shares a server with feel it.
+server = AgentServer(job_memory_warn_mb=400, job_memory_limit_mb=700)
 
 #: Seconds without a key before a number typed without the hash key is sent anyway.
 KEYPAD_PAUSE_SECONDS = 4.0

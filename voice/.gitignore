@@ -9,3 +9,6 @@ __pycache__/
 bench/audio/
 bench/runs/
 calls/
+
+# Logs the noise cancellation writes where the agent runs.
+KMS/
