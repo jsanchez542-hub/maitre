@@ -16,7 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin maitre
 WORKDIR /app
 
-COPY pyproject.toml uv.lock .python-version ./
+COPY pyproject.toml uv.lock .python-version README.md ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev \
