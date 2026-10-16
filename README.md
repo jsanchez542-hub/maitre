@@ -165,7 +165,7 @@ To run it locally:
 - start the Worker in `worker/` with `npx wrangler dev --port 8787`, which serves the pages and the API;
 - or run `npm run dev` in `web/` with `web/.env` copied from `.env.example`, which passes `/v1` to the Worker on port 8787.
 
-The demo's films are not in the repository. Their masters are kept with the project's design files: copy `merrain-v1-1000k` and `merrain-v1-2000k`, in MP4 and WebM, into `web/public/media/` before a build. Their names carry a version, so a new film is a new name and browsers may keep the old ones for a year.
+The demo's films are not in the repository. Their masters are kept with the project's design files: copy `merrain-v1-1000k` and `merrain-v1-2000k`, in MP4 and WebM, into `web/public/media/` before a build. Their names carry a version, so a new film is a new name and browsers may keep the old ones for a year. The Worker serves them in the byte ranges Safari asks for before it plays a video, which the platform's file serving does not answer (`worker/src/films.ts`).
 
 ## Licence
 

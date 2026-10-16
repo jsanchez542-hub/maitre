@@ -24,11 +24,13 @@
   // The demo and dashboard pages, built by web/ (npm run build there) before a deploy.
   "assets": {
     "directory": "../web/dist",
+    "binding": "ASSETS",
     // An unknown address gets the nearest 404.html: under /en/, the English one.
     "not_found_handling": "404-page",
-    // The API and the health check always reach the Worker, whatever the pages hold. The demo's films
-    // are pages' files like any other (web/public/media/), served with Range requests by the platform.
-    "run_worker_first": ["/v1/*", "/health"]
+    // The API and the health check always reach the Worker, whatever the pages hold, and so do the
+    // demo's films (web/public/media/): the platform serves a file whole, Safari plays a video only
+    // in byte ranges, and the Worker cuts them (src/films.ts).
+    "run_worker_first": ["/v1/*", "/health", "/media/*"]
   },
   // One address cannot use up the API for everyone: past 120 requests a minute it waits, so a
   // script cannot spend the day's requests that every visitor shares. The voice agent, which

@@ -9,6 +9,8 @@ export interface Env {
   DEMO_BUDGET: DurableObjectNamespace<DemoBudget>;
   /** Requests per visitor address per minute, across the API: what one address may spend of what all share. */
   API_LIMITER?: RateLimit;
+  /** The site's own files (web/dist). The Worker reaches them for the demo's films, which it serves in ranges. */
+  ASSETS: Fetcher;
   /**
    * "eu" keeps every restaurant's data in the European Union. Only local runs
    * set "none", because workerd cannot pin data to a jurisdiction; any other

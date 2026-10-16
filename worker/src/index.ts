@@ -5,6 +5,7 @@ import type { StaffChangeRequest } from '../../src/engine.js';
 import { isLanguage } from '../../src/i18n/index.js';
 import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoBudget, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
+import { serveFilm } from './films.js';
 import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
 import { callPass, liveKitProject } from './livekit.js';
 import type { CallEnd, CallTurn, ChatRequest, Restaurant } from './restaurant.js';
@@ -68,6 +69,8 @@ export { Restaurant } from './restaurant.js';
  *   GET  sandboxes/:sandbox/activity?days=            as above
  *
  * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
+ *
+ * And GET /media/:film, the demo's films, in the byte ranges a video player asks for (films.ts).
  */
 export default {
   async fetch(request, env): Promise<Response> {
@@ -109,6 +112,8 @@ async function withinLimit(request: Request, env: Env): Promise<boolean> {
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
+  // Files of the site, not the API: they count against no visitor's share.
+  if (url.pathname.startsWith('/media/')) return serveFilm(request, env);
   const parts = url.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
   if (parts.length === 1 && parts[0] === 'health' && request.method === 'GET') return json({ ok: true });
   if (!(await withinLimit(request, env))) return problem(429, 'too_many_requests');
