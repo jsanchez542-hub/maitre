@@ -7,6 +7,8 @@ export interface Env {
   DEMO_RESTAURANTS: DurableObjectNamespace<DemoRestaurant>;
   /** What the public demo has spent, today and this month, and how many restaurants each visitor opened today. */
   DEMO_BUDGET: DurableObjectNamespace<DemoBudget>;
+  /** Requests per visitor address per minute, across the API: what one address may spend of what all share. */
+  API_LIMITER?: RateLimit;
   /** The demo's films and posters (R2), served at /media/ from the site's own origin. */
   MEDIA?: R2Bucket;
   /**

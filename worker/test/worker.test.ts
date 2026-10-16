@@ -442,6 +442,25 @@ describe('the floor', () => {
   });
 });
 
+describe('the API limit', () => {
+  it('lets one address spend only its share of a minute, and never counts the voice agent', async () => {
+    const from = { 'cf-connecting-ip': '198.51.100.7' };
+    const statuses: number[] = [];
+    for (let i = 0; i < 125; i += 1) statuses.push((await SELF.fetch('https://maitre.test/v1/demo', { headers: from })).status);
+    expect(statuses.slice(0, 120).every((status) => status === 200)).toBe(true);
+    expect(statuses.at(-1)).toBe(429);
+    // Another address is not held up, nor the voice agent with its token, nor the health check.
+    expect((await SELF.fetch('https://maitre.test/v1/demo', { headers: { 'cf-connecting-ip': '198.51.100.8' } })).status).toBe(200);
+    const checkIn = await SELF.fetch('https://maitre.test/v1/demo/voice/check-in', {
+      method: 'POST',
+      headers: { ...AGENT, ...from },
+      body: JSON.stringify({ ready: true }),
+    });
+    expect(checkIn.status).toBe(200);
+    expect((await SELF.fetch('https://maitre.test/health', { headers: from })).status).toBe(200);
+  });
+});
+
 describe('the SQLite store', () => {
   it('undoes every write of a transaction that fails halfway', async () => {
     await runInDurableObject(stub(), async (_instance, state) => {
