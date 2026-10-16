@@ -52,11 +52,11 @@ function heldTable(messages: Message[]): string {
   throw new Error('no table was held');
 }
 
-async function open(ip = '203.0.113.7'): Promise<{ code: number; body: Record<string, unknown> }> {
+async function open(ip = '203.0.113.7', language?: string): Promise<{ code: number; body: Record<string, unknown> }> {
   const response = await SELF.fetch(`${DEMO}/sandboxes`, {
     method: 'POST',
     headers: { ...JSON_BODY, 'cf-connecting-ip': ip },
-    body: JSON.stringify({ turnstile: 'a-token-from-the-widget' }),
+    body: JSON.stringify({ turnstile: 'a-token-from-the-widget', ...(language ? { language } : {}) }),
   });
   return { code: response.status, body: (await response.json()) as Record<string, unknown> };
 }
@@ -251,6 +251,18 @@ describe('the public demo', () => {
       status: 'booked',
       booking: { notes: 'Table au calme' },
     });
+  });
+
+  it('writes its evening in the language the visitor opened it in', async () => {
+    fakeNetwork();
+    const { code, body } = await open('203.0.113.8', 'en');
+    expect(code).toBe(201);
+    const response = await SELF.fetch(`${DEMO}/sandboxes/${String(body['sandbox'])}/day?date=${EVENING}&language=en`);
+    const day = (await response.json()) as { callbacks: { list: { summary: string }[] } };
+    expect(day.callbacks.list.map((request) => request.summary)).toEqual([
+      'Party of 9 for a birthday, Saturday 17 October, in the evening.',
+      'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.',
+    ]);
   });
 
   it('deletes the whole restaurant a day after it opened', async () => {

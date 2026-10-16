@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { TurnResult } from '../../src/agent/agent.js';
 import { demoEvening, demoSuggestion, serviceDayAt, type DemoSuggestion } from '../../src/demo/evening.js';
+import type { Language } from '../../src/i18n/index.js';
 import { normalizePhone } from '../../src/phone.js';
 import { budgetStub, type Env } from './env.js';
 import {
@@ -113,9 +114,10 @@ export class DemoRestaurant extends Restaurant {
   }
 
   /** Writes the day's service into this restaurant's database, once, at the real time, and sets the day after which it deletes itself. */
-  async open(): Promise<SandboxState> {
+  /** Seeds the evening once, with what its guests asked written in the visitor's language. */
+  async open(language?: Language): Promise<SandboxState> {
     if (this.#expiresAt === 0) {
-      demoEvening({ store: this.store, now: this.now() });
+      demoEvening({ store: this.store, now: this.now(), ...(language ? { language } : {}) });
       this.#expiresAt = Date.now() + SANDBOX_HOURS * 3_600_000;
       await this.ctx.storage.put(EXPIRES_AT, this.#expiresAt);
       await this.ctx.storage.setAlarm(this.#expiresAt);

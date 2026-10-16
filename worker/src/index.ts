@@ -529,7 +529,8 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   const sandboxId = newSandboxId();
   const sandbox = demoStub(env, sandboxId);
   if (!sandbox) return problem(503, 'not_configured');
-  const state = await sandbox.open();
+  // The page's language: the evening's requests and notes are written in it.
+  const state = await sandbox.open(isLanguage(body.value['language']) ? body.value['language'] : undefined);
   if (state.status !== 'ok') return problem(500, 'internal_error');
   const { expiresAt, clock, day, suggestion, callsLeft } = state;
   return json({ sandbox: sandboxId, expiresAt, clock, day, suggestion, callsLeft, calls: await callOffer(env, budget) }, 201);

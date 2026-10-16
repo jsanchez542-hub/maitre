@@ -1,7 +1,7 @@
 import { addDays, localNow, toMinutes, zonedInstant, type PlainDate } from '../calendar.js';
 import type { BusinessConfig } from '../config.js';
 import { BookingEngine, type Session } from '../engine.js';
-import { formatDate, type Language } from '../i18n/index.js';
+import { formatDate, localize, type Language, type LocalizedText } from '../i18n/index.js';
 import { REFERENCE_ALPHABET, REFERENCE_LENGTH, type IdSource } from '../ids.js';
 import { sittingsOn } from '../schedule.js';
 import { MemoryStore, type BookingStore } from '../store.js';
@@ -44,6 +44,13 @@ export interface DemoEveningOptions {
    * October at 20:05.
    */
   now?: Date;
+  /**
+   * The language of what guests asked for in writing: the requests passed to
+   * the team and the notes on bookings. A visitor's restaurant takes the
+   * language its visitor opened it in, so the panel reads in one language. The
+   * recorded evening is French.
+   */
+  language?: Language;
 }
 
 /** How long a service goes on after its last seating: the last tables are still at dinner. */
@@ -138,7 +145,7 @@ interface DinnerBooking {
   name: string;
   language?: Language;
   allergies?: string[];
-  notes?: string;
+  notes?: LocalizedText;
 }
 
 const DINNER: readonly DinnerBooking[] = [
@@ -152,7 +159,7 @@ const DINNER: readonly DinnerBooking[] = [
   // Booked for 20:00, moved to 20:30 the day before.
   { time: '20:00', partySize: 2, channel: 'voice', name: 'Roux' },
   { time: '20:30', partySize: 5, channel: 'voice', name: 'Fournier', allergies: ['gluten', 'sulphites'] },
-  { time: '21:00', partySize: 2, channel: 'voice', name: 'Girard', notes: 'anniversaire' },
+  { time: '21:00', partySize: 2, channel: 'voice', name: 'Girard', notes: { fr: 'anniversaire', en: 'birthday', es: 'cumpleaños' } },
   { time: '21:15', partySize: 4, channel: 'web', name: 'Bonnet' },
   { time: '21:30', partySize: 2, channel: 'web', name: 'Lambert', language: 'en' },
 ];
@@ -173,6 +180,13 @@ const LATER_DINNER: readonly [string, string, string][] = [
   ['Girard', '21:02', '22:50'],
   ['Lambert', '21:34', '22:56'],
 ];
+
+/** The party of nine's request, as it was passed to the team. */
+const LARGE_GROUP: Readonly<Record<Language, (date: string) => string>> = {
+  fr: (date) => `Groupe de 9 pour un anniversaire, ${date} au soir.`,
+  en: (date) => `Party of 9 for a birthday, ${date}, in the evening.`,
+  es: (date) => `Grupo de 9 para un cumpleaños, ${date} por la noche.`,
+};
 
 /** When the parties seated before 20:05 leave. */
 const FIRST_SITTING_LEAVES: readonly [string, string][] = [
@@ -205,6 +219,7 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
   // Two days before, the week's bookings come in: the conversations played in the chat came before.
   const weekStarts = zonedInstant(addDays(day, -2), '11:00', timeZone);
   const services = new Set(sittingsOn(DEMO_RESTAURANT, day).map((sitting) => sitting.service));
+  const written = options.language ?? 'fr';
 
   let now = new Date(weekStarts);
   const engine = new BookingEngine(DEMO_RESTAURANT, options.store ?? new MemoryStore(), { now: () => now, ids: seededIds(16_10_2026) });
@@ -244,7 +259,7 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
       holdId: found.holdId,
       guestName,
       ...(extra.allergies ? { allergies: extra.allergies } : {}),
-      ...(extra.notes ? { notes: extra.notes } : {}),
+      ...(extra.notes ? { notes: localize(extra.notes, written) } : {}),
     });
     if (booked.status !== 'booked') throw new Error(`The demo evening could not book ${guestName}: ${booked.status}`);
     return booked.booking.reference;
@@ -336,9 +351,9 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
         time: '19:40',
         run: () =>
           ok(
-            engine.requestCallback(guest('voice'), {
+            engine.requestCallback(guest('voice', written), {
               reason: 'large_group',
-              summary: `Groupe de 9 pour un anniversaire, ${formatDate(addDays(day, 1), 'fr', day)} au soir.`,
+              summary: LARGE_GROUP[written](formatDate(addDays(day, 1), written, day)),
             }),
             'recorded',
             'pass on a party of nine',
@@ -347,7 +362,7 @@ export function demoEvening(options: DemoEveningOptions = {}): DemoEvening {
       {
         time: '19:55',
         // Asked on WhatsApp: the sheet says nothing about nuts in the mousse, so the code passes the question on.
-        run: () => ok(runTool(engine, guest('whatsapp'), 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] }), 'ok', 'check the mousse'),
+        run: () => ok(runTool(engine, guest('whatsapp', written), 'check_dish', { dishId: 'chocolate-mousse', allergens: ['nuts'] }), 'ok', 'check the mousse'),
       },
       {
         time: '20:00',

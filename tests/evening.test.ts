@@ -161,4 +161,23 @@ describe('the demo restaurant at the real time', () => {
   it('keeps the conversations played in the chat to the recorded evening', () => {
     expect(() => demoEvening({ now: paris('2026-11-03', '10:00'), fromChat: [{} as ChatOutcome] })).toThrow(RangeError);
   });
+
+  it('writes what guests asked in the language its visitor opened it in, so the panel reads in one', () => {
+    const at = paris('2026-11-03', '20:00');
+    const written = (language?: 'en' | 'es') => {
+      const evening = demoEvening({ now: at, ...(language ? { language } : {}) });
+      const service = evening.engine.serviceDay(evening.day, language ?? 'fr');
+      return {
+        requests: service.callbacks.list.map((request) => request.summary),
+        note: service.bookings.find((booking) => booking.guestName === 'Girard')?.notes,
+      };
+    };
+    expect(written('en')).toEqual({
+      requests: ['Party of 9 for a birthday, Wednesday 4 November, in the evening.', 'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.'],
+      note: 'birthday',
+    });
+    expect(written('es')).toMatchObject({ requests: ['Grupo de 9 para un cumpleaños, miércoles 4 de noviembre por la noche.', expect.stringContaining('frutos de cáscara')], note: 'cumpleaños' });
+    // Without a language, as the recorded evening: French.
+    expect(written()).toMatchObject({ requests: [expect.stringContaining('Groupe de 9'), expect.stringContaining('fruits à coque')], note: 'anniversaire' });
+  });
 });
