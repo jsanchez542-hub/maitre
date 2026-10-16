@@ -24,7 +24,7 @@
     "@fontsource/ibm-plex-sans": "5.3.0",
     "astro": "7.3.5",
     "livekit-client": "2.22.3",
-    "preact": "10.29.8"
+    "preact": "11.0.1"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
