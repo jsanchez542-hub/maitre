@@ -24,5 +24,5 @@ def test_with_cartesias_own_key_the_voice_changes_with_the_language_too(monkeypa
     # Only the language changed before: a caller switching to Spanish heard the French voice speak Spanish.
     monkeypatch.setenv("CARTESIA_API_KEY", "test-key")
     engine = build_tts("cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41", "fr")
-    switch_voice(engine, "cartesia:sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2", "es")
-    assert (engine._opts.model, engine._opts.voice, engine._opts.language) == ("sonic-3.5", "2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2", "es")
+    switch_voice(engine, "cartesia:sonic-3.5:4663e61a-a9c2-40e1-94c5-c461ed9d3d31", "es")
+    assert (engine._opts.model, engine._opts.voice, engine._opts.language) == ("sonic-3.5", "4663e61a-a9c2-40e1-94c5-c461ed9d3d31", "es")

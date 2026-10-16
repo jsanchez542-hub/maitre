@@ -62,7 +62,7 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-bre
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The LiveKit project. The Worker needs the same three to sign the browser's pass. |
 | `MAITRE_API_URL`, `MAITRE_AGENT_TOKEN` | The Worker and the token of its "agent" routes. |
 | `VOICE_STT` | Speech recognition as `provider:model`. By default Deepgram's Nova-3, with Deepgram's own key. |
-| `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Cartesia Sonic 3.5's French Conversational Lady (chosen by ear), British Customer Support Lady and Spanish Narrator Lady, with Cartesia's own key. Through LiveKit Inference, the same voices are `inference:cartesia/sonic-3.5:<voice>`. |
+| `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Cartesia Sonic 3.5's French Conversational Lady (chosen by ear), Fiona (British) and Sofía (Mexican, chosen for a natural pace on the phone), with Cartesia's own key. Through LiveKit Inference, the same voices are `inference:cartesia/sonic-3.5:<voice>`. |
 | `VOICE_EOT_THRESHOLD`, `VOICE_EOT_TIMEOUT_MS` | With Flux only: when it decides the caller has finished. |
 | `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `MISTRAL_API_KEY`, `ELEVEN_API_KEY` | The keys of the providers called directly: by default Deepgram's and Cartesia's. The agent refuses calls, and says which key is missing, when the chosen speech lacks one. |
 

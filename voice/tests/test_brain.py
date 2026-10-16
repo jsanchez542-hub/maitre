@@ -126,7 +126,7 @@ def test_says_which_key_the_chosen_speech_is_missing_without_its_value():
     own = {"DEEPGRAM_API_KEY": "d", "CARTESIA_API_KEY": "c"}
     missing = Settings.from_env(base).problems()
     assert "DEEPGRAM_API_KEY is missing, for deepgram:nova-3" in missing
-    assert "CARTESIA_API_KEY is missing, for cartesia:sonic-3.5:2deb3edf-b9d8-4d06-8db9-5742fb8a3cb2" in missing
+    assert "CARTESIA_API_KEY is missing, for cartesia:sonic-3.5:4663e61a-a9c2-40e1-94c5-c461ed9d3d31" in missing
     configured = Settings.from_env(base | own)
     assert configured.problems() == []
     assert "secret" not in repr(configured.keys)
