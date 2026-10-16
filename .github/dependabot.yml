@@ -21,9 +21,10 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # Wrangler, workerd and the test plugin are released together and only work together.
+      # Wrangler, workerd and the test plugin are released together and only work together,
+      # and the plugin runs inside Vitest: a Vitest release can need the plugin's next one.
       cloudflare:
-        patterns: ["wrangler", "@cloudflare/*"]
+        patterns: ["wrangler", "@cloudflare/*", "vitest"]
       development:
         dependency-type: development
         update-types: [minor, patch]
@@ -39,6 +40,9 @@ updates:
         update-types: ["version-update:semver-major"]
       # The types must match the Node version the project runs on (22), not a newer one.
       - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # @astrojs/preact supports Preact 10, not 11.
+      - dependency-name: preact
         update-types: ["version-update:semver-major"]
     groups:
       # axe drives the same playwright-core as the test runner: two versions and their types no longer match.
@@ -67,6 +71,10 @@ updates:
     directory: /voice
     schedule:
       interval: weekly
+    ignore:
+      # A new Python for the voice agent is an upgrade made on purpose and tried on a call, not a weekly bump.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /
