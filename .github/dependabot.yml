@@ -80,3 +80,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # CodeQL's init and analyze steps are one release and run as a pair.
+      codeql:
+        patterns: ["github/codeql-action/*"]
