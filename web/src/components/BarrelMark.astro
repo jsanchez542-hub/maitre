@@ -1,0 +1,8 @@
+---
+/* A merrain is the oak stave a Bordeaux barrel is made of: the mark is a barrel drawn in staves. */
+import { BARREL } from '../lib/barrel';
+---
+
+<svg class="mark" viewBox={BARREL.viewBox} aria-hidden="true" focusable="false">
+  <path d={[...BARREL.staves, BARREL.hoops].join('')} />
+</svg>

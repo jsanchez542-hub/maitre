@@ -1,0 +1,1478 @@
+/*
+ * Merrain's own site: one typewriter face with no bold, five sizes (13, 14, 15, 20, 24),
+ * black on white with a #F6F6F6 panel. The cover is the film, full bleed, under a white card; each screen is a
+ * 660 px white panel that slides over a fixed layer, where the film and then each screen's photograph show.
+ */
+:root {
+  --paper: #ffffff;
+  --panel: #f6f6f6;
+  /* The film's own grey: the mean of its first frame. */
+  --film: #5d5d5d;
+  --ink: #000000;
+  --type: 'Cutive Mono', 'Courier New', monospace;
+  --column: 660px;
+  /* The live chat's dot: 4.9:1 on the chat's grey head. */
+  --live: #1a7f37;
+  /* The chat's quiet lines, the notice and the assistant thinking: 6.4:1 on white, 5.9:1 on the grey panel. */
+  --muted: #5f5f5f;
+  /* Where the demo's bar ends on screen, set when the menu or the card opens: they open just below it. */
+  --below-bar: var(--bar-h);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px / 1.6 var(--type);
+}
+
+/*
+ * The reader scrolls freely and the menu's links glide to their screen. No scroll snapping: it pulled the page past
+ * the demo bar on load.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .side-client {
+    scroll-behavior: smooth;
+  }
+}
+
+.site {
+  position: relative;
+}
+
+.site a {
+  color: var(--ink);
+}
+
+/* The keyboard's ring, as on the panel: 2 px in the quiet grey, 6.4:1 on white, 2 px off the edge. */
+.site :focus-visible,
+.chat :focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+/* Over the film the focus ring is white, so it shows. */
+.site .cover__next:focus-visible {
+  outline-color: var(--paper);
+}
+
+/* The menu's button, «Réserver» and «Appeler» sit on the film too: their ring goes inside their white square or
+   tab, where ink always shows. */
+.site .site__toggle:focus-visible,
+.site .site__close:focus-visible,
+.site .site__tab:focus-visible {
+  outline-offset: -6px;
+}
+
+/* The menu's button and «Réserver» stay at hand while the screens go by, without taking a line of the page. */
+.site__chrome {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  height: 0;
+}
+
+/* The menu's button: two thin lines in ink on a white square, as far from the bar and the side as «Réserver» on the
+   other. Bare, the lines fell under 3:1 whenever someone in the film passed behind them, whichever colour they took. */
+.site__toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+/* Two lines of 22 × 1.5 px, as thin as the site's type, 7 px apart. In the open menu the same lines cross, each
+   turning 45° about the middle, which keeps the cross's stroke and width those of the lines. */
+.site__lines {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 8.5px;
+}
+
+.site__lines::before,
+.site__lines::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background: var(--ink);
+}
+
+.site__lines::before {
+  top: 0;
+}
+
+.site__lines::after {
+  bottom: 0;
+}
+
+.site__menu.is-open .site__close .site__lines::before {
+  transform: translateY(3.5px) rotate(45deg);
+}
+
+.site__menu.is-open .site__close .site__lines::after {
+  transform: translateY(-3.5px) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .site__close .site__lines::before,
+  .site__close .site__lines::after {
+    transition: transform 240ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* «Réserver», a white tab at the top right, and «Appeler» as a second one beside it: as high as the menu's square. */
+.site__tabs {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.site__tab {
+  padding: 15px 14px 13px;
+  background: var(--paper);
+  font-size: 14px;
+  line-height: 16px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.site__tab--call {
+  border: 0;
+  cursor: pointer;
+}
+
+/* The menu: a grey panel that slides in from the left, below the top line, over a page it does not dim. The panel
+   slides inside the dialog, so the dialog's cross stays where the lines are. */
+.site__menu {
+  position: fixed;
+  inset: var(--below-bar) auto 0 0;
+  width: min(420px, 100vw - 64px);
+  max-width: none;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.site__sheet {
+  height: 100%;
+  padding: 150px 30px 40px;
+  overflow-y: auto;
+  background: var(--panel);
+  transform: translateX(-100%);
+}
+
+.site__menu.is-open .site__sheet {
+  transform: none;
+}
+
+.site__menu::backdrop {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .site__sheet {
+    transition: transform 0.4s ease;
+  }
+}
+
+/* Exactly where the menu's button is, at the same size, above the sliding panel. */
+.site__close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+/* Links of 20 px, 39 px apart, the first 150 px below the panel's top; a wider gap between the two groups. */
+.site__links {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  font-size: 20px;
+  line-height: 23px;
+  list-style: none;
+}
+
+.site__links + .site__links {
+  margin-top: 50px;
+}
+
+.site__links a {
+  text-decoration: none;
+}
+
+/*
+ * The home opens on the film. Until the page and its pictures are there, its ground is the film's own grey, the mean
+ * of its first frame: no frame of the way in is white or black, only that grey, the first frame blurred, the first
+ * frame, then the film. Every panel over it is white of its own.
+ */
+html.film,
+html.film body {
+  background: var(--film);
+}
+
+/* Behind the panels, fixed, so the panels slide over it. Only the layers' opacity moves. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  contain: paint;
+  background: var(--film);
+}
+
+.backdrop__layer {
+  position: absolute;
+  inset: 0 0 0 var(--column);
+  opacity: 0;
+}
+
+/* The first frame, blurred, in 634 bytes: there with the style, before the picture over it arrives. */
+.backdrop__layer--cover {
+  left: 0;
+  background: url('../assets/merrain/pass-blur.jpg') center / cover;
+}
+
+.backdrop__layer.is-shown {
+  opacity: 1;
+}
+
+/*
+ * Only the layer in front fades, over one that stays whole: a photograph coming in over the one going, or a
+ * photograph going away over the film coming back. A change never lets the black behind them show through.
+ */
+.backdrop__layer.is-front {
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .backdrop__layer.is-front {
+    transition: opacity 0.4s ease;
+  }
+}
+
+/*
+ * A pixel past each edge: scaled to cover, a picture can leave its last row part painted, and the black behind
+ * would show as a line along the screen's edge. The backdrop and the phone's photograph box clip the overflow.
+ */
+.backdrop__layer img,
+.screen__photo img,
+.cover__film {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  object-fit: cover;
+}
+
+/* The film starts on the picture under it: it shows once it moves, and the switch cannot be seen. */
+.cover__film {
+  opacity: 0;
+}
+
+.cover__film.is-playing {
+  opacity: 1;
+}
+
+main,
+.site__foot {
+  position: relative;
+  z-index: 1;
+}
+
+.screen {
+  display: grid;
+  grid-template-columns: minmax(0, var(--column)) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+/* The phone's photographs, above each screen's text: on a wide screen the layer behind shows them. */
+.screen__photo {
+  display: none;
+}
+
+.screen__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 96px 120px;
+  background: var(--paper);
+  text-align: center;
+}
+
+/*
+ * The spacing is measured by ink: 74 px from the mark to the title's letters and 88 px from them to the text that
+ * follows. The margins are smaller by the room the line boxes leave around the letters.
+ */
+.screen__text > * {
+  margin: 0 0 36px;
+}
+
+.screen__text > :last-child {
+  margin-bottom: 0;
+}
+
+.screen__text > .mark {
+  margin-bottom: 68px;
+}
+
+.screen__text > .site__label {
+  margin-bottom: 75px;
+}
+
+.screen__text > .site__place {
+  margin-bottom: 64px;
+}
+
+/* The cover: the film full bleed under a white card, and a chevron down to the first screen. */
+.screen--cover {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-height: calc(100dvh - var(--bar-h));
+}
+
+.cover__card {
+  display: grid;
+  justify-items: center;
+  gap: 28px;
+  width: 400px;
+  padding: 52px 40px 48px;
+  background: var(--paper);
+  text-align: center;
+}
+
+.cover__card > * {
+  margin: 0;
+}
+
+.cover__name {
+  /* The tracking also follows the last letter: the same space before the first keeps the name centered. */
+  padding-left: 0.5em;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+}
+
+.cover__card .mark {
+  width: 50px;
+  height: 56px;
+}
+
+.cover__kind {
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.cover__next {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 44px;
+  translate: -50% 0;
+}
+
+.cover__next svg {
+  width: 40px;
+  height: 20px;
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+
+.cover__next path {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Merrain's mark above each title: the barrel, 90 px of ink. */
+.mark {
+  width: 80px;
+  height: 90px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.mark path {
+  vector-effect: non-scaling-stroke;
+}
+
+.site__label {
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.site__body {
+  font-size: 15px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.site__rule {
+  max-width: 30em;
+}
+
+.site__note {
+  font-size: 13px;
+}
+
+.house {
+  display: grid;
+  gap: 18px;
+  max-width: 30em;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.house p {
+  margin: 0;
+}
+
+.site__button,
+.chat__primary {
+  display: inline-block;
+  padding: 9px 14px 7px;
+  background: var(--ink);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.site a.site__button,
+a.chat__primary {
+  color: var(--paper);
+}
+
+.courses {
+  display: grid;
+  gap: 40px;
+  width: 100%;
+  text-align: left;
+}
+
+.course {
+  display: grid;
+  gap: 16px;
+}
+
+.course__title {
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.dishes {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dishes li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.dishes__price {
+  flex: none;
+}
+
+.hours,
+.faq,
+.cellar {
+  display: grid;
+  gap: 28px;
+  max-width: 30em;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.cellar {
+  gap: 18px;
+}
+
+.hours dd,
+.faq dd,
+.cellar dd {
+  margin: 0;
+}
+
+.hours dd::first-letter {
+  text-transform: uppercase;
+}
+
+.faq dt,
+.cellar dt {
+  margin-bottom: 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+/* «Pessac- / Léognan» split across two lines reads as two places: a line breaks only after a «·». */
+.cellar span {
+  white-space: nowrap;
+}
+
+.site__foot {
+  display: grid;
+  gap: 4px;
+  padding: 40px 30px;
+  background: var(--paper);
+  font-size: 13px;
+  text-align: center;
+}
+
+.site__foot p {
+  margin: 0;
+}
+
+.chat {
+  width: min(440px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 14px / 1.6 var(--type);
+}
+
+.chat[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.chat__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--panel);
+}
+
+.chat__heading {
+  display: grid;
+  gap: 6px;
+}
+
+.chat__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Under the title: the live chat says so once the visitor's restaurant has opened, with the one colour in the chat. */
+.chat__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* On the first line's middle, should the line wrap on a narrow phone. */
+.chat__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.chat__status--live .chat__dot {
+  border-color: var(--live);
+  background: var(--live);
+}
+
+.chat__close,
+.chat__secondary {
+  color: var(--ink);
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chat__log {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.chat .chat__log:focus-visible {
+  outline-offset: -2px;
+}
+
+.chat__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat__line {
+  max-width: 85%;
+  padding: 12px 14px;
+  white-space: pre-line;
+}
+
+.chat__line--agent {
+  align-self: flex-start;
+  background: var(--panel);
+}
+
+.chat__line--guest {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.chat__booking {
+  display: grid;
+  gap: 6px;
+  align-self: stretch;
+  padding: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 15px;
+}
+
+.chat__label {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chat__read-back::first-letter {
+  text-transform: uppercase;
+}
+
+.chat__reference {
+  font-size: 13px;
+}
+
+/* While the assistant thinks: Merrain's barrel at the size of the text and a quiet line, no bubble, no bouncing dots. */
+.chat__typing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  padding: 6px 0;
+}
+
+.chat__typing-text {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chat__thinking {
+  flex: none;
+  width: 14px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.chat__thinking path {
+  vector-effect: non-scaling-stroke;
+}
+
+/* The staves dim and come back one after the other, left to right, once every 1.2 s; still without motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .chat__stave {
+    animation: stave 1.2s ease-in-out infinite;
+  }
+
+  .chat__stave:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+
+  .chat__stave:nth-child(4) {
+    animation-delay: 0.24s;
+  }
+
+  .chat__stave:nth-child(5) {
+    animation-delay: 0.36s;
+  }
+
+  .chat__stave:nth-child(6) {
+    animation-delay: 0.48s;
+  }
+
+  @keyframes stave {
+    0%,
+    60%,
+    100% {
+      opacity: 1;
+    }
+
+    30% {
+      opacity: 0.15;
+    }
+  }
+}
+
+.chat__foot {
+  display: grid;
+  gap: 16px;
+  padding: 16px 20px 20px;
+}
+
+.chat__line--phone {
+  font-size: 13px;
+}
+
+.chat__number {
+  white-space: nowrap;
+}
+
+.chat__phone {
+  display: grid;
+  gap: 8px;
+}
+
+.chat__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chat__field {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+/* The message grows with what is written, up to five lines, as in any chat. */
+.chat__field--message {
+  max-height: calc(5lh + 20px);
+  resize: none;
+  field-sizing: content;
+}
+
+.chat__field[aria-invalid='true'] {
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+
+.chat__help {
+  margin: 0;
+  font-size: 13px;
+}
+
+.chat__compose {
+  display: grid;
+  gap: 6px;
+}
+
+/* Said once and always in view: the restaurant's own day and time, and that what is written here is deleted. */
+.chat__notice {
+  margin: 0;
+  color: var(--muted);
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--panel);
+  font-size: 13px;
+}
+
+.chat__notice p {
+  margin: 0;
+}
+
+.chat__problem {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--panel);
+}
+
+.chat__problem p {
+  margin: 0;
+}
+
+/* Cloudflare draws its check here only when it needs a click; otherwise the box takes no room. */
+.chat__verify:empty,
+.chat__verify:has(> div:empty:only-child) {
+  display: none;
+}
+
+.chat__send {
+  padding: 9px 14px 7px;
+  border: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  text-transform: uppercase;
+}
+
+.chat__send:disabled {
+  cursor: default;
+}
+
+/* The recordings to choose from follow the greeting in the same scroll: the chat has one, the conversation's. */
+.chat__choices {
+  display: grid;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.chat__group {
+  display: grid;
+  gap: 8px;
+}
+
+.chat__choice {
+  padding: 12px 14px;
+  border: 0;
+  background: var(--panel);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat__choice:hover {
+  background: #ebebeb;
+}
+
+/* Three examples under the field, light enough to read as suggestions: each fills the field, and they go once the visitor writes. */
+.chat__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat__chip {
+  padding: 6px 10px 5px;
+  border: 1px solid #c4c4c4;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.chat__chip:hover {
+  background: var(--panel);
+}
+
+.chat__end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+/*
+ * The call: a phone's call screen in the chat's frame. The restaurant at the top as the cover card draws it (the
+ * barrel, the name, where it is), the call's state under it, and at the foot the keypad and call or hang up.
+ */
+.call__top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px 0;
+}
+
+.call__screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-height: 0;
+  padding: clamp(8px, 7vh, 72px) 20px 16px;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.chat .call__screen:focus-visible {
+  outline-offset: -2px;
+}
+
+/*
+ * With the captions on, what was said scrolls under a line, as the chat's conversation does under its notice. A fade
+ * would turn the top of a black bubble into a grey smudge.
+ */
+.call__screen--captions {
+  border-top: 1px solid var(--panel);
+}
+
+.call__stage {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.call__mark {
+  width: 50px;
+  height: 56px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.call__mark path {
+  vector-effect: non-scaling-stroke;
+}
+
+.call__name {
+  margin: 6px 0 0;
+  /* The tracking also follows the last letter: the same space before the first keeps the name centered. */
+  padding-left: 0.5em;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+}
+
+.call__place {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.call__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 15px;
+}
+
+.call__status .chat__dot {
+  margin-top: 8px;
+}
+
+.call__status--live .chat__dot {
+  border-color: var(--live);
+  background: var(--live);
+}
+
+/* The visitor's microphone, as a call screen shows it: how loud the line hears them, nothing more. */
+.call__level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.call__mic {
+  width: 12px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.call__mic path {
+  vector-effect: non-scaling-stroke;
+}
+
+.call__meter {
+  position: relative;
+  width: 56px;
+  height: 3px;
+  overflow: hidden;
+  background: #dcdcdc;
+}
+
+.call__meter span {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: scaleX(var(--level, 0));
+  transform-origin: left;
+}
+
+.call__hint {
+  max-width: 26em;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* The microphone in use, among those the computer has: only when there is a choice, its name cut short if long. */
+.call__device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  font-size: 13px;
+}
+
+.call__device select {
+  min-width: 0;
+  max-width: 240px;
+  padding: 4px 6px;
+  border: 1px solid var(--muted);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Its list opens under it, above only with less than four rows of room below, drawn as the site draws: white, a thin
+ * rule, the typewriter face.
+ */
+@supports (appearance: base-select) {
+  .call__device select,
+  .call__device select::picker(select) {
+    appearance: base-select;
+  }
+
+  .call__device select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .call__device select::picker(select) {
+    position-try-order: normal;
+    max-height: min(240px, max(calc(100% - 4px), 120px));
+    margin-block: 2px;
+    padding: 2px;
+    border: 1px solid var(--muted);
+    background: var(--paper);
+    color: var(--ink);
+    font: 13px / 1.4 var(--type);
+    overflow-y: auto;
+    position-try-fallbacks: flip-block;
+  }
+
+  .call__device option {
+    padding: 6px 8px;
+  }
+
+  .call__device option:hover,
+  .call__device option:focus-visible {
+    background: var(--panel);
+    outline: none;
+  }
+}
+
+.call__problem {
+  justify-items: center;
+  width: 100%;
+  max-width: 360px;
+  margin-top: 8px;
+}
+
+.call__captions {
+  align-self: stretch;
+  margin-top: 12px;
+  text-align: left;
+}
+
+/* What recognition has not settled yet. */
+.call__partial {
+  opacity: 0.6;
+}
+
+.call__controls {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 16px 20px 28px;
+  text-align: center;
+}
+
+.call__keypad {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 264px);
+}
+
+/* The keypad holds the focus for the keys typed on a computer; it is not a control of its own, and draws no ring. */
+.chat .call__keypad:focus-visible {
+  outline: none;
+}
+
+.call__typed {
+  min-height: 1.5em;
+  font-size: 20px;
+  letter-spacing: 0.12em;
+}
+
+.call__keys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.call__key {
+  height: 48px;
+  border: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* Only under a pointer: on a touch screen the hover stays on the last key pressed, as if it were held. */
+@media (hover: hover) {
+  .call__key:hover {
+    background: #ebebeb;
+  }
+}
+
+.call__key:active {
+  background: #dcdcdc;
+}
+
+/* Call and hang up share one place and one width, so the one gives way to the other without a jump. */
+.call__call,
+.call__hang {
+  min-width: 12em;
+  padding: 11px 18px 9px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* After a call that booked, the panel comes first and calling again steps back to an outline. */
+.call__call--quiet {
+  background: transparent;
+  color: var(--ink);
+}
+
+.call__call:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Hanging up is the call's one red, as on any phone: 6.5:1 under white. */
+.call__hang {
+  border-color: #b3261e;
+  background: #b3261e;
+}
+
+/* After a call that booked, «Voir côté restaurant» takes the main button's place and shape. */
+.call__panel.chat__primary {
+  min-width: 12em;
+  padding: 11px 18px 9px;
+  border: 1px solid var(--ink);
+  text-align: center;
+}
+
+.call__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+/* A switch, not a link: a small box, filled while the captions show. */
+.call__switch::before {
+  content: '';
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+}
+
+.call__switch[aria-pressed='true']::before {
+  background: currentColor;
+}
+
+.call__terms {
+  max-width: 30em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* The restaurant on the line: a slow breath while it rings, still while it listens, its staves moving while it thinks, and from the middle out while it speaks. */
+@media (prefers-reduced-motion: no-preference) {
+  .call__stage--connecting .call__mark,
+  .call__stage--ringing .call__mark {
+    animation: ring 1.6s ease-in-out infinite;
+  }
+
+  .call__stage--thinking .call__stave {
+    animation: stave 1.2s ease-in-out infinite;
+  }
+
+  .call__stage--thinking .call__stave:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+
+  .call__stage--thinking .call__stave:nth-child(4) {
+    animation-delay: 0.24s;
+  }
+
+  .call__stage--thinking .call__stave:nth-child(5) {
+    animation-delay: 0.36s;
+  }
+
+  .call__stage--thinking .call__stave:nth-child(6) {
+    animation-delay: 0.48s;
+  }
+
+  .call__stage--speaking .call__stave {
+    animation: voice 0.9s ease-in-out infinite;
+  }
+
+  .call__stage--speaking .call__stave:nth-child(3),
+  .call__stage--speaking .call__stave:nth-child(5) {
+    animation-delay: 0.15s;
+  }
+
+  .call__stage--speaking .call__stave:nth-child(2),
+  .call__stage--speaking .call__stave:nth-child(6) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes ring {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes voice {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.3;
+    }
+  }
+}
+
+/* «Appeler le restaurant» beside «Réserver»: the same size, drawn in outline. */
+.site__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.site__call {
+  padding: 8px 13px 6px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.lost {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 32px;
+  min-height: calc(100dvh - var(--bar-h));
+  padding: 120px 30px;
+  text-align: center;
+}
+
+.lost h1 {
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.lost p {
+  margin: 0;
+  font-size: 15px;
+}
+
+/*
+ * Below the width of the panel and a photograph, the screens stack, 30 px at the sides: the
+ * cover is the film to the bottom of the screen, and each screen keeps its photograph, low (16:9), above its text,
+ * so the mark and the title still come in the first screen.
+ */
+@media (max-width: 999px) {
+  .backdrop {
+    position: absolute;
+    inset: 0 0 auto;
+    height: calc(100svh - var(--bar-h));
+  }
+
+  .backdrop__layer:not(.backdrop__layer--cover) {
+    display: none;
+  }
+
+  .screen {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .screen--cover {
+    min-height: calc(100svh - var(--bar-h));
+  }
+
+  .screen__photo {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    background: var(--panel);
+  }
+
+  .screen__text {
+    padding: 56px 30px 72px;
+  }
+
+  /* The head on the phone, by ink: a mark of 60 px, 44 px to the title's letters, 58 px from them to the text. */
+  .mark {
+    width: auto;
+    height: 60px;
+  }
+
+  .screen__text > .mark {
+    margin-bottom: 38px;
+  }
+
+  .screen__text > .site__label {
+    margin-bottom: 44px;
+  }
+
+  .cover__card {
+    width: min(300px, 100% - 60px);
+    padding: 40px 24px 36px;
+  }
+
+  .site__toggle,
+  .site__close {
+    top: 8px;
+    left: 8px;
+  }
+
+  .site__tabs {
+    top: 8px;
+    right: 8px;
+  }
+
+  /* On the phone the menu is narrower, its links smaller. */
+  .site__menu {
+    width: min(320px, 100vw - 64px);
+  }
+
+  .site__sheet {
+    padding: 120px 20px 40px;
+  }
+
+  .site__links {
+    font-size: 17px;
+    line-height: 19px;
+  }
+
+  .site__links + .site__links {
+    margin-top: 42px;
+  }
+}
+
+/* The legal page: the panel's column alone, with the mark and the label, each part under its own small heading. */
+.legal {
+  display: grid;
+  justify-items: center;
+  gap: 40px;
+  max-width: calc(var(--column) - 120px);
+  margin: 0 auto;
+  padding: 96px 30px 120px;
+  text-align: center;
+}
+
+.legal > .site__label {
+  margin: 32px 0 52px;
+}
+
+.legal__part {
+  display: grid;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.legal__part h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.legal__part p {
+  margin: 0;
+}
+
+.legal__contact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

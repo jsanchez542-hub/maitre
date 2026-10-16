@@ -1,0 +1,49 @@
+---
+import '@fontsource/cutive-mono/latin-400.css';
+import '../styles/site.css';
+import type { Language } from 'maitre';
+import { messagesFor } from '../i18n/messages';
+import { HOME, LEGAL } from '../i18n/routes';
+import Base from '../layouts/Base.astro';
+import { typeset } from '../lib/typography';
+import BarrelMark from './BarrelMark.astro';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const t = messagesFor(language).legal;
+const CONTACT = [
+  { label: 'Migue Studio', href: 'https://miguestudio.me' },
+  { label: 'GitHub', href: 'https://github.com/jsanchez542-hub' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/miguel-sanchez-077385302' },
+];
+---
+
+<Base language={language} title={t.title} description={t.description} side="client" here={LEGAL}>
+  <div class="site">
+    <main class="legal" id="main">
+      <BarrelMark />
+      <h1 class="site__label">{t.heading}</h1>
+      {
+        t.sections.map((section) => (
+          <section class="legal__part">
+            <h2>{section.heading}</h2>
+            <p>{typeset(section.body)}</p>
+            {section.contact && (
+              <ul class="legal__contact">
+                {CONTACT.map((link) => (
+                  <li>
+                    <a href={link.href}>{link.label}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))
+      }
+      <a href={HOME[language]}>{t.back}</a>
+    </main>
+  </div>
+</Base>

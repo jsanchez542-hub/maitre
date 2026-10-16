@@ -1,0 +1,132 @@
+---
+import '@fontsource/ibm-plex-sans/latin-400.css';
+import '@fontsource/ibm-plex-sans/latin-600.css';
+import cutiveMono from '@fontsource/cutive-mono/files/cutive-mono-latin-400-normal.woff2?url';
+import plexSans400 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?url';
+import plexSans600 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2?url';
+import '../styles/base.css';
+import { Image } from 'astro:assets';
+import { LANGUAGES, type Language } from 'maitre';
+import { messagesFor } from '../i18n/messages';
+import { HOME, LANGUAGE_NAMES, PANEL } from '../i18n/routes';
+// Migue Studio's own icon, as its owner made it: resized, and turned white on the bar by its style, never redrawn.
+import studioMark from '../assets/migue-studio/icon.png';
+// The tab's icon, written into the page: Migue Studio's 16 and 32 px frames, byte for byte as in its favicon.ico.
+import tab16 from '../assets/migue-studio/tab-16.png?inline';
+import tab32 from '../assets/migue-studio/tab-32.png?inline';
+// Inline, before the first paint; astro.config.mjs allows it by the hash of this same file.
+import barHeight from '../lib/bar-height.js?raw';
+
+interface Props {
+  language: Language;
+  title: string;
+  description: string;
+  /** Which side of the demo the page belongs to: the restaurant's site or its panel. */
+  side: 'client' | 'restaurant';
+  /** The same page in each language, when it is neither the site's home nor the panel. */
+  here?: Record<Language, string>;
+  /** A page that answers any unknown address: it has no address of its own to name, and nothing to index. */
+  notFound?: boolean;
+  /** A page that opens on the film: its ground is the film's own grey until the film is there. */
+  film?: boolean;
+}
+
+const { language, title, description, side, notFound = false, film = false } = Astro.props;
+const t = messagesFor(language).demo;
+const here = Astro.props.here ?? (side === 'client' ? HOME : PANEL);
+const address = (path: string) => new URL(path, Astro.site).href;
+// The panel works on each visitor's own restaurant: search engines have nothing to find there.
+const indexed = side === 'client' && !notFound;
+const LOCALES: Record<Language, string> = { fr: 'fr_FR', en: 'en_GB', es: 'es_ES' };
+---
+
+<!doctype html>
+<html lang={language} class={film ? `side-${side} film` : `side-${side}`}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/*
+      The tab's icon before anything else, with nothing to fetch: Edge shows its globe until a page's icon is there.
+      The 96 px file after them is for search engines, which want a multiple of 48, and for a browser that skips a
+      data: icon; a tab takes the nearest size, written into the page.
+    */}
+    <link rel="icon" type="image/png" sizes="32x32" href={tab32} />
+    <link rel="icon" type="image/png" sizes="16x16" href={tab16} />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content={side === 'client' ? '#ffffff' : '#161718'} />
+    {/* Before any style: the panel's first frame is dark, never a white flash on the way from the site. */}
+    <meta name="color-scheme" content={side === 'client' ? 'light' : 'dark'} />
+    {/* The faces of the first paint, asked for with the page: its text shows in them, and does not change face and move. */}
+    <link rel="preload" as="font" type="font/woff2" href={plexSans400} crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href={plexSans600} crossorigin />
+    {side === 'client' && <link rel="preload" as="font" type="font/woff2" href={cutiveMono} crossorigin />}
+    <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
+    {!indexed && <meta name="robots" content="noindex, nofollow" />}
+    {
+      !notFound && (
+        <>
+          <link rel="canonical" href={address(here[language])} />
+          {LANGUAGES.map((code) => (
+            <link rel="alternate" hreflang={code} href={address(here[code])} />
+          ))}
+          <link rel="alternate" hreflang="x-default" href={address(here.fr)} />
+          <meta property="og:url" content={address(here[language])} />
+        </>
+      )
+    }
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Maître" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:locale" content={LOCALES[language]} />
+    {LANGUAGES.filter((code) => code !== language).map((code) => <meta property="og:locale:alternate" content={LOCALES[code]} />)}
+    <meta property="og:image" content={address(`/og/maitre-${language}.jpg`)} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={t.imageAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip" href="#main">{t.skip}</a>
+    <aside class="demo-bar" aria-label={t.label}>
+      <div class="demo-bar__id">
+        <a class="demo-bar__studio" href="https://miguestudio.me" target="_blank" rel="noopener" aria-label="Migue Studio">
+          <Image class="demo-bar__mark" src={studioMark} width={32} height={32} densities={[1, 2]} format="png" loading="eager" alt="" />
+        </a>
+        <a class="demo-bar__brand" href={HOME[language]}>Maître</a>
+        <span class="demo-bar__what">{t.product}</span>
+      </div>
+      <nav class="demo-bar__sides" aria-label={t.sides}>
+        <a href={HOME[language]} aria-current={side === 'client' ? 'page' : undefined}>{t.client}</a>
+        <a href={PANEL[language]} aria-current={side === 'restaurant' ? 'page' : undefined}>{t.restaurant}</a>
+      </nav>
+      {
+        side === 'client' ? (
+          <p class="demo-bar__note">{t.note}</p>
+        ) : (
+          // Who the visitor is; when, the panel says once it knows the restaurant's time: never the hour of the build.
+          <p class="demo-bar__note demo-bar__note--panel">
+            {t.manager}
+            <span id="demo-when" />
+            <span id="demo-not-live" />
+          </p>
+        )
+      }
+      <nav class="demo-bar__languages" aria-label={t.languages}>
+        {
+          LANGUAGES.map((code) => (
+            <a href={here[code]} lang={code} hreflang={code} aria-current={code === language ? 'true' : undefined}>
+              {code.toUpperCase()}
+              <span class="sr-only"> {LANGUAGE_NAMES[code]}</span>
+            </a>
+          ))
+        }
+      </nav>
+    </aside>
+    <script is:inline set:html={barHeight} />
+    <slot />
+  </body>
+</html>

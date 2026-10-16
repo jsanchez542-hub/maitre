@@ -1,0 +1,20 @@
+---
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
+import '../styles/panel.css';
+import type { Language } from 'maitre';
+import { messagesFor } from '../i18n/messages';
+import Base from '../layouts/Base.astro';
+import { Panel } from './Panel';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const t = messagesFor(language).panel;
+---
+
+<Base language={language} title={t.title} description={t.description} side="restaurant">
+  <Panel client:load language={language} />
+</Base>

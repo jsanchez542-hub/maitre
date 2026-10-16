@@ -1,7 +1,22 @@
 import { localNow } from 'maitre';
 import { DEMO_EVENING_DATE, DEMO_RESTAURANT, demoEvening } from 'maitre/demo';
 import { describe, expect, it } from 'vitest';
-import { bookingsIn, coversCurve, maskedPhone, minuteOn, minutesLate, onOneClock, seatCount, serviceAt, stageOf, stayUsed, tablesAt } from './service-view';
+import {
+  bookingsIn,
+  coversCurve,
+  groupsOf,
+  laterAt,
+  matchesName,
+  minuteOn,
+  minutesLate,
+  onOneClock,
+  seatCount,
+  serviceAt,
+  stageOf,
+  stayUsed,
+  tablesAt,
+  telHref,
+} from './service-view';
 
 function evening() {
   const { engine, clock } = demoEvening();
@@ -72,12 +87,44 @@ describe('the plan at 20:05 on the demo evening', () => {
     expect(martin?.next?.guestName).toBe('Girard');
   });
 
+  it('keeps a table held for dinner off the lunch plan', () => {
+    const { day, minute } = evening();
+    const lunch = day.sittings.find((sitting) => sitting.service === 'lunch');
+    if (!lunch) throw new Error('The demo evening has no lunch');
+    expect(tablesAt(day, lunch, minute).filter((entry) => entry.hold !== undefined)).toEqual([]);
+  });
+
   it('shows a guest still booking online at the table the engine keeps for them', () => {
     const { day, dinner, minute } = evening();
     const held = tablesAt(day, dinner, minute).find((entry) => entry.hold !== undefined);
     expect(held?.table.number).toBe(day.holds[0]?.table);
     expect(held?.state).toBe('seated');
     expect(held?.hold?.time).toBe('21:15');
+  });
+});
+
+describe('a table before dinner', () => {
+  // Friday at 17:30 in Bordeaux: nobody is in yet, and table 1 has Martin at 19:00, then Girard at 21:00.
+  function beforeDinner() {
+    const now = new Date('2026-10-16T15:30:00.000Z');
+    const { engine } = demoEvening({ now });
+    const day = engine.serviceDay(DEMO_EVENING_DATE, 'fr');
+    const dinner = day.sittings.find((sitting) => sitting.service === 'dinner');
+    if (!dinner) throw new Error('The demo evening has no dinner');
+    const minute = minuteOn(day, localNow(now, DEMO_RESTAURANT.timeZone));
+    return { bookings: bookingsIn(day, dinner), tables: tablesAt(day, dinner, minute) };
+  }
+
+  it('lists the parties due after the next one, which the plan does not show yet', () => {
+    const { bookings, tables } = beforeDinner();
+    const table = tables.find((entry) => entry.next?.guestName === 'Martin');
+    expect(table?.state).toBe('free');
+    expect(table && laterAt(bookings, table).map((party) => `${party.time} ${party.guestName}`)).toEqual(['21:00 Girard']);
+  });
+
+  it('lists nobody after a table with no party still to come', () => {
+    const { bookings, tables } = beforeDinner();
+    for (const entry of tables.filter((candidate) => candidate.next === undefined)) expect(laterAt(bookings, entry)).toEqual([]);
   });
 });
 
@@ -122,11 +169,47 @@ describe('the service the dashboard opens on', () => {
   });
 });
 
+describe('the list of a service', () => {
+  it('groups the evening as the host reads it, the party at the door first', () => {
+    const { day, dinner } = evening();
+    const groups = groupsOf(bookingsIn(day, dinner));
+    const names = (id: string) => groups.find((group) => group.id === id)?.bookings.map((entry) => entry.guestName) ?? [];
+
+    expect(groups.map((group) => group.id)).toEqual(['arrived', 'due', 'seated', 'done']);
+    expect(names('arrived')).toEqual(['Moreau']);
+    expect(names('due')[0]).toBe('Petit');
+    expect(names('seated')).toContain('Martin');
+    expect(names('done')).toEqual(['Bonnet']);
+  });
+
+  it('counts the covers of each group', () => {
+    const { day, dinner } = evening();
+    const arrived = groupsOf(bookingsIn(day, dinner)).find((group) => group.id === 'arrived');
+    expect(arrived?.covers).toBe(4);
+  });
+
+  it('leaves out a group with no one in it', () => {
+    expect(groupsOf([])).toEqual([]);
+  });
+});
+
+describe('searching a guest', () => {
+  it('finds a name whatever the case and the accents', () => {
+    expect(matchesName('Lefèvre', 'lefevre')).toBe(true);
+    expect(matchesName('Lefèvre', ' LEF ')).toBe(true);
+    expect(matchesName('Moreau', 'martin')).toBe(false);
+  });
+});
+
 describe('a booking as the staff read it', () => {
   it('says late only for a party that has not arrived', () => {
     const { minute } = evening();
     expect(minutesLate(booking('Petit'), minute)).toBe(5);
     expect(minutesLate(booking('Moreau'), minute)).toBe(0);
+  });
+
+  it('stops counting once the table is no longer kept for the party', () => {
+    expect(minutesLate(booking('Petit'), 1440 + 20 * 60)).toBe(0);
   });
 
   it('tells a confirmed booking from one still to confirm', () => {
@@ -151,12 +234,9 @@ describe('the evening as numbers', () => {
   });
 });
 
-describe('phone numbers on the public demo', () => {
-  it('hides every group but the first two and the last', () => {
-    expect(maskedPhone('+33 6 00 00 12 34')).toBe('+33 6 •• •• •• 34');
-  });
-
-  it('leaves a number it cannot read as groups untouched', () => {
-    expect(maskedPhone('+3360000')).toBe('+3360000');
+describe('phone numbers', () => {
+  it('dials the number as the engine writes it, without its spaces', () => {
+    expect(telHref('+33 6 39 98 00 22')).toBe('tel:+33639980022');
+    expect(telHref('+447700900101')).toBe('tel:+447700900101');
   });
 });

@@ -10,7 +10,8 @@
     "noUnusedParameters": true,
     "paths": {
       "maitre": ["../src/index.ts"],
-      "maitre/demo": ["../src/demo/index.ts"]
+      "maitre/demo": ["../src/demo/index.ts"],
+      "maitre/demo/chat": ["../src/demo/chat.ts"]
     }
   },
   "include": [".astro/types.d.ts", "src", "tests", "*.config.ts"],

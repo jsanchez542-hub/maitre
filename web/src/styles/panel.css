@@ -1,0 +1,3273 @@
+/* The restaurant's panel: dark greys, one colour per state, five type sizes and two weights. */
+:root {
+  color-scheme: dark;
+  --bg: #161718;
+  --floor: #1a1b1c;
+  --raise: #202123;
+  --tile: #2d2e2f;
+  --control: #363738;
+  --control-on: #4a4b4d;
+  --furniture: #626365;
+  --free-table: #babcbd;
+  --glass: #8fb3d1;
+  --ink: #eceef0;
+  --muted: #a6a7a8;
+  --seated: #47b599;
+  --seated-chair: #367669;
+  --arrived: #3f94e6;
+  --arrived-chair: #2c6aa8;
+  --booked: #fff8a1;
+  --amber: #f2b23a;
+  --coral: #ff7a6b;
+  --held: #8b7bf0;
+  --on-color: #161718;
+  --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --t12: 12px;
+  --t14: 14px;
+  --t16: 16px;
+  --t20: 20px;
+  --t24: 24px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 var(--t16) / 1.5 var(--sans);
+}
+
+/* Scrollbars as the panel draws its furniture: a thin grey thumb on no track, where the system's were a pale band. */
+.app {
+  scrollbar-color: var(--furniture) transparent;
+}
+
+.app * {
+  scrollbar-width: thin;
+}
+
+/* The keyboard's ring, the same on every control: 2 px in the quiet grey, 7.6:1 on the panel, 2 px off the edge. A
+   press of the mouse draws none. */
+.app :focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+/* The rail, then the section: 96 wide, so «Conversaciones» fits under its icon at the panel's smallest size, 12. */
+.app {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  height: calc(100dvh - var(--bar-h));
+  min-height: 560px;
+}
+
+.app__main {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* While the visitor's restaurant opens: one quiet line where the service is about to show. */
+.app__opening {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--muted);
+  font: 400 14px/1.5 var(--sans);
+}
+
+.screen {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 16px;
+  background: var(--raise);
+}
+
+.topbar__brand {
+  margin-right: 8px;
+  font-size: var(--t14);
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--control);
+}
+
+.day__step {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.day__step:hover {
+  background: var(--control-on);
+}
+
+.day__today {
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--bg);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  font-size: var(--t14);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.day__today:hover {
+  background: var(--control-on);
+}
+
+.day__label {
+  min-width: 12em;
+  padding: 0 8px;
+  font-size: var(--t14);
+  font-weight: 600;
+  text-align: center;
+}
+
+.day__label::first-letter {
+  text-transform: uppercase;
+}
+
+.services {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--control);
+}
+
+.services__tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--t14);
+  cursor: pointer;
+}
+
+.services__tab[aria-pressed='true'] {
+  background: var(--control-on);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.services__name {
+  display: inline-block;
+}
+
+.services__name::first-letter {
+  text-transform: uppercase;
+}
+
+.services__count {
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--tile);
+  font: 600 var(--t12) / 16px var(--mono);
+}
+
+.services__tab[aria-pressed='true'] .services__count {
+  background: var(--seated);
+  color: var(--on-color);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 12px 16px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--tile);
+  color: var(--muted);
+}
+
+.search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t14);
+}
+
+.search input::placeholder {
+  color: var(--muted);
+}
+
+.search input:focus {
+  outline: none;
+}
+
+.search:has(input:focus-visible) {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.topbar__walk-in {
+  position: relative;
+}
+
+.topbar__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--control);
+  font-size: var(--t14);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.topbar__action:hover,
+.topbar__action[aria-expanded='true'] {
+  background: var(--control-on);
+}
+
+/* «Nouvelle réservation»: the bar's one primary action, in the amber the panel keeps for it. */
+.topbar__action--primary {
+  background: var(--amber);
+  color: var(--on-color);
+}
+
+.topbar__action--primary:hover {
+  background: #f5c25e;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 10px;
+  width: max-content;
+  max-width: 320px;
+  padding: 14px;
+  border: 1px solid var(--tile);
+  border-radius: 10px;
+  background: var(--raise);
+}
+
+.popover__label {
+  font-size: var(--t14);
+}
+
+/* The sizes on one row, however many the tables take: the last alone on a second row reads as forgotten. */
+.popover--sizes {
+  max-width: none;
+}
+
+.clock {
+  margin-left: auto;
+}
+
+/* The time and the actions, at the bar's end: when the bar runs out of room they go to a second row together. */
+.topbar__end {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+/* Between the phone and a wide screen the two lesser actions keep their icon and lose their word, as on the phone. */
+@media (min-width: 880px) and (max-width: 1279px) {
+  .topbar__action:not(.topbar__action--primary) {
+    justify-content: center;
+    width: 36px;
+    padding: 0;
+  }
+
+  .topbar__action:not(.topbar__action--primary) .topbar__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.clock__now {
+  color: var(--amber);
+  font-size: var(--t14);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--raise);
+}
+
+.status__summary {
+  margin-right: auto;
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+/* The next service a party at the door can be seated in, its day first when it is not today's. */
+.wait__next::first-letter {
+  text-transform: uppercase;
+}
+
+.status__summary::first-letter {
+  text-transform: uppercase;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--raise);
+  font-size: var(--t14);
+}
+
+.chip::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.chip--allergy::before {
+  background: var(--coral);
+}
+
+.chip--callback::before {
+  background: var(--ink);
+}
+
+.chip--hold::before {
+  background: var(--held);
+}
+
+/* «À rappeler» opens its list: the counter is a button, drawn as the others. */
+.chip--button {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--t14);
+  cursor: pointer;
+}
+
+.chip--button:hover,
+.chip--button[aria-expanded='true'] {
+  background: var(--control);
+}
+
+.popover--list {
+  width: min(360px, calc(100vw - 32px));
+  max-width: none;
+}
+
+/* Under the counters, its edge on the content's and not the screen's: the status row's padding stays round it. */
+.status > .popover {
+  right: 16px;
+}
+
+.callbacks {
+  display: grid;
+  max-height: 60vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.callback {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--tile);
+}
+
+.callback p,
+.callbacks__empty {
+  margin: 0;
+}
+
+.callback__when {
+  color: var(--muted);
+  font: 400 var(--t12) / 1.4 var(--mono);
+}
+
+.callback__phone {
+  font: 400 var(--t14) / 1.4 var(--mono);
+}
+
+.callback__summary {
+  font-size: var(--t14);
+}
+
+.callback__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.callback .action {
+  min-height: 36px;
+}
+
+/* The covers through the service belong to the summary, not to the room: folded until asked for. */
+.flow__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--raise);
+  font-size: var(--t14);
+  cursor: pointer;
+  list-style: none;
+}
+
+.flow__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.flow__toggle::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.flow[open] .flow__toggle::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.flow__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 16px;
+  z-index: 15;
+  width: min(560px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--tile);
+  border-radius: 10px;
+  background: var(--raise);
+}
+
+.views {
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--control);
+}
+
+.views__button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.views__button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--on-color);
+}
+
+.salle {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+/*
+ * Between the phone and a screen wide enough for both, the list and the room take turns, as on the phone: beside the
+ * list the room would be drawn under the 712 px its names need. A table's card still stands beside the room.
+ */
+@media (min-width: 880px) and (max-width: 1179px) {
+  .views {
+    display: flex;
+  }
+
+  .salle:not(.salle--card) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .screen[data-view='list'] .salle:not(.salle--card) .floor,
+  .screen[data-view='plan'] .salle:not(.salle--card) .side {
+    display: none;
+  }
+}
+
+/*
+ * A table's card takes the list's place on a wide screen. Over the room it
+ * hid the tables it offers to move to, and beside it the room shrank until the names on the plan ran into each other.
+ * The list comes back as the card closes.
+ */
+@media (min-width: 880px) {
+  .salle--card .side {
+    grid-row: 1;
+    grid-column: 1;
+    visibility: hidden;
+  }
+
+  .salle--card .floor {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .salle--card .card {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-row: 1;
+    grid-column: 1;
+    align-self: stretch;
+    align-content: start;
+    width: auto;
+    min-height: 0;
+    max-height: none;
+    border-width: 0 1px 0 0;
+    border-color: var(--raise);
+    border-radius: 0;
+  }
+}
+
+.side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-right: 1px solid var(--raise);
+}
+
+/* Positioned so the hidden labels of the rows (absolutely placed) stay inside the scroll, instead of stretching the page. */
+.side__list {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.floor {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 16px;
+  container-type: size;
+}
+
+.closed {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.closed,
+.empty {
+  padding: 24px 16px;
+  color: var(--muted);
+}
+
+.group__head {
+  font-size: inherit;
+}
+
+.group__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--raise);
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.group__name {
+  margin-right: auto;
+}
+
+.group__count {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.group__toggle::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.group__toggle[aria-expanded='false']::after {
+  transform: rotate(-45deg);
+}
+
+.rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto 36px;
+  align-items: center;
+  gap: 0 12px;
+  width: 100%;
+  padding: 10px 16px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--raise);
+  background: transparent;
+  text-align: left;
+}
+
+button.row {
+  cursor: pointer;
+}
+
+button.row:hover {
+  background: var(--raise);
+}
+
+.row[aria-pressed='true'] {
+  background: var(--tile);
+  box-shadow: inset 3px 0 var(--ink);
+}
+
+.glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--tile);
+}
+
+.glyph::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+}
+
+.is-arrived .glyph::before {
+  border-color: var(--arrived);
+  background: var(--arrived);
+}
+
+.is-seated .glyph::before {
+  border-color: var(--seated);
+  background: var(--seated);
+}
+
+.is-late .glyph::before {
+  border-color: var(--amber);
+}
+
+.is-left .glyph::before,
+.is-cancelled .glyph::before,
+.is-no_show .glyph::before {
+  width: 10px;
+  height: 2px;
+  border: 0;
+  border-radius: 1px;
+  background: var(--furniture);
+}
+
+.row__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row__time {
+  color: var(--muted);
+  font: 400 var(--t12) / 1.2 var(--mono);
+}
+
+.is-late .row__time {
+  color: var(--amber);
+}
+
+.row__name {
+  overflow: hidden;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.is-left .row__name,
+.is-cancelled .row__name,
+.is-no_show .row__name {
+  color: var(--muted);
+}
+
+.is-cancelled .row__name,
+.is-no_show .row__name {
+  text-decoration: line-through;
+}
+
+.row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: var(--t12);
+}
+
+.row__late {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.row__covers {
+  font: 600 var(--t16) / 1 var(--mono);
+}
+
+.row__table {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--tile);
+  font: 600 var(--t14) / 1 var(--mono);
+}
+
+.row__table:empty {
+  background: transparent;
+}
+
+.row__stay {
+  position: absolute;
+  right: 16px;
+  bottom: 5px;
+  left: 56px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--tile);
+}
+
+.row__stay > span {
+  display: block;
+  height: 100%;
+  background: var(--seated);
+}
+
+.rows__item.is-new .row {
+  box-shadow: inset 3px 0 var(--ink);
+}
+
+/* A booking's state as a flat pill, an allergy as a round tag: the two never read as each other. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 2px;
+  background: var(--free-table);
+  color: var(--on-color);
+  font-size: var(--t12);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pill--booked {
+  background: var(--booked);
+}
+
+.pill--arrived {
+  background: var(--arrived);
+}
+
+.pill--seated {
+  background: var(--seated);
+}
+
+.pill--new {
+  background: var(--ink);
+}
+
+.pill--left,
+.pill--cancelled {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--furniture);
+}
+
+.pill--no_show {
+  background: transparent;
+  color: var(--coral);
+  box-shadow: inset 0 0 0 1px var(--coral);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 19px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--coral);
+  color: var(--on-color);
+  font-size: var(--t12);
+  font-weight: 600;
+}
+
+.card {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  display: grid;
+  gap: 12px;
+  width: min(340px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--tile);
+  border-radius: 10px;
+  background: var(--raise);
+}
+
+.card__grabber {
+  display: none;
+}
+
+.card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card__title {
+  font-size: var(--t20);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.card__title:focus {
+  outline: none;
+}
+
+.card__time {
+  margin-left: auto;
+  color: var(--muted);
+  font: 600 var(--t14) / 1 var(--mono);
+}
+
+/* The card's way out, at its head: on a wide screen the card stands in the list's place, its foot out of view. */
+.card__close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: center;
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.card__close:hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+
+.card__title + .card__close {
+  margin-left: auto;
+}
+
+.card__detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.card__line {
+  font-size: var(--t14);
+}
+
+.card__label,
+.card__phone,
+.card__next {
+  color: var(--muted);
+}
+
+.card__phone {
+  font-family: var(--mono);
+  text-decoration: none;
+}
+
+.card__phone:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.card__next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.card__hold {
+  padding-left: 8px;
+  border-left: 2px solid var(--held);
+  color: var(--muted);
+}
+
+.card__actions {
+  display: grid;
+  gap: 8px;
+}
+
+.card__group {
+  display: grid;
+  gap: 8px;
+}
+
+/* Bookings the hours leave out: in the coral of what needs the staff now, set apart from the service it sits above. */
+.outside {
+  display: grid;
+  flex-basis: 100%;
+  gap: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--coral);
+  border-radius: 6px;
+  background: var(--raise);
+}
+
+.section__body > .outside {
+  margin-bottom: 16px;
+}
+
+/* On the service the list opens over the room, as «À rappeler» does, instead of pushing the plan off the screen. */
+.outside--folded {
+  position: relative;
+  padding: 6px 8px 6px 12px;
+}
+
+.outside--folded .outside__list {
+  position: relative;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  background:
+    linear-gradient(var(--raise), var(--raise)) bottom / 100% 40px no-repeat local,
+    linear-gradient(to top, rgb(0 0 0 / 0.6), transparent) bottom / 100% 40px no-repeat scroll;
+}
+
+.outside__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.outside__title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.outside__title:focus {
+  outline: none;
+}
+
+.outside__body {
+  display: grid;
+  gap: 8px;
+}
+
+.outside__help {
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.outside__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outside__item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--tile);
+}
+
+.outside__who {
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.outside__when {
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.outside__phone {
+  font: 400 var(--t14) / 1.4 var(--mono);
+}
+
+.outside__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Calling, changing and cancelling share one row: the cancel step drops the rule it has on a card. */
+.outside__actions .card__undo {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.outside__actions .action {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: var(--t14);
+}
+
+.pill--outside {
+  background: transparent;
+  color: var(--coral);
+  box-shadow: inset 0 0 0 1px var(--coral);
+}
+
+/* Confirm, change and move: what the host does with a booking besides seating it, a size below the floor's actions. */
+.card__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action__note {
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 400;
+}
+
+.action--small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: var(--t14);
+}
+
+/* Cancel and no-show, apart from the floor's actions: each asks once more before it is done. */
+.card__undo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--tile);
+}
+
+.card__group + .card__group,
+.card__party {
+  padding-top: 12px;
+  border-top: 1px solid var(--tile);
+}
+
+.parties {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.party {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--tile);
+}
+
+.party:last-child {
+  padding-bottom: 0;
+}
+
+/* The booking opened from the list, marked as its row is. */
+.party--picked {
+  margin: 0 -8px;
+  padding-right: 8px;
+  padding-left: 8px;
+  border-radius: 6px;
+  background: var(--tile);
+  box-shadow: inset 3px 0 var(--ink);
+}
+
+.party__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--t16);
+  font-weight: 600;
+}
+
+.party__time {
+  color: var(--muted);
+  font: 600 var(--t14) / 1 var(--mono);
+}
+
+.sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Buttons 44 high, the size of a fingertip. A link that dials a guest is drawn as one. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--furniture);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.action:hover {
+  border-color: var(--ink);
+}
+
+.action--primary {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: var(--on-color);
+}
+
+.action--size {
+  min-width: 44px;
+  padding: 0;
+  font-family: var(--mono);
+}
+
+.action--quiet {
+  justify-self: start;
+  padding: 0 8px;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+/* Cloudflare draws its check here only when it needs a click; until then the box holds nothing and shows nothing. */
+.verify {
+  position: fixed;
+  bottom: 20px;
+  left: 116px;
+  z-index: 45;
+}
+
+.verify:has(.verify__label) {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--control);
+  border-radius: 8px;
+  background: var(--raise);
+}
+
+.verify__label {
+  margin: 0;
+  font-size: var(--t14);
+}
+
+/* The first visit: a ring around what each step is about, and its card beside it. */
+/* Out of the panel's grid: its ring and card are fixed to the screen, and in the flow the wrapper took a row of its
+   own, which shortened the panel while the tour was open. */
+.tour {
+  position: absolute;
+}
+
+.tour__ring {
+  position: fixed;
+  z-index: 60;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--amber), 0 0 0 9999px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.tour__card {
+  position: fixed;
+  z-index: 61;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--control);
+  border-radius: 8px;
+  background: var(--raise);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 50%);
+}
+
+.tour__step {
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--t12) / 1.5 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tour__title {
+  margin: 0;
+  font-size: var(--t20);
+  font-weight: 600;
+}
+
+.tour__title:focus {
+  outline: none;
+}
+
+.tour__body {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.tour__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tour__skip,
+.tour__next {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font: 600 var(--t14) / 1 var(--sans);
+  cursor: pointer;
+}
+
+.tour__skip {
+  border: 1px solid var(--furniture);
+  background: transparent;
+  color: var(--ink);
+}
+
+.tour__next {
+  border: 1px solid var(--amber);
+  background: var(--amber);
+  color: var(--on-color);
+}
+
+/* Bottom right on a wide screen, clear of the list and of the table's card. */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, calc(100vw - 32px));
+}
+
+.toast__text:not(:empty) {
+  padding: 10px 14px;
+  border: 1px solid var(--control);
+  border-radius: 8px;
+  background: var(--raise);
+  font-size: var(--t14);
+}
+
+.toast__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--control);
+  cursor: pointer;
+}
+
+.chart {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.chart__plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 72px;
+  border-top: 1px dashed var(--furniture);
+}
+
+.chart__bar {
+  flex: 1;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+  background: var(--seated);
+}
+
+.chart__bar.is-past {
+  background: var(--furniture);
+}
+
+.chart__limit {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  color: var(--muted);
+  font: 400 var(--t12) / 1 var(--mono);
+}
+
+.chart__limit--start {
+  right: auto;
+  left: 0;
+}
+
+.chart__peak {
+  position: absolute;
+  transform: translate(-2px, -4px);
+  font: 600 var(--t12) / 1 var(--mono);
+  white-space: nowrap;
+}
+
+.chart__peak--before {
+  transform: translate(calc(-100% + 2px), -4px);
+}
+
+.chart__now {
+  position: absolute;
+  top: -4px;
+  bottom: 0;
+  width: 2px;
+  background: var(--amber);
+  transform: translateX(-1px);
+}
+
+.chart__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font: 400 var(--t12) / 1 var(--mono);
+}
+
+.chart figcaption {
+  color: var(--muted);
+  font-size: var(--t12);
+}
+
+/* A floor narrower than the room scrolls; the room stays centred while it fits, and starts at the edge when not. */
+.floor__scroll {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+/*
+ * The room fills its floor, but is never drawn narrower than 712 px, what it has beside the list on a 1180 px screen:
+ * under about 700 px the names beside and under the desk's tables run into each other and into the next tables, before
+ * dinner, when each carries its time.
+ */
+.plan {
+  position: relative;
+  width: max(712px, min(100cqw, 100cqh * 1.44));
+  margin: auto;
+  aspect-ratio: 144 / 100;
+}
+
+.room {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.room__floor {
+  fill: var(--floor);
+}
+
+.room__wall {
+  fill: none;
+  stroke: var(--furniture);
+  stroke-width: 6;
+  stroke-linecap: square;
+  vector-effect: non-scaling-stroke;
+}
+
+.room__window {
+  fill: none;
+  stroke: var(--glass);
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.room__bench,
+.room__bar {
+  fill: var(--furniture);
+}
+
+.room__stool {
+  fill: var(--tile);
+  stroke: var(--furniture);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.room__door,
+.room__swing {
+  fill: none;
+  stroke: var(--furniture);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.room__swing {
+  stroke-dasharray: 4 4;
+}
+
+.room__pass {
+  fill: var(--control-on);
+}
+
+.plan__label {
+  position: absolute;
+  color: var(--muted);
+  font-size: var(--t12);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.plan__label--kitchen {
+  bottom: 5%;
+  left: 27%;
+  transform: translateX(-50%);
+}
+
+.plan__label--entrance {
+  bottom: 5%;
+  left: 66%;
+  transform: translateX(-50%);
+}
+
+.table {
+  --w: 52px;
+  --h: 52px;
+  --chair-w: 18px;
+  --chair-h: 9px;
+  --chair-out: 8px;
+  --body: var(--free-table);
+  --chair: var(--furniture);
+  position: absolute;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--on-color);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.table--round {
+  --w: 44px;
+  --h: 44px;
+}
+
+.table--rect {
+  --w: 120px;
+  --h: 44px;
+}
+
+.table--rect.table--turned {
+  --w: 44px;
+  --h: 120px;
+}
+
+.table__top {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--w);
+  height: var(--h);
+  border-radius: 6px;
+  background: var(--body);
+  box-shadow: var(--ring, 0 0 transparent), var(--pick, 0 0 transparent);
+  font: 600 var(--t16) / 1 var(--mono);
+}
+
+.table--round .table__top {
+  border-radius: 50%;
+}
+
+.chair {
+  position: absolute;
+  z-index: -1;
+  width: var(--chair-w);
+  height: var(--chair-h);
+  border-radius: 3px;
+  background: var(--chair);
+  transform: translate(-50%, -50%) rotate(var(--turn)) translateY(calc(-1 * var(--chair-out)));
+}
+
+.table.is-seated {
+  --body: var(--seated);
+  --chair: var(--seated-chair);
+}
+
+.table.is-arrived {
+  --body: var(--arrived);
+  --chair: var(--arrived-chair);
+}
+
+.table.is-expected {
+  --body: var(--tile);
+  --chair: var(--control);
+  --ring: inset 0 0 0 2px var(--muted);
+  color: var(--ink);
+}
+
+.table.is-late {
+  --ring: inset 0 0 0 2px var(--amber);
+}
+
+.table.is-selected,
+.table.is-new {
+  --pick: 0 0 0 3px var(--floor), 0 0 0 5px var(--ink);
+}
+
+.table:focus-visible {
+  outline: none;
+}
+
+.table:focus-visible .table__top {
+  outline: 2px solid var(--muted);
+  outline-offset: 14px;
+}
+
+.table__allergy {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--coral);
+  color: var(--on-color);
+  font: 600 var(--t12) / 14px var(--sans);
+  text-align: center;
+}
+
+.table__name {
+  position: absolute;
+  top: calc(100% + var(--chair-out) + var(--chair-h) / 2 + 4px);
+  left: 50%;
+  color: var(--ink);
+  font: 600 var(--t12) / 1.2 var(--sans);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* At the banquette nothing stands below the table but the next one: the name goes on the room's side. */
+.table--room-right .table__name {
+  top: 50%;
+  left: calc(100% + var(--chair-out) + var(--chair-h) + 8px);
+  transform: translateY(-50%);
+}
+
+.table--room-left .table__name {
+  top: 50%;
+  right: calc(100% + var(--chair-out) + var(--chair-h) + 8px);
+  left: auto;
+  transform: translateY(-50%);
+}
+
+.table__name--next {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.table.is-late .table__name {
+  color: var(--amber);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .table.is-new .table__top {
+    animation: arrive 1.6s ease-out 3;
+  }
+
+  @keyframes arrive {
+    from {
+      box-shadow: var(--ring, 0 0 transparent), 0 0 0 3px var(--floor), 0 0 0 5px var(--ink), 0 0 0 5px rgb(236 238 240 / 60%);
+    }
+
+    to {
+      box-shadow: var(--ring, 0 0 transparent), 0 0 0 3px var(--floor), 0 0 0 5px var(--ink), 0 0 0 22px rgb(236 238 240 / 0%);
+    }
+  }
+}
+
+.plan--rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 48px 32px;
+  width: 100%;
+  aspect-ratio: auto;
+  padding: 32px 24px 48px;
+}
+
+.plan--rows .table {
+  position: relative;
+  transform: none;
+}
+
+/* The phone: the list or the plan, one at a time, and the table's card as a sheet from the bottom. */
+/* «Nouvelle réservation»: a sheet from the right, over the room, which stays in sight beside it. */
+.sheet {
+  width: min(440px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--tile);
+  background: var(--raise);
+  color: var(--ink);
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 50%);
+}
+
+.sheet__form {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  height: 100%;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.sheet__title {
+  margin: 0;
+  font-size: var(--t20);
+  font-weight: 600;
+}
+
+.sheet__title:focus {
+  outline: none;
+}
+
+/* The date on its own line, as wide as the browser draws it with its calendar; the time and the party beside each other. */
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.fields .field:first-child {
+  grid-column: 1 / -1;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.field__optional {
+  font-size: var(--t12);
+}
+
+.field input,
+.field select,
+.field textarea {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--furniture);
+  border-radius: 6px;
+  background: var(--floor);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field textarea {
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+/*
+ * A date's day, month and year take the focus in the panel's grey, not the system's blue. Chromium reaches the focused
+ * part through :focus-within; a :focus rule on it parses and never applies.
+ */
+.field input::-webkit-datetime-edit-day-field:focus-within,
+.field input::-webkit-datetime-edit-month-field:focus-within,
+.field input::-webkit-datetime-edit-year-field:focus-within {
+  border-radius: 2px;
+  background: var(--control-on);
+  color: var(--ink);
+}
+
+/*
+ * A select opens its list as one of the panel's popovers, under its control, at most 10 rows high with its own scroll,
+ * where the system's own list opened over the bar. The browser would put it on whichever side has more room: here it
+ * stays under, shorter if it must, and goes above only with less than four rows of room below. A browser without the
+ * customizable select keeps its own list, which on a phone is the right one.
+ */
+@supports (appearance: base-select) {
+  .field select,
+  .field select::picker(select) {
+    appearance: base-select;
+  }
+
+  .field select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .field select::picker-icon {
+    color: var(--muted);
+  }
+
+  .field select::picker(select) {
+    position-try-order: normal;
+    max-height: min(360px, max(calc(100% - 8px), 160px));
+    margin-block: 4px;
+    padding: 4px;
+    border: 1px solid var(--control);
+    border-radius: 8px;
+    background: var(--raise);
+    color: var(--ink);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+    overflow-y: auto;
+    position-try-fallbacks: flip-block;
+  }
+
+  .field option {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 4px;
+    font-size: var(--t14);
+  }
+
+  .field option:hover,
+  .field option:focus-visible {
+    background: var(--control);
+    outline: none;
+  }
+
+  .field option:checked {
+    font-weight: 600;
+  }
+}
+
+/*
+ * Choices drawn as chips: the guest's language, and the allergens as the panel tags them, coral once ticked, so the
+ * kitchen learns of a booking by hand as of the assistant's.
+ */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choices legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.choice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--furniture);
+  border-radius: 16px;
+  color: var(--muted);
+  font-size: var(--t14);
+  cursor: pointer;
+}
+
+.choice input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.choice:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-color);
+  font-weight: 600;
+}
+
+.choice--allergen:has(input:checked) {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.sheet__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+/* What the engine answered, and the times it would give instead. */
+.sheet__problem {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-left: 2px solid var(--amber);
+  background: var(--floor);
+}
+
+.sheet__problem p {
+  margin: 0;
+}
+
+.sheet__instead {
+  display: grid;
+  gap: 8px;
+}
+
+.sheet__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 879px) {
+  .tour__card {
+    inset: auto 12px 12px !important;
+    width: auto;
+  }
+
+  /* What the step points at is low on the screen, as the rail's bar is: the card rises to the top, clear of it. */
+  .tour__card--high {
+    inset: 12px 12px auto !important;
+  }
+
+  .app {
+    position: relative;
+    height: auto;
+    min-height: calc(100dvh - var(--bar-h));
+  }
+
+  .screen {
+    height: auto;
+  }
+
+  .topbar {
+    gap: 10px 12px;
+    padding: 10px 12px;
+  }
+
+  .topbar__brand {
+    flex: 1;
+    margin-right: 0;
+  }
+
+  /* The phone lays the time and each action out on their own. */
+  .topbar__end {
+    display: contents;
+  }
+
+  .topbar__walk-in {
+    margin-left: auto;
+  }
+
+  .clock {
+    margin-left: 0;
+  }
+
+  .day {
+    order: 3;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .day__label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* The services and the switch between list and plan share a row: the phone keeps its height for the bookings. */
+  .services {
+    order: 4;
+    flex: 1;
+  }
+
+  .services__tab {
+    flex: 1;
+    height: 40px;
+  }
+
+  .views {
+    order: 4;
+    display: flex;
+  }
+
+  /* The walk-in shares the clock's row as an icon; its name stays for screen readers. */
+  .topbar__action {
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .topbar__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .search {
+    margin: 12px;
+  }
+
+  /* The party size for a walk-in comes up as a sheet, like the table's card: it fits at any width. */
+  .popover {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 10px 10px 0 0;
+  }
+
+  /* The phone's service scrolls as a page: the bookings outside the hours open in it, under their line, not as a sheet over it. */
+  .outside .popover {
+    position: static;
+    /* A grid item keeps its z-index even when static: without this the list would scroll over the bottom bar. */
+    z-index: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .outside--folded .outside__list {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .status {
+    padding: 12px;
+  }
+
+  /* The services already carry their covers, and the curve is for planning at a desk: the phone keeps the counters. */
+  .status__summary,
+  .flow {
+    display: none;
+  }
+
+  .salle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side {
+    display: block;
+    border-right: 0;
+  }
+
+  .side__list {
+    overflow: visible;
+  }
+
+  .screen[data-view='list'] .floor,
+  .screen[data-view='plan'] .side {
+    display: none;
+  }
+
+  .floor {
+    display: block;
+    padding: 0;
+    container-type: normal;
+  }
+
+  /* The room is wider than a phone: it keeps its proportions and scrolls sideways. */
+  .floor__scroll {
+    display: block;
+    place-items: normal;
+    overflow-x: auto;
+    padding: 12px;
+  }
+
+  /*
+   * Centered while it fits; wider than the screen, it starts at the left edge, so the banquette stays in reach. With
+   * the phone's smaller tables the names need 660 px before dinner, when each carries its time.
+   */
+  .plan {
+    width: 700px;
+    margin-inline: auto;
+  }
+
+  .table {
+    --w: 40px;
+    --h: 40px;
+    --chair-w: 14px;
+    --chair-h: 7px;
+    --chair-out: 6px;
+  }
+
+  .table--round {
+    --w: 32px;
+    --h: 32px;
+  }
+
+  .table--rect {
+    --w: 84px;
+    --h: 32px;
+  }
+
+  .table__top {
+    font-size: var(--t14);
+  }
+
+  .group__toggle {
+    height: 32px;
+    padding: 0 12px;
+    background: transparent;
+  }
+
+  .rows {
+    gap: 15px;
+    padding: 0 12px 15px;
+  }
+
+  .row {
+    padding: 16px 16px 18px;
+    border: 0;
+    border-radius: 4px;
+    background: var(--raise);
+  }
+
+  button.row:hover {
+    background: var(--tile);
+  }
+
+  .row__stay {
+    left: 16px;
+    bottom: 7px;
+  }
+
+  .card {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 75vh;
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 10px 10px 0 0;
+  }
+
+  /* The tour points at the list and at the bar below it, which the sheet covers: it steps aside until the tour ends. */
+  .app--tour .card {
+    display: none;
+  }
+
+  .card__grabber {
+    display: block;
+    justify-self: center;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--furniture);
+  }
+
+  /*
+   * On the phone the table's card is a sheet at the bottom: the message floats over the top of the panel, with its
+   * button inside, so no control shows between the two. Not over the top of the screen, where it covered the demo's
+   * bar, which wraps to a height of its own here, nor over the first row and its «Nouvelle réservation»: over the
+   * day's arrows below it, 10 of padding, a 40-high row and 10 between rows down.
+   */
+  .toast {
+    position: absolute;
+    top: 60px;
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    max-width: none;
+  }
+
+  .toast__text:not(:empty) {
+    flex: 1;
+    padding-right: 52px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  }
+
+  .toast__close {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+  }
+}
+
+/* The panel's sections down the side, each icon over its name, the settings at the foot. */
+.rail {
+  border-right: 1px solid var(--raise);
+  background: var(--bg);
+}
+
+.rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  margin: 0;
+  padding: 8px 4px;
+  list-style: none;
+}
+
+.rail__item--settings {
+  margin-top: auto;
+}
+
+.rail__link {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 2px 8px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: var(--t12);
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+}
+
+.rail__link .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.rail__link:hover {
+  background: var(--raise);
+  color: var(--ink);
+}
+
+.rail__link[aria-current='page'] {
+  background: var(--control);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* A section's name in its bar, after the restaurant's, as the day sits in the service's. */
+.topbar__title {
+  font-size: var(--t16);
+  font-weight: 600;
+}
+
+.topbar__title:focus {
+  outline: none;
+}
+
+/* A column that may shrink: a wide table scrolls in its own frame, never the page. */
+.screen--section {
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Each scroll of a section is positioned, as the list's is: the hidden labels inside (absolutely placed) stay in it. */
+.section__body {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 16px 32px;
+  container-type: inline-size;
+}
+
+/* A scroll the keyboard reaches shows its ring inside its own edge, which the screen would otherwise cut. */
+.section__body:focus-visible,
+.log__conversation:focus-visible {
+  outline-offset: -2px;
+}
+
+.section__lead {
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.section__lead::first-letter {
+  text-transform: uppercase;
+}
+
+/* Nothing to show yet: what to do for something to show, and the way there. */
+.section__empty {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 16px;
+  max-width: 600px;
+  padding: 32px 16px;
+  color: var(--muted);
+}
+
+/* Activité and Réglages: tiles, figures in Plex Mono and their words in Plex Sans. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+/*
+ * Two short tiles in one cell, one above the other, where three columns stand side by side: a row would otherwise wait
+ * for its longest tile and leave a hole under the short ones. Three columns of 320 px and their gaps need 992 px, a
+ * fourth comes at 1328 px; on any other count each tile takes its own cell again. The section's body is the measure.
+ */
+.tiles__stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+@container (width < 992px) or (width >= 1328px) {
+  .tiles__stack {
+    display: contents;
+  }
+}
+
+/* One column that may shrink: on a phone the allergen chips scroll sideways inside it instead of widening the page. */
+.tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--tile);
+  border-radius: 10px;
+  background: var(--floor);
+}
+
+.tile--wide {
+  grid-column: 1 / -1;
+}
+
+.tile__title,
+.tile__subtitle {
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tile__subtitle {
+  margin-top: 6px;
+}
+
+.tile__lead {
+  font-size: var(--t16);
+  font-weight: 600;
+}
+
+.tile__help,
+.tile__empty {
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.tile__help {
+  font-size: var(--t12);
+}
+
+.figure {
+  font: 600 var(--t24) / 1.1 var(--mono);
+}
+
+.figure__label {
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.figure__of {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.facts {
+  display: grid;
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--tile);
+  font-size: var(--t14);
+}
+
+.fact dt {
+  display: grid;
+  gap: 2px;
+}
+
+.fact dd {
+  margin: 0;
+  text-align: end;
+}
+
+.facts--figures dd {
+  font: 600 var(--t14) / 1.4 var(--mono);
+}
+
+.fact__help {
+  color: var(--muted);
+  font-size: var(--t12);
+}
+
+.fact__line {
+  display: block;
+}
+
+/* A service's name starts the line it opens; the other values read on from their label, in lowercase. */
+.fact__line--service::first-letter {
+  text-transform: uppercase;
+}
+
+/* The bookings by each way in, measured against the busiest, in the teal of a seated table. */
+.bars {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--t14);
+}
+
+.bar__track {
+  width: 100%;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--tile);
+}
+
+.bar__fill {
+  fill: var(--seated);
+}
+
+.bar__value {
+  font: 600 var(--t14) / 1 var(--mono);
+  text-align: end;
+}
+
+/* Conversations: the list beside the one open, as a mail client shows them; on the phone, one at a time. */
+.log {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.log__list {
+  position: relative;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--raise);
+  list-style: none;
+}
+
+.talk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--raise);
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.talk:hover {
+  background: var(--raise);
+}
+
+.talk[aria-current='true'] {
+  background: var(--tile);
+  box-shadow: inset 3px 0 var(--ink);
+}
+
+.talk__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.talk__who {
+  min-width: 0;
+  font-size: var(--t14);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.talk__when {
+  flex: none;
+  color: var(--muted);
+  font: 400 var(--t12) / 1.4 var(--mono);
+}
+
+.talk__line {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--t14);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* The guest's last words on one line: rows that came to the same, «Web · Renseignement», still tell themselves apart. */
+.talk__said {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--t14);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talk__call {
+  color: var(--muted);
+  font-size: var(--t12);
+}
+
+.log__conversation {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.log__choose {
+  padding: 24px;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.transcript {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+  padding: 16px 24px 32px;
+}
+
+.transcript__back {
+  display: none;
+}
+
+.transcript__head {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--raise);
+}
+
+.transcript__title {
+  font-size: var(--t20);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.transcript__title:focus {
+  outline: none;
+}
+
+.transcript__facts {
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+.transcript__facts a {
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+/* The thread as a phone shows messages: the guest's on the left, the restaurant's assistant on the right. */
+.thread {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bubble {
+  display: grid;
+  gap: 4px;
+  max-width: min(78%, 560px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: var(--t14);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.bubble--guest {
+  justify-self: start;
+  border-bottom-left-radius: 4px;
+  background: var(--tile);
+}
+
+.bubble--assistant {
+  justify-self: end;
+  border-bottom-right-radius: 4px;
+  background: var(--control);
+}
+
+.bubble__time {
+  color: var(--muted);
+  font: 400 var(--t12) / 1 var(--mono);
+}
+
+/* What a turn did, between the words: a booking outlined in white, as «Nouvelle» marks a new one on the floor. */
+.event {
+  justify-self: center;
+  max-width: 90%;
+  padding: 4px 10px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--furniture);
+  color: var(--muted);
+  font-size: var(--t12);
+  text-align: center;
+}
+
+.event--booked {
+  box-shadow: inset 0 0 0 1px var(--ink);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* «Détails techniques»: closed until asked for, what the assistant asked the engine and how it went, as a log is. */
+.tech {
+  padding-top: 12px;
+  border-top: 1px solid var(--raise);
+}
+
+.tech__summary {
+  width: max-content;
+  color: var(--muted);
+  font-size: var(--t14);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tech__summary:hover {
+  color: var(--ink);
+}
+
+.tech__body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tech__turns {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tech__turn {
+  display: grid;
+  gap: 6px;
+  padding: 6px 12px;
+  border-left: 2px solid var(--furniture);
+}
+
+.tech__time {
+  color: var(--muted);
+  font: 400 var(--t12) / 1.4 var(--mono);
+}
+
+.tech__group {
+  display: grid;
+  gap: 2px;
+}
+
+.tech__label {
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tech__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  font-size: var(--t14);
+  list-style: none;
+}
+
+.tech__status,
+.tech__line {
+  color: var(--muted);
+}
+
+.tech__line {
+  font-size: var(--t12);
+}
+
+/* A part's name and the button that edits it, on one line. */
+.tile__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tile__head + .facts,
+.tile__head + .tile__help {
+  margin-top: -2px;
+}
+
+.tile__edit {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--furniture);
+  border-radius: 6px;
+  background: transparent;
+  font-size: var(--t14);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tile__edit:hover {
+  border-color: var(--ink);
+}
+
+.edit {
+  display: grid;
+  gap: 12px;
+}
+
+.edit__day {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 0 12px;
+  border: 0;
+  border-top: 1px solid var(--tile);
+}
+
+.edit__legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.edit__legend::first-letter {
+  text-transform: uppercase;
+}
+
+.edit__problem {
+  padding-left: 10px;
+  border-left: 2px solid var(--coral);
+  font-size: var(--t14);
+}
+
+.edit__actions,
+.edit__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.edit__remove {
+  justify-self: start;
+}
+
+/* One service of a day: open or not, then its first and last table beside each other. */
+.sittings-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.sitting-edit {
+  display: grid;
+  grid-template-columns: minmax(110px, 180px) repeat(2, minmax(0, 160px));
+  align-items: end;
+  gap: 10px;
+}
+
+.sitting-edit__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--t14);
+}
+
+.sitting-edit__open input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.sitting-edit__name::first-letter {
+  text-transform: uppercase;
+}
+
+/* The same words in each language the assistant speaks, one field each, named in their own language. */
+.trilingual {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.trilingual legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.field__unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t14);
+}
+
+.field__unit input {
+  width: 96px;
+}
+
+.field__help {
+  color: var(--muted);
+  font-size: var(--t12);
+}
+
+.fields--pair .field:first-child {
+  grid-column: auto;
+}
+
+/* The dish's fourteen allergens: each named, then the kitchen's four answers as chips. */
+.allergen-edit {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.allergen-edit > legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.allergen-edit__row {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--tile);
+}
+
+.allergen-edit__name {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.allergen-edit__name::first-letter {
+  text-transform: uppercase;
+}
+
+/* Four answers to one allergen, side by side, one chosen: a radio group the arrow keys move through. */
+.segments {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--control);
+}
+
+.segment {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--ink);
+}
+
+.segment:has(input:checked) {
+  background: var(--ink);
+  color: var(--on-color);
+}
+
+.segment--contains:has(input:checked),
+.segment--may_contain:has(input:checked) {
+  background: var(--coral);
+}
+
+.segment:has(input:focus-visible) {
+  outline: 2px solid var(--muted);
+  outline-offset: 2px;
+}
+
+/* The menu, dish by dish under its course: the name and price, then the sheet in words, a line per answer. One
+   allergen is checked from chips, every one in sight; on the phone they run in one row that scrolls sideways. */
+.filter {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+@media (max-width: 879px) {
+  .filter .choices {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* Room for the keyboard's ring, which the scroll would cut at the row's edges. */
+    padding: 4px;
+  }
+
+  .filter .choice {
+    flex: none;
+  }
+}
+
+.course {
+  display: grid;
+  gap: 8px;
+}
+
+.course__title {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--t12);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* As many columns as 340 px allow, sharing the width between them: three on a desk, two on a tablet, one on a phone. */
+.dishes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dish {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--tile);
+  border-radius: 8px;
+}
+
+.dish__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dish__name {
+  font-size: var(--t14);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* A dish's name opens it, where the owner reads it. */
+.dish__edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: var(--furniture);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.dish__edit:hover {
+  text-decoration-color: var(--ink);
+}
+
+.dish__price {
+  flex: none;
+  color: var(--muted);
+  font: 400 var(--t12) / 1.4 var(--mono);
+}
+
+.dish__line {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--t14);
+  overflow-wrap: anywhere;
+}
+
+.dish__line .mark {
+  flex: none;
+  width: 1em;
+}
+
+.dish__line--free,
+.dish__line--unknown {
+  color: var(--muted);
+}
+
+.dish__more {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.plain {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  font-size: var(--t14);
+  list-style: none;
+}
+
+.plain li::first-letter {
+  text-transform: uppercase;
+}
+
+.plain__note {
+  color: var(--muted);
+}
+
+/* An answer's mark: coral for what a dish holds, quiet for what it does not, plain for what its sheet leaves unsaid. */
+.mark {
+  font-weight: 600;
+  text-align: center;
+}
+
+.mark--contains,
+.mark--may_contain {
+  color: var(--coral);
+}
+
+.mark--free {
+  color: var(--furniture);
+}
+
+.mark--unknown {
+  color: var(--ink);
+}
+
+.answers {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.answers dt {
+  font-size: var(--t14);
+  font-weight: 600;
+}
+
+.answers dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t14);
+}
+
+@media (max-width: 879px) {
+  /* On the phone the rail is the bar along the bottom: the page keeps room for it. */
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .rail {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--tile);
+    border-right: 0;
+    background: var(--raise);
+  }
+
+  .rail__list {
+    flex-direction: row;
+    gap: 0;
+    height: auto;
+    padding: 4px;
+  }
+
+  .rail__item {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .rail__item--settings {
+    margin-top: 0;
+  }
+
+  .rail__link {
+    padding: 6px 4px 4px;
+  }
+
+  .verify {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+
+  /* Away from the service no card rises from the bottom: the message waits there, above the bar, over no control. */
+  .app:not([data-section='service']) .toast {
+    position: fixed;
+    top: auto;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .section__body {
+    padding: 16px 12px 24px;
+  }
+
+  .log {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .log__list {
+    border-right: 0;
+  }
+
+  .log[data-open='conversation'] .log__list,
+  .log[data-open='list'] .log__conversation {
+    display: none;
+  }
+
+  .transcript {
+    padding: 12px 12px 24px;
+  }
+
+  .sitting-edit {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sitting-edit__open {
+    grid-column: 1 / -1;
+  }
+
+  .transcript__back {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 12px 0 6px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--control);
+    font-size: var(--t14);
+    font-weight: 600;
+    cursor: pointer;
+  }
+}

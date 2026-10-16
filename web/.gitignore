@@ -1,3 +1,6 @@
 .astro/
 test-results/
 playwright-report/
+# The home page's films (merrain-v1-{1000k,2000k}.{mp4,webm}, 6.8 MB) are served as static assets but kept out of
+# git, as heavy binaries: copy them here before a build. The README says where they are kept.
+public/media/

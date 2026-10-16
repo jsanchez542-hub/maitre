@@ -1,0 +1,426 @@
+---
+import '@fontsource/cutive-mono/latin-400.css';
+import '../styles/site.css';
+import { Picture, getImage } from 'astro:assets';
+import type { ComponentProps } from 'astro/types';
+import { formatTime, type Language } from 'maitre';
+import { DEMO_MENU, DEMO_RESTAURANT, DEMO_VENUE } from 'maitre/demo';
+import bar from '../assets/merrain/bar.jpg';
+import closing from '../assets/merrain/closing.jpg';
+import groups from '../assets/merrain/groups.jpg';
+import pass from '../assets/merrain/pass.jpg';
+import plate from '../assets/merrain/plate.jpg';
+import staves from '../assets/merrain/staves.jpg';
+import table from '../assets/merrain/table.jpg';
+import wine from '../assets/merrain/wine.jpg';
+import { messagesFor } from '../i18n/messages';
+import { LEGAL } from '../i18n/routes';
+import Base from '../layouts/Base.astro';
+import { CELLAR_SELECTION, serviceName, weekOf } from '../lib/restaurant';
+import { typeset } from '../lib/typography';
+import BarrelMark from './BarrelMark.astro';
+import { BookingChat } from './BookingChat';
+import { RestaurantCall } from './RestaurantCall';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const messages = messagesFor(language);
+const t = messages.site;
+const courses = (['starter', 'main', 'dessert'] as const).map((course) => ({
+  title: t.courses[course],
+  dishes: DEMO_MENU.filter((dish) => dish.category === course),
+}));
+// As a bistro's card prints a price: the number alone, no currency sign.
+const price = (cents: number) => (cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2).replace('.', language === 'en' ? '.' : ','));
+const weekday = (day: number) => t.weekdays[day - 1] ?? '';
+const week = weekOf(DEMO_RESTAURANT).map((row) => ({
+  days: row.first === row.last ? weekday(row.first) : t.days(weekday(row.first), weekday(row.last)),
+  services: row.sittings.map((sitting) =>
+    t.service(serviceName(DEMO_RESTAURANT, sitting.service, language), formatTime(sitting.firstSeating, language), formatTime(sitting.lastSeating, language)),
+  ),
+}));
+const rule = t.rule(DEMO_RESTAURANT.maxAdvanceDays, DEMO_RESTAURANT.minNoticeMinutes);
+const sections = [
+  { id: 'carte', title: t.menu, photo: plate },
+  { id: 'maison', title: t.house, photo: staves },
+  { id: 'cave', title: t.cellar, photo: wine },
+  { id: 'reserver', title: t.booking, photo: table },
+  { id: 'groupes', title: t.groups, photo: groups },
+  { id: 'horaires', title: t.hours, photo: closing },
+  { id: 'infos', title: t.info, photo: bar },
+];
+const photoOf = (id: string) => sections.find((section) => section.id === id)?.photo ?? plate;
+const formats = { formats: ['avif', 'webp'], fallbackFormat: 'webp', alt: '' } satisfies Partial<ComponentProps<typeof Picture>>;
+// The cover's first frame fills the window. Each screen's photograph fills what the 660 px panel leaves on a wide
+// screen, and runs the whole width above its text on a phone.
+const cover = { ...formats, widths: [640, 960, 1080], sizes: '100vw' } satisfies Partial<ComponentProps<typeof Picture>>;
+const behind = { ...formats, widths: [640, 960, 1280, 1600], sizes: 'calc(100vw - 660px)' } satisfies Partial<ComponentProps<typeof Picture>>;
+const above = { ...formats, widths: [640, 960, 1280], sizes: '100vw' } satisfies Partial<ComponentProps<typeof Picture>>;
+// The film's first frame, asked for from the head, before the page that holds it: the cover's first paint is the film.
+const poster = await getImage({ src: pass, format: 'avif', widths: cover.widths });
+---
+
+<Base language={language} title={t.title} description={t.description} side="client" film>
+  <link slot="head" rel="preload" as="image" type="image/avif" imagesrcset={poster.srcSet.attribute} imagesizes={cover.sizes} fetchpriority="high" />
+  <div class="site">
+    <header class="site__chrome">
+      <button type="button" class="site__toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="site-menu">
+        <span class="site__lines" aria-hidden="true"></span>
+        <span class="sr-only">{t.menuButton}</span>
+      </button>
+      {/*
+        «Réserver» without script leads to the booking screen, and with it opens the booking itself. The call, the way a
+        guest reaches a restaurant first, shows beside it once the Worker says the demo takes calls.
+      */}
+      <div class="site__tabs">
+        <button type="button" class="site__tab site__tab--call" aria-haspopup="dialog" data-call hidden>{t.call}</button>
+        <a class="site__tab site__book" href="#reserver" aria-haspopup="dialog" data-book>{t.book}</a>
+      </div>
+    </header>
+
+    <dialog class="site__menu" id="site-menu" aria-label={t.menuButton}>
+      {/* Over the menu's own lines, the same lines, which cross as the menu opens: one icon to the eye, in a menu that stays modal. */}
+      <button type="button" class="site__close" aria-label={t.close}>
+        <span class="site__lines" aria-hidden="true"></span>
+      </button>
+      <div class="site__sheet">
+        <nav aria-label={t.sections}>
+          <ul class="site__links">
+            {
+              sections.map((section) => (
+                <li>
+                  <a href={`#${section.id}`}>{section.title}</a>
+                </li>
+              ))
+            }
+          </ul>
+          <ul class="site__links">
+            <li><a href={LEGAL[language]}>{t.legal}</a></li>
+          </ul>
+        </nav>
+      </div>
+    </dialog>
+
+    {/* Behind the panels: the cover's film, then each screen's photograph, faded in as its screen comes. */}
+    <div class="backdrop" aria-hidden="true">
+      <div class="backdrop__layer backdrop__layer--cover is-shown" data-section="accueil">
+        {/* The film's first frame, which the page script plays over: the picture is what loads first. */}
+        <Picture src={pass} {...cover} loading="eager" decoding="sync" fetchpriority="high" />
+      </div>
+      {
+        sections.map((section) => (
+          <div class="backdrop__layer" data-section={section.id} hidden>
+            <Picture src={section.photo} {...behind} loading="lazy" />
+          </div>
+        ))
+      }
+    </div>
+
+    <main id="main">
+      <section class="screen screen--cover" id="accueil" aria-labelledby="merrain">
+        <div class="cover__card">
+          <h1 class="cover__name" id="merrain">Merrain</h1>
+          <BarrelMark />
+          <p class="cover__kind">{t.kind} · {t.place}</p>
+        </div>
+        <a class="cover__next" href="#carte" aria-label={t.next}>
+          <svg viewBox="0 0 40 20" aria-hidden="true"><path d="M1 1 20 19 39 1"></path></svg>
+        </a>
+      </section>
+
+      <section class="screen" id="carte" aria-labelledby="carte-title">
+        <div class="screen__photo"><Picture src={photoOf('carte')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="carte-title">{t.menu}</h2>
+          <div class="courses">
+            {
+              courses.map(({ title, dishes }) => (
+                <div class="course">
+                  <h3 class="course__title">{title}</h3>
+                  <ul class="dishes">
+                    {dishes.map((dish) => (
+                      <li>
+                        <span>{dish.name[language]}</span>
+                        {dish.priceCents !== undefined && <span class="dishes__price">{price(dish.priceCents)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            }
+          </div>
+          <p class="site__note">{t.prices}</p>
+        </div>
+      </section>
+
+      <section class="screen" id="maison" aria-labelledby="maison-title">
+        <div class="screen__photo"><Picture src={photoOf('maison')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="maison-title">{t.house}</h2>
+          <div class="house">{t.houseLines.map((line) => <p>{line}</p>)}</div>
+        </div>
+      </section>
+
+      <section class="screen" id="cave" aria-labelledby="cave-title">
+        <div class="screen__photo"><Picture src={photoOf('cave')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="cave-title">{t.cellar}</h2>
+          <p class="site__body">{t.cellarNote}</p>
+          <dl class="cellar">
+            {
+              CELLAR_SELECTION.map(({ group, names }) => (
+                <div>
+                  <dt>{t.cellarGroups[group]}</dt>
+                  <dd>{names.map((name, index) => <Fragment>{index > 0 && ' · '}<span>{name}</span></Fragment>)}</dd>
+                </div>
+              ))
+            }
+          </dl>
+        </div>
+      </section>
+
+      <section class="screen" id="reserver" aria-labelledby="reserver-title">
+        <div class="screen__photo"><Picture src={photoOf('reserver')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="reserver-title">{t.booking}</h2>
+          <address class="site__body site__place">{DEMO_VENUE.area}<br />{t.place}</address>
+          <p class="site__body site__rule">{rule}</p>
+          {/* The call is offered only once the Worker says the demo takes calls: the page script shows it then. */}
+          <div class="site__actions">
+            <a class="site__button" href="#reserver" data-book>{t.book}</a>
+            <button type="button" class="site__call" data-call hidden>{messages.call.open}</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="groupes" aria-labelledby="groupes-title">
+        <div class="screen__photo"><Picture src={photoOf('groupes')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="groupes-title">{t.groups}</h2>
+          <p class="site__body site__rule">{typeset(t.groupsText(DEMO_RESTAURANT.maxPartySize + 1))}</p>
+          <a class="site__button" href="#reserver" data-book="group">{t.groupsButton}</a>
+        </div>
+      </section>
+
+      <section class="screen" id="horaires" aria-labelledby="horaires-title">
+        <div class="screen__photo"><Picture src={photoOf('horaires')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="horaires-title">{t.hours}</h2>
+          <dl class="hours">
+            {
+              week.map((row) => (
+                <div>
+                  <dt>{row.days}</dt>
+                  {row.services.length > 0 ? row.services.map((line) => <dd>{typeset(line)}</dd>) : <dd>{t.closed}</dd>}
+                </div>
+              ))
+            }
+          </dl>
+        </div>
+      </section>
+
+      <section class="screen" id="infos" aria-labelledby="infos-title">
+        <div class="screen__photo"><Picture src={photoOf('infos')} {...above} loading="lazy" /></div>
+        <div class="screen__text">
+          <BarrelMark />
+          <h2 class="site__label" id="infos-title">{t.info}</h2>
+          <dl class="faq">
+            {
+              DEMO_RESTAURANT.faq.map((item) => (
+                <div>
+                  <dt>{typeset(item.question[language])}</dt>
+                  <dd>{typeset(item.answer[language])}</dd>
+                </div>
+              ))
+            }
+          </dl>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site__foot">
+      <p>{t.footer}</p>
+      <p><a href={LEGAL[language]}>{t.legal}</a></p>
+    </footer>
+  </div>
+  <BookingChat client:load language={language} />
+  <RestaurantCall client:idle language={language} />
+</Base>
+
+<script>
+  const bar = document.querySelector<HTMLElement>('.demo-bar');
+  const toggle = document.querySelector<HTMLButtonElement>('.site__toggle');
+  const menu = document.querySelector<HTMLDialogElement>('#site-menu');
+  const cover = document.getElementById('accueil');
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // The menu opens just below the demo's bar wherever the page is.
+  const placeBelowBar = () => document.documentElement.style.setProperty('--below-bar', `${Math.max(0, bar?.getBoundingClientRect().bottom ?? 0)}px`);
+
+  /** A panel that slides in: modal while open, Escape closes it, and the focus goes back to its opener. */
+  const slidingPanel = (dialog: HTMLDialogElement, opener: HTMLElement) => {
+    const open = () => {
+      placeBelowBar();
+      dialog.showModal();
+      opener.setAttribute('aria-expanded', 'true');
+      requestAnimationFrame(() => dialog.classList.add('is-open'));
+    };
+    const close = (giveBackFocus = true) => {
+      if (!dialog.open) return;
+      dialog.classList.remove('is-open');
+      opener.setAttribute('aria-expanded', 'false');
+      const done = () => {
+        dialog.close();
+        if (giveBackFocus) opener.focus();
+      };
+      // The panel slides out before it closes; without motion it closes at once.
+      if (still.matches || !giveBackFocus) done();
+      else setTimeout(done, 400);
+    };
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      close();
+    });
+    // A click outside the panel, on the page behind it, closes it.
+    dialog.addEventListener('click', (event) => {
+      const box = dialog.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close();
+    });
+    return { open, close };
+  };
+
+  if (toggle && menu) {
+    const panel = slidingPanel(menu, toggle);
+    toggle.addEventListener('click', () => panel.open());
+    menu.querySelector('.site__close')?.addEventListener('click', () => panel.close());
+    // A link takes the visitor to its screen: the menu gets out of the way without taking the focus back.
+    menu.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('a')) panel.close(false);
+    });
+  }
+
+  // Behind the panels, one layer per screen. The cover's film stays for as long as any of the cover is on screen, so
+  // what the cover leaves transparent never shows the black behind the layers. After it, each screen's photograph
+  // comes as its screen takes the middle of the window, faded in over the one before, which goes once it is covered.
+  // The next screen's photograph is loaded one screen ahead, so it is there when its screen comes.
+  const layers = new Map([...document.querySelectorAll<HTMLElement>('.backdrop__layer')].map((layer) => [layer.dataset['section'] ?? '', layer]));
+  const screens = [...document.querySelectorAll<HTMLElement>('main > .screen')];
+  let atMiddle = 'accueil';
+  let coverInView = true;
+  let front = layers.get('accueil');
+  let settling = 0;
+  const paint = () => {
+    const next = screens[screens.findIndex((screen) => screen.id === atMiddle) + 1]?.id;
+    for (const id of [atMiddle, next]) {
+      const layer = id === undefined ? undefined : layers.get(id);
+      if (layer) layer.hidden = false;
+    }
+    const film = layers.get('accueil');
+    const target = coverInView ? film : layers.get(atMiddle);
+    if (!target || target === front) return;
+    const previous = front;
+    for (const layer of layers.values()) {
+      if (layer !== target && layer !== previous) layer.classList.remove('is-shown', 'is-front');
+    }
+    clearTimeout(settling);
+    const settle = still.matches ? 0 : 400;
+    if (target === film && previous) {
+      // Back to the cover: the film spans the whole window under the photographs, so it is there at once and the
+      // photograph above it fades away; faded in, it would leave the left side bare while it came.
+      target.classList.remove('is-front');
+      target.classList.add('is-shown');
+      previous.classList.add('is-front');
+      previous.classList.remove('is-shown');
+      settling = window.setTimeout(() => previous.classList.remove('is-front'), settle);
+    } else {
+      previous?.classList.remove('is-front');
+      target.classList.add('is-shown', 'is-front');
+      settling = window.setTimeout(() => previous?.classList.remove('is-shown'), settle);
+    }
+    front = target;
+  };
+  const middle = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) if (entry.isIntersecting) atMiddle = entry.target.id;
+      paint();
+    },
+    { rootMargin: '-50% 0px -50% 0px' },
+  );
+  for (const screen of screens) middle.observe(screen);
+  // Measured on every frame the page moves, not observed: a link to the menu's screen leaves the cover's edge exactly
+  // at the window's top, which an observer still counts as in view, and the film would stay over the photograph.
+  const followCover = () => {
+    const shows = (cover?.getBoundingClientRect().bottom ?? 0) > 0;
+    if (shows === coverInView) return;
+    coverInView = shows;
+    paint();
+  };
+  followCover();
+
+  // Once a frame, whether the page scrolls or the window changes size.
+  let moving = false;
+  const onMove = () => {
+    if (moving) return;
+    moving = true;
+    requestAnimationFrame(() => {
+      moving = false;
+      followCover();
+      // An open menu stays just below the bar while the page moves under it.
+      if (menu?.open) placeBelowBar();
+    });
+  };
+  addEventListener('scroll', onMove, { passive: true });
+  addEventListener('resize', onMove);
+
+  // The cover's film: the pass in service, looped over its own first frame. Only where it costs the
+  // visitor nothing (no reduced motion, no Save-Data, no 2G or 3G), and only while the cover is in view.
+  const film = document.querySelector<HTMLElement>('.backdrop__layer--cover');
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  const costly = connection?.saveData === true || ['slow-2g', '2g', '3g'].includes(connection?.effectiveType ?? '');
+  if (film && cover && !costly && !still.matches) {
+    const start = () => {
+      const video = document.createElement('video');
+      video.className = 'cover__film';
+      for (const name of ['muted', 'loop', 'playsinline', 'disablepictureinpicture', 'disableremoteplayback']) video.setAttribute(name, '');
+      video.muted = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-hidden', 'true');
+      // The phone plays the lighter file, chosen once.
+      const rate = matchMedia('(min-width: 1000px)').matches ? '2000k' : '1000k';
+      for (const [extension, type] of [
+        ['webm', 'video/webm'],
+        ['mp4', 'video/mp4'],
+      ] as const) {
+        const source = document.createElement('source');
+        source.src = `/media/merrain-v1-${rate}.${extension}`;
+        source.type = type;
+        video.append(source);
+      }
+      video.addEventListener('playing', () => video.classList.add('is-playing'), { once: true });
+      film.append(video);
+      let seen = true;
+      const follow = () => {
+        // A browser may refuse to play, to save battery: the first frame stays, and it is the same picture.
+        if (seen && document.visibilityState === 'visible') video.play().catch(() => undefined);
+        else video.pause();
+      };
+      new IntersectionObserver(([entry]) => {
+        seen = entry?.isIntersecting ?? false;
+        follow();
+      }).observe(cover);
+      document.addEventListener('visibilitychange', follow);
+    };
+    // After the page and its first picture: the film never competes with what the visitor sees first.
+    if (document.readyState === 'complete') start();
+    else addEventListener('load', start, { once: true });
+  }
+</script>

@@ -1,0 +1,206 @@
+/* What both sides share: the reset and the thin bar of the demo, the only part that is not the product. */
+:root {
+  --bar-h: 36px;
+  --bar-bg: #0b0c0d;
+  --bar-ink: #eceef0;
+  --bar-muted: #a6a7a8;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* The panel's ground from the first style read, before its own sheet: the way from the site shows no white. */
+html.side-restaurant {
+  background: #161718;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  z-index: 50;
+  padding: 8px 12px;
+  background: var(--bar-ink);
+  color: #161718;
+  font: 600 14px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.skip:focus {
+  top: 8px;
+}
+
+.demo-bar {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* Never the measured --bar-h: the bar would keep the height it had, a phone's two rows, once the window widens. */
+  min-height: 36px;
+  padding: 0 16px;
+  background: var(--bar-bg);
+  color: var(--bar-ink);
+  font: 400 12px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.demo-bar a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.demo-bar a:focus-visible {
+  outline: 2px solid var(--bar-muted);
+  outline-offset: 2px;
+}
+
+/* Who made it and what it is: the studio's mark, the product's name, and on a wide screen a few words on it. */
+.demo-bar__id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.demo-bar__studio {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+/* The studio's icon is its black mark on a white tile. Inverted, the lines turn white and the tile black, and the
+   screen blend lets the bar show through the black: the lines alone, as drawn, white on the dark bar. The tile's
+   margin round the mark is taken back from the gaps on either side. */
+.demo-bar__mark {
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin-inline: -6px;
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
+
+.demo-bar__brand {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.demo-bar__what {
+  color: var(--bar-muted);
+}
+
+@media (max-width: 1199px) {
+  .demo-bar__what {
+    display: none;
+  }
+}
+
+.demo-bar__sides {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #202123;
+}
+
+.demo-bar__sides a {
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: var(--bar-muted);
+  font-weight: 600;
+}
+
+.demo-bar__sides a:hover {
+  color: var(--bar-ink);
+}
+
+/* Ink, not amber: the bar is not the product, and the panel keeps amber for "now" and the primary button. */
+.demo-bar__sides a[aria-current] {
+  background: var(--bar-ink);
+  color: #161718;
+}
+
+.demo-bar__note {
+  margin-left: auto;
+  color: var(--bar-muted);
+}
+
+.demo-bar__languages {
+  display: flex;
+  gap: 2px;
+}
+
+.demo-bar__languages a {
+  padding: 4px 6px;
+  color: var(--bar-muted);
+  font-weight: 600;
+}
+
+.demo-bar__languages a:hover,
+.demo-bar__languages a[aria-current] {
+  color: var(--bar-ink);
+}
+
+.demo-bar__languages a[aria-current] {
+  box-shadow: inset 0 -2px var(--bar-ink);
+}
+
+@media (max-width: 640px) {
+  .demo-bar {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 6px 12px;
+  }
+
+  /* The switch on the first row, the note and the languages on the second, in every language. */
+  .demo-bar__note {
+    flex: 1 1 auto;
+    order: 3;
+    margin-left: 0;
+  }
+
+  /* The panel's note ends with the restaurant's day and time, written once the panel has read them: it has the row to
+     itself from the first paint, so the time arriving does not push the languages down, and the panel with them. */
+  .demo-bar__note--panel {
+    flex-basis: 100%;
+  }
+
+  .demo-bar__languages {
+    order: 4;
+    margin-left: auto;
+  }
+}

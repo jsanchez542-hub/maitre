@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^maitre\/demo$/, replacement: core('demo/index.ts') },
+      { find: /^maitre\/demo\/chat$/, replacement: core('demo/chat.ts') },
       { find: /^maitre$/, replacement: core('index.ts') },
     ],
   },
