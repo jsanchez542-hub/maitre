@@ -173,7 +173,7 @@ describe('the demo restaurant at the real time', () => {
       };
     };
     expect(written('en')).toEqual({
-      requests: ['Party of 9 for a birthday, Wednesday 4 November, in the evening.', 'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.'],
+      requests: ['Party of 9 for a birthday, Wednesday 4 November, in the evening.', 'Allergens not stated on the sheet for “Chocolate mousse”: tree nuts.'],
       note: 'birthday',
     });
     expect(written('es')).toMatchObject({ requests: ['Grupo de 9 para un cumpleaños, miércoles 4 de noviembre por la noche.', expect.stringContaining('frutos de cáscara')], note: 'cumpleaños' });

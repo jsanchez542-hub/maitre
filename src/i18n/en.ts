@@ -75,7 +75,7 @@ export const en: Messages = {
     );
   },
   allergenQuestion(dish, allergens) {
-    return `Allergens the sheet for ${quoted(dish)} does not cover: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
+    return `Allergens not stated on the sheet for ${quoted(dish)}: ${allergens.map((allergen) => ALLERGEN_NAMES[allergen]).join(', ')}.`;
   },
   greeting(business, channel, hour) {
     if (channel === 'voice') {

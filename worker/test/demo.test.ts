@@ -261,7 +261,7 @@ describe('the public demo', () => {
     const day = (await response.json()) as { callbacks: { list: { summary: string }[] } };
     expect(day.callbacks.list.map((request) => request.summary)).toEqual([
       'Party of 9 for a birthday, Saturday 17 October, in the evening.',
-      'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.',
+      'Allergens not stated on the sheet for “Chocolate mousse”: tree nuts.',
     ]);
   });
 

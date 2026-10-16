@@ -112,7 +112,7 @@ describe('running tools', () => {
     ]);
     // Recorded by the code, not left to the model: a model that promises and forgets leaves an allergic guest waiting.
     expect(h.store.snapshot().callbacks).toMatchObject([
-      { sessionId: 'g1', reason: 'allergy_question', phone: '+447700900123', summary: 'Allergens the sheet for “Chocolate mousse” does not cover: tree nuts.' },
+      { sessionId: 'g1', reason: 'allergy_question', phone: '+447700900123', summary: 'Allergens not stated on the sheet for “Chocolate mousse”: tree nuts.' },
     ]);
     expect(runTool(h.engine, guest('g1'), 'check_dish', { dishId: 'tiramisu', allergens: ['eggs'] })).toMatchObject({
       status: 'unknown_dish',
