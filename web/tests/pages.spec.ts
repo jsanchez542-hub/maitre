@@ -1564,7 +1564,7 @@ test.describe('the controls, drawn as one system', () => {
     await expect(first).toBeHidden();
   });
 
-  test('a date’s focused part takes the panel’s grey, not the system’s blue', async ({ page }) => {
+  test('a focused date shows the panel’s grey on its part, or its ring where it is one field, never the system’s blue', async ({ page }) => {
     await open(page, '/panel/');
     await expect(page.locator('#main')).toHaveAttribute('aria-busy', 'false');
     await page.getByRole('button', { name: 'Nouvelle réservation' }).click();
@@ -1592,7 +1592,17 @@ test.describe('the controls, drawn as one system', () => {
       return pixels;
     }, shot.toString('base64'));
     expect(colors.blue).toBe(0);
-    expect(colors.grey).toBeGreaterThan(100);
+    // Where the pointer is a finger the date is one field, as on Android: no part takes the focus, the field takes the
+    // panel's ring.
+    if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+      const ring = await date.evaluate((field) => {
+        const style = getComputedStyle(field);
+        return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`;
+      });
+      expect(ring).toBe('solid 2px rgb(166, 167, 168)');
+    } else {
+      expect(colors.grey).toBeGreaterThan(100);
+    }
   });
 
   test('a select low on the screen still opens under itself while four rows fit there, and above only when they do not', async ({ page }) => {
