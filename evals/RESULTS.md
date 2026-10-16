@@ -227,6 +227,18 @@ The one failure, `web-allergen-unknown-en` run 2, was the evaluator's: «I canno
 
 GPT-6 Luna passed everything as a fallback, which GPT-5.6 Luna did not in run M. Mistral Small 2603 got 429 from OpenRouter on 216 turns of 255: no verdict on the model.
 
+### Run O: complete allergen sheets (16 October)
+
+The demo restaurant's sheets now declare all 14 allergens of every dish, as a French kitchen must keep them. One gap stays on purpose: nuts in the chocolate mousse, which the chocolate's specification does not state. The scenarios that ask about allergens ask about gluten, which every sheet already declared, and about the mousse's nuts, so none of their expectations changed.
+
+- **The one failure was the evaluator's.** In `voice-closed-day-en` run 2, «Monday 19 October is unavailable at that time» matched the check against saying Monday is open: «available» inside «unavailable». The check now reads «unavailable», «not available» and «isn't available» as what they are, with that reply in its test, and the run was scored again without calling a model. The rescore also learned to find the phone's scenarios, whose ids start with `voice-`.
+- **The conversations the demo plays while it is paused were recorded again** from this run: 35 of them, chat and WhatsApp. Calls are not played in the demo, and hanging up belongs to the line, not to the engine a replay runs on.
+
+| Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
+|---|---|---|---|---|---|---|---|---|
+| All channels | Claude Haiku 5.5, Vertex Europe first | **41/41** | **123/123** | 1.6 s | 4.3 s | 0.9 s | 2.0 s | $0.102 |
+| Phone | Claude Haiku 5.5, Vertex Europe first | **26/26** | **78/78** | 1.6 s | 3.6 s | 0.9 s | 2.1 s | $0.058 |
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -265,4 +277,4 @@ Each run writes `meta.json` next to its results: the commit, whether there were 
 
 ## Spend
 
-Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10, run L $0.13, run M, with the fallback's test and the rule that was dropped, $0.31, and run N $0.19: $7.21 in all.
+Runs A to F and a few test calls cost $4.19. Run B accounts for $2.69 of it, $2.33 of that for Claude Sonnet 5.5 alone. Run G, with its six earlier passes and two repeats, cost $1.44 more, and run H $0.20. Run I cost $0.51, run J $0.14, run K $0.10, run L $0.13, run M, with the fallback's test and the rule that was dropped, $0.31, run N $0.19, and run O $0.16: $7.37 in all.

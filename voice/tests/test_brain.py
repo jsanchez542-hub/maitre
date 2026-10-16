@@ -141,7 +141,7 @@ def test_says_which_key_the_chosen_speech_is_missing_without_its_value():
 
 
 def test_each_language_has_a_voice_of_its_own():
-    # Cartesia's "French Conversational Lady", chosen by ear, then a British and a Spanish voice of the same family.
+    # Cartesia's "French Conversational Lady", chosen by ear, then a British voice and a Mexican one.
     settings = Settings.from_env({"VOICE_TTS_ES": "cartesia:sonic-3.5:5c5ad5e7-1020-476b-8b91-fdcbe9cc313c"})
     assert settings.voice_for("fr") == "cartesia:sonic-3.5:a249eaff-1e96-4d2c-b23b-12efa4f66f41"
     assert settings.voice_for("en") == "cartesia:sonic-3.5:a01c369f-6d2d-4185-bc20-b32c225eab70"

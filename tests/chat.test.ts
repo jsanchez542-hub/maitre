@@ -85,7 +85,7 @@ describe('the evening with what the chat booked', () => {
       'day-of-month-en',
       'closed-day-en',
       'full-fr',
-      'dictated-number-fr',
+      'unclear-choice-fr',
       'web-book-fr',
       'web-allergy-at-booking-fr',
       'web-book-en',

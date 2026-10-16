@@ -34,8 +34,8 @@ it('exports recorded conversations for the demo', () => {
   const file = process.env['MAITRE_EVAL_EXPORT']?.trim() ?? '';
   if (!file || !existsSync(file)) throw new Error('Set MAITRE_EVAL_EXPORT to one model of a run, such as evals/runs/<stamp>/<model>.json');
   const records = JSON.parse(readFileSync(file, 'utf8')) as RunRecord[];
-  // Files are named after the model, with its "/" written "_".
-  const model = basename(file, '.json').replace('_', '/');
+  // Files are named after the model and its route, every "/" and ":" written "_": the model is what comes before the route.
+  const model = basename(file, '.json').replace('_', '/').split('@')[0] ?? '';
   const metaFile = join(dirname(file), 'meta.json');
   if (!existsSync(metaFile)) throw new Error(`${metaFile} is missing: there is no telling which restaurant this run talked about`);
   const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as RunMeta;
@@ -51,7 +51,8 @@ it('exports recorded conversations for the demo', () => {
     // repeat them: when a run passed without it, the demo shows that one.
     const passing = records.filter((candidate) => candidate.scenario === scenario.id && candidate.passed);
     const record = passing.find((candidate) => candidate.turns.every((turn) => turn.corrections.length === 0)) ?? passing[0];
-    if (!record?.state || scenario.channel === 'staff') {
+    // Calls are not played again in the demo: hanging up and the keypad belong to the line, not to the engine a replay runs on.
+    if (!record?.state || scenario.channel === 'staff' || scenario.channel === 'voice') {
       missing.push(scenario.id);
       continue;
     }

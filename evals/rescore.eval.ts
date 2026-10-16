@@ -7,7 +7,7 @@ import type { Booking, CallbackRequest } from '../src/store.js';
 import type { ToolOutput } from '../src/tools.js';
 import { checkScenario, type Outcome } from './checks.js';
 import { failureLines, SUMMARY_HEADER, summaryRow, type RunRecord } from './report.js';
-import { guestNumber, SCENARIOS, type Scenario } from './scenarios.js';
+import { guestNumber, ON_THE_PHONE, SCENARIOS, type Scenario } from './scenarios.js';
 
 /**
  * Scores a recorded run again with the scenarios as they are now, without
@@ -44,7 +44,8 @@ function outcomeOf(record: RunRecord, scenario: Scenario, state: NonNullable<Run
 
 function rescore(record: RunRecord): RunRecord {
   if (record.skipped) return record;
-  const scenario = SCENARIOS.find((candidate) => candidate.id === record.scenario);
+  // A run of either set: the phone's scenarios carry ids of their own ("voice-…").
+  const scenario = [...SCENARIOS, ...ON_THE_PHONE].find((candidate) => candidate.id === record.scenario);
   // The number typed in the field follows the guest's message at `afterTurn`, as its own turn.
   const typed = record.turns.findIndex((turn) => turn.fieldPhone);
   const sameField = scenario?.fieldPhone

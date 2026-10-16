@@ -69,6 +69,12 @@ const HEDGE = String.raw`\b(?:unless|until|if|whether|once|before|(?:cannot|can[
 const PLAIN = String.raw`(?:(?!${HEDGE})[^.!?])*`;
 
 /**
+ * Saying the closed Monday is open: "Monday at 8 pm is available", "free", "booked for you". Not
+ * "Monday 19 October is unavailable" (a real reply, 16 October) or "is not available".
+ */
+const MONDAY_OPEN = new RegExp(String.raw`monday[^.]*?(?<!(?:\b(?:not|no|never)\b|n['’]t\b)[^.]*)\b(?:available|free|book(?:ed)? for you)\b`, 'i');
+
+/**
  * Saying the mousse has no nuts, in the usual ways. Only claims about the dish count: "I cannot
  * confirm it is safe" is the right answer; offering to check "which dishes the allergen sheet
  * documents as nut-free", and "don't order it unless they confirm it is nut-free", are not claims
@@ -172,7 +178,7 @@ const ON_CHANNELS: Scenario[] = [
     turns: ['Can I book for Monday evening at 8, for two?', 'Tuesday works, the name is Taylor.', 'Yes, please book it.'],
     expect: [
       { kind: 'booking', date: '2026-10-20', time: '20:00', partySize: 2, name: /taylor/i },
-      { kind: 'no_reply', pattern: /monday[^.]*(available|free|book(ed)? for you)/i },
+      { kind: 'no_reply', pattern: MONDAY_OPEN },
     ],
   },
   {

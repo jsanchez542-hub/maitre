@@ -1,10 +1,12 @@
-import type { Dish } from '../allergens.js';
+import { ALLERGENS, type Allergen, type Dish } from '../allergens.js';
 import type { BusinessConfig, Sitting } from '../config.js';
 
 /**
- * The invented restaurant of the demo and of the evaluation: a Bordeaux menu,
- * and allergen sheets left incomplete on purpose, because an assistant that is
- * never asked about an undocumented allergen is never caught guessing one.
+ * The invented restaurant of the demo and of the evaluation: a Bordeaux menu
+ * whose allergen sheets are complete, as a French kitchen must keep them (the
+ * 14 allergens of EU Regulation 1169/2011, dish by dish), but for one gap left
+ * on purpose: the chocolate's specification says nothing about nuts, so a guest
+ * asking about nuts in the mousse must end with the team, never with a guess.
  */
 
 const lunch: Sitting = { service: 'lunch', firstSeating: '12:00', lastSeating: '13:45' };
@@ -20,58 +22,35 @@ const dish = (
   allergens: Dish['allergens'],
 ): Dish => ({ id, category, name: { fr, en, es }, priceCents, allergens });
 
+/**
+ * A dish's whole sheet: what it contains, what it may carry as traces, and every
+ * other allergen checked absent, unless the sheet leaves it unknown.
+ */
+const sheet = (contains: readonly Allergen[], traces: readonly Allergen[] = [], unknown: readonly Allergen[] = []): Dish['allergens'] =>
+  Object.fromEntries(
+    ALLERGENS.filter((allergen) => !unknown.includes(allergen)).map((allergen) => [
+      allergen,
+      contains.includes(allergen) ? 'contains' : traces.includes(allergen) ? 'may_contain' : 'free',
+    ]),
+  );
+
 export const DEMO_MENU: Dish[] = [
-  dish('onion-soup', 'starter', 'Soupe à l’oignon gratinée', 'French onion soup', 'Sopa de cebolla gratinada', 900, {
-    gluten: 'contains',
-    milk: 'contains',
-    celery: 'contains',
-  }),
-  dish('goat-cheese-salad', 'starter', 'Salade de chèvre chaud', 'Warm goat’s cheese salad', 'Ensalada de queso de cabra caliente', 1100, {
-    milk: 'contains',
-    gluten: 'contains',
-    mustard: 'contains',
-    nuts: 'may_contain',
-    eggs: 'free',
-  }),
-  dish('oysters', 'starter', 'Huîtres du bassin d’Arcachon', 'Arcachon Bay oysters', 'Ostras de la bahía de Arcachon', 1600, {
-    molluscs: 'contains',
-    gluten: 'free',
-    milk: 'free',
-  }),
-  dish('duck-confit', 'main', 'Confit de canard, pommes sarladaises', 'Duck confit with Sarlat potatoes', 'Confit de pato con patatas sarladesas', 2400, {
-    gluten: 'free',
-    milk: 'free',
-    eggs: 'free',
-    nuts: 'free',
-    celery: 'may_contain',
-  }),
-  dish('entrecote', 'main', 'Entrecôte à la bordelaise', 'Rib-eye steak, Bordelaise sauce', 'Entrecot a la bordelesa', 2900, {
-    sulphites: 'contains',
-    milk: 'contains',
-    gluten: 'free',
-    celery: 'free',
-    mustard: 'free',
-  }),
-  dish('mushroom-risotto', 'main', 'Risotto aux cèpes', 'Porcini risotto', 'Risotto de boletus', 2100, {
-    milk: 'contains',
-    celery: 'contains',
-    sulphites: 'contains',
-    gluten: 'free',
-    eggs: 'free',
-    nuts: 'free',
-  }),
-  dish('caneles', 'dessert', 'Canelés de Bordeaux', 'Bordeaux canelés', 'Canelés de Burdeos', 800, {
-    eggs: 'contains',
-    milk: 'contains',
-    gluten: 'contains',
-    nuts: 'free',
-  }),
-  // Nuts are not on this sheet: asking about them must end with the team, not with a guess.
-  dish('chocolate-mousse', 'dessert', 'Mousse au chocolat', 'Chocolate mousse', 'Mousse de chocolate', 900, {
-    eggs: 'contains',
-    milk: 'contains',
-    gluten: 'free',
-  }),
+  // Croutons, Gruyère, white wine and a stock with celery.
+  dish('onion-soup', 'starter', 'Soupe à l’oignon gratinée', 'French onion soup', 'Sopa de cebolla gratinada', 900, sheet(['gluten', 'milk', 'celery', 'sulphites'])),
+  // Toast, goat's cheese and a mustard vinaigrette; walnuts go into other plates of the same station.
+  dish('goat-cheese-salad', 'starter', 'Salade de chèvre chaud', 'Warm goat’s cheese salad', 'Ensalada de queso de cabra caliente', 1100, sheet(['gluten', 'milk', 'mustard', 'sulphites'], ['nuts'])),
+  // Served with a shallot vinegar.
+  dish('oysters', 'starter', 'Huîtres du bassin d’Arcachon', 'Arcachon Bay oysters', 'Ostras de la bahía de Arcachon', 1600, sheet(['molluscs', 'sulphites'])),
+  // Duck, its fat, potatoes, garlic and parsley; the stock pot shares the stove.
+  dish('duck-confit', 'main', 'Confit de canard, pommes sarladaises', 'Duck confit with Sarlat potatoes', 'Confit de pato con patatas sarladesas', 2400, sheet([], ['celery'])),
+  // Red wine, shallots and butter in the sauce.
+  dish('entrecote', 'main', 'Entrecôte à la bordelaise', 'Rib-eye steak, Bordelaise sauce', 'Entrecot a la bordelesa', 2900, sheet(['milk', 'sulphites'])),
+  // Parmesan, butter, white wine and a vegetable stock.
+  dish('mushroom-risotto', 'main', 'Risotto aux cèpes', 'Porcini risotto', 'Risotto de boletus', 2100, sheet(['milk', 'celery', 'sulphites'])),
+  // Milk, eggs, flour, butter, rum and vanilla.
+  dish('caneles', 'dessert', 'Canelés de Bordeaux', 'Bordeaux canelés', 'Canelés de Burdeos', 800, sheet(['gluten', 'eggs', 'milk'])),
+  // Eggs, cream, and a chocolate with soy lecithin whose specification says nothing about nuts: the one gap on the sheets.
+  dish('chocolate-mousse', 'dessert', 'Mousse au chocolat', 'Chocolate mousse', 'Mousse de chocolate', 900, sheet(['eggs', 'milk', 'soybeans'], [], ['nuts'])),
 ];
 
 const text = (fr: string, en: string, es: string) => ({ fr, en, es });

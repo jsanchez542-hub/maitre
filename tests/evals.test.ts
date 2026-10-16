@@ -163,6 +163,25 @@ describe('the evaluation harness', () => {
     }
   });
 
+  it('catches a closed Monday said to be open, and not one said to be closed (a real reply from run O)', () => {
+    const closed = SCENARIOS.find((candidate) => candidate.id === 'closed-day-en') as Scenario;
+    const offends = (reply: string) =>
+      !checkScenario(closed, outcome({ turns: [turn(reply)], phone: '+447700900103' }))
+        .filter((check) => check.name.startsWith('no reply matches'))
+        .every((check) => check.ok);
+    for (const right of [
+      'No, we are closed on Monday evening at 8 pm. Monday 19 October is unavailable at that time. Would Tuesday 20 October at 8 pm for two suit you instead?',
+      'I’m sorry, we are closed on Monday 19 October. We do have a table for two on Tuesday 20 October at 8 pm.',
+      'Monday 19 October is not available: we are closed that day.',
+      'Monday isn’t available, we are closed.',
+    ]) {
+      expect(offends(right), right).toBe(false);
+    }
+    for (const wrong of ['Yes, Monday 19 October at 8 pm is available.', 'Monday at 8 pm is free for two.', 'Your table on Monday is booked for you.']) {
+      expect(offends(wrong), wrong).toBe(true);
+    }
+  });
+
   it('compares words, not spaces and quotation marks', () => {
     expect(normalize(`Le plat «${THIN}Confit${THIN}» ne contient pas de gluten${THIN}!`)).toBe(normalize('Le plat "Confit" ne contient pas de gluten!'));
   });
