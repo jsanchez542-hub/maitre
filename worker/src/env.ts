@@ -9,8 +9,6 @@ export interface Env {
   DEMO_BUDGET: DurableObjectNamespace<DemoBudget>;
   /** Requests per visitor address per minute, across the API: what one address may spend of what all share. */
   API_LIMITER?: RateLimit;
-  /** The demo's films and posters (R2), served at /media/ from the site's own origin. */
-  MEDIA?: R2Bucket;
   /**
    * "eu" keeps every restaurant's data in the European Union. Only local runs
    * set "none", because workerd cannot pin data to a jurisdiction; any other

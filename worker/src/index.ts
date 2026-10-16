@@ -7,7 +7,6 @@ import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoBudget,
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
 import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
 import { callPass, liveKitProject } from './livekit.js';
-import { serveMedia } from './media.js';
 import type { CallEnd, CallTurn, ChatRequest, Restaurant } from './restaurant.js';
 
 export { DemoBudget, DemoRestaurant } from './demo.js';
@@ -113,7 +112,6 @@ async function route(request: Request, env: Env): Promise<Response> {
   const parts = url.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
   if (parts.length === 1 && parts[0] === 'health' && request.method === 'GET') return json({ ok: true });
   if (!(await withinLimit(request, env))) return problem(429, 'too_many_requests');
-  if (parts[0] === 'media' && parts.length === 2) return serveMedia(request, env, parts[1] ?? '');
   if (parts[0] === 'v1' && parts[1] === 'demo') return demo(request, env, url, parts.slice(2));
   if (parts[0] !== 'v1' || parts[1] !== 'restaurants' || parts.length < 4) return problem(404, 'not_found');
 

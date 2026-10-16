@@ -21,16 +21,14 @@
     "directory": "../web/dist",
     // An unknown address gets the nearest 404.html: under /en/, the English one.
     "not_found_handling": "404-page",
-    // The API, the health check and the demo's films always reach the Worker, whatever the pages hold.
-    "run_worker_first": ["/v1/*", "/health", "/media/*"]
+    // The API and the health check always reach the Worker, whatever the pages hold. The demo's films
+    // are pages' files like any other (web/public/media/), served with Range requests by the platform.
+    "run_worker_first": ["/v1/*", "/health"]
   },
   // One address cannot use up the API for everyone: past 120 requests a minute it waits, so a
   // script cannot spend the day's requests that every visitor shares. The voice agent, which
   // speaks for many callers from one server, shows its token instead and is not counted.
   "ratelimits": [{ "name": "API_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
-  // The demo's films and posters, kept out of git and served at /media/ from the same origin.
-  // Names carry a version (merrain-v1-2000k.webm): a new film is a new name, never a replaced file.
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "maitre-media" }],
   "vars": {
     // Every restaurant's data stays in the EU. workerd cannot pin data, so
     // local runs override this with "none" in .dev.vars and the test config.
