@@ -23,7 +23,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
+      # Any advisory on what ships stops the build: the production dependencies stay at zero.
+      - run: npm audit --omit=dev
       - run: npm run typecheck
       - run: npm test
       # Built without Node's type definitions: the engine must run in browsers and Workers too.
@@ -46,7 +47,7 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --omit=dev
       - run: npm run typecheck
       # Inside workerd, the Workers runtime, with a real Durable Object and the network cut off.
       - run: npm test
@@ -68,10 +69,14 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --omit=dev
       - run: npm run check
       - run: npm test
+      # Cloudflare's Turnstile test key, public and always passing: the build has its live demo, which the
+      # page tests drive against the demo API's contract, without a model or a network.
       - run: npm run build
+        env:
+          PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
       # The version pinned in package-lock.json, and only the headless Chromium the pages are tested on.
       - run: npx playwright install --with-deps --only-shell chromium
       # Every page in both layouts, with axe, against the build above.
