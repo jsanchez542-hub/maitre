@@ -3,6 +3,11 @@
   "name": "maitre",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  // One public address: the site, the dashboard and the API at https://maitre.live. The workers.dev
+  // address and preview URLs stay off, so nothing reaches the Worker around the domain's own rules.
+  "routes": [{ "pattern": "maitre.live", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
   "observability": { "enabled": true },
   "durable_objects": {
     "bindings": [

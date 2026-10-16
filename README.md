@@ -134,6 +134,8 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 
 To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.
 
+To deploy, from `worker/` with Wrangler logged in to the account that holds the domain: build `web/` first, with the films in `web/public/media/`; set the secrets once with `wrangler secret bulk` from a file kept out of git (`OPENROUTER_API_KEY`, `DEMO_OPENROUTER_API_KEY`, `AGENT_TOKEN` shared with the voice agent, `STAFF_TOKEN`, `TURNSTILE_SECRET` and the LiveKit project's three); then `npm run deploy`. The Worker answers at https://maitre.live only: its workers.dev address and preview URLs are off.
+
 ## The site and the dashboard
 
 `web/` is two sides of one invented restaurant, Merrain, a bistro in Bordeaux. A thin bar switches between them.
