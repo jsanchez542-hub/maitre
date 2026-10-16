@@ -37,6 +37,9 @@ updates:
       # @astrojs/check supports TypeScript 5 and 6, not 7.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
+      # The types must match the Node version the project runs on (22), not a newer one.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # axe drives the same playwright-core as the test runner: two versions and their types no longer match.
       playwright:
