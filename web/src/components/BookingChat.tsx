@@ -1,7 +1,7 @@
 import { PUBLIC_TURNSTILE_SITE_KEY } from 'astro:env/client';
 import { localNow, messages, type Language } from 'maitre';
 import { DEMO_EVENING_AT, DEMO_RESTAURANT, type DemoSuggestion } from 'maitre/demo';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { messagesFor } from '../i18n/messages';
 import { useRestaurantClock } from '../lib/clock';
 import type { RestaurantTime } from '../lib/live';
@@ -44,8 +44,9 @@ export function BookingChat({ language }: { language: Language }) {
   }, []);
 
   // Every «Réserver» on the page opens the chat, and «Groupes et privatisation» opens it with its message ready.
-  // Without script they lead to the booking section.
-  useEffect(() => {
+  // Without script they lead to the booking section. The listener is bound while the island hydrates, not after
+  // the next paint: a tap that comes as soon as the page is ready still opens the chat.
+  useLayoutEffect(() => {
     const onClick = (event: MouseEvent) => {
       const trigger = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-book]') : null;
       if (!trigger) return;
