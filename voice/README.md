@@ -81,6 +81,19 @@ Speech goes to Deepgram and Cartesia with their own keys. LiveKit's free plan in
 
 The model the phone uses is chosen with the evaluation's phone set (`MAITRE_EVAL_SET=voice`, see `evals/RESULTS.md`, run I).
 
+## Deploying
+
+The agent runs as one container on a server it may share with other services. The image is built on that server from the repository at the commit being deployed, and `deploy/compose.yaml` runs it within its share of memory and CPU, on a read-only file system, without privileges and with no port. It only reaches out: to LiveKit, the speech providers and the Worker.
+
+```bash
+commit=$(git rev-parse --short HEAD)
+git archive HEAD voice | ssh server "mkdir -p /opt/maitre-voice/releases/$commit && tar -x -C /opt/maitre-voice/releases/$commit"
+ssh server "cd /opt/maitre-voice/releases/$commit/voice && docker build --pull -t maitre-voice:$commit ."
+ssh server "cp /opt/maitre-voice/releases/$commit/voice/deploy/compose.yaml /opt/maitre-voice/ && cd /opt/maitre-voice && docker compose up -d"
+```
+
+`/opt/maitre-voice/.env`, mode 600, holds the variables of `.env.example` with `MAITRE_API_URL` set to the Worker's public address, `MAITRE_VOICE_VERSION` set to the commit, and an agent token of its own that the Worker shares as `AGENT_TOKEN`. A developer's agent registers under another name (`MAITRE_AGENT_NAME`, and `LIVEKIT_AGENT_NAME` in the local Worker), so it never answers the public demo's calls.
+
 ## Credits
 
 The typing heard while the agent thinks is LiveKit's built-in clip: "keyboard-typing" by Anton, [freesound.org/s/137](https://freesound.org/s/137/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
