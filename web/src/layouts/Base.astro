@@ -4,6 +4,8 @@ import '@fontsource/ibm-plex-sans/latin-600.css';
 import cutiveMono from '@fontsource/cutive-mono/files/cutive-mono-latin-400-normal.woff2?url';
 import plexSans400 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2?url';
 import plexSans600 from '@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2?url';
+import plexMono400 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2?url';
+import plexMono600 from '@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2?url';
 import '../styles/base.css';
 import { Image } from 'astro:assets';
 import { LANGUAGES, type Language } from 'maitre';
@@ -62,6 +64,8 @@ const LOCALES: Record<Language, string> = { fr: 'fr_FR', en: 'en_GB', es: 'es_ES
     <link rel="preload" as="font" type="font/woff2" href={plexSans400} crossorigin />
     <link rel="preload" as="font" type="font/woff2" href={plexSans600} crossorigin />
     {side === 'client' && <link rel="preload" as="font" type="font/woff2" href={cutiveMono} crossorigin />}
+    {side === 'restaurant' && <link rel="preload" as="font" type="font/woff2" href={plexMono400} crossorigin />}
+    {side === 'restaurant' && <link rel="preload" as="font" type="font/woff2" href={plexMono600} crossorigin />}
     <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
     {!indexed && <meta name="robots" content="noindex, nofollow" />}
     {
@@ -110,7 +114,7 @@ const LOCALES: Record<Language, string> = { fr: 'fr_FR', en: 'en_GB', es: 'es_ES
           // Who the visitor is; when, the panel says once it knows the restaurant's time: never the hour of the build.
           <p class="demo-bar__note demo-bar__note--panel">
             {t.manager}
-            <span id="demo-when" />
+            <span class="demo-bar__when" id="demo-when" />
             <span id="demo-not-live" />
           </p>
         )

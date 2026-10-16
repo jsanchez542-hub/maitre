@@ -21,8 +21,8 @@
   --coral: #ff7a6b;
   --held: #8b7bf0;
   --on-color: #161718;
-  --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --sans: 'IBM Plex Sans', 'Plex Sans Fallback', sans-serif;
+  --mono: 'IBM Plex Mono', 'Plex Mono Fallback', monospace;
   --t12: 12px;
   --t14: 14px;
   --t16: 16px;

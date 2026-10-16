@@ -1,4 +1,50 @@
 /* What both sides share: the reset and the thin bar of the demo, the only part that is not the product. */
+/*
+ * What a page shows before IBM Plex arrives: Arial and Courier New, or on Linux Liberation Sans and Liberation Mono,
+ * which share their metrics, set to Plex's width and line by measure. When Plex replaces them a line breaks where it did,
+ * and nothing moves. Without them the system's own face paints first, and a wider one, as DejaVu Sans on Linux, can wrap
+ * a line that Plex keeps whole: the panel moves when Plex comes.
+ */
+@font-face {
+  font-family: 'Plex Sans Fallback';
+  font-weight: 400;
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'), local('Arimo');
+  size-adjust: 100%;
+  ascent-override: 102.5%;
+  descent-override: 27.5%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Plex Sans Fallback';
+  font-weight: 700;
+  src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold'), local('Arimo Bold');
+  size-adjust: 96.7%;
+  ascent-override: 106%;
+  descent-override: 28.4%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Plex Mono Fallback';
+  font-weight: 400;
+  src: local('Courier New'), local('CourierNewPSMT'), local('Liberation Mono'), local('LiberationMono'), local('Cousine');
+  size-adjust: 100%;
+  ascent-override: 102.5%;
+  descent-override: 27.5%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Plex Mono Fallback';
+  font-weight: 700;
+  src: local('Courier New Bold'), local('CourierNewPS-BoldMT'), local('Liberation Mono Bold'), local('LiberationMono-Bold'), local('Cousine Bold');
+  size-adjust: 100%;
+  ascent-override: 102.5%;
+  descent-override: 27.5%;
+  line-gap-override: 0%;
+}
+
 :root {
   --bar-h: 36px;
   --bar-bg: #0b0c0d;
@@ -75,7 +121,7 @@ button {
   padding: 0 16px;
   background: var(--bar-bg);
   color: var(--bar-ink);
-  font: 400 12px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  font: 400 12px/1.2 'IBM Plex Sans', 'Plex Sans Fallback', sans-serif;
 }
 
 .demo-bar a {
@@ -159,6 +205,28 @@ button {
   color: var(--bar-muted);
 }
 
+/*
+ * The panel writes the restaurant's day and time here once it has read them. Their room is kept from the first paint, so
+ * the note, set against the languages, does not move when they come; tabular figures keep each new minute from moving
+ * it. Each language's longest: «mercredi 30 septembre, 20 h 05», «Wednesday 30 September, 12:45 pm», «miércoles 30 de
+ * septiembre, 20:05».
+ */
+.demo-bar__when {
+  display: inline-block;
+  min-width: 15em;
+  font-variant-numeric: tabular-nums;
+  /* The text opens with « · »: a box of its own would drop that space as the start of its line. */
+  white-space: pre-wrap;
+}
+
+:lang(en) .demo-bar__when {
+  min-width: 17.5em;
+}
+
+:lang(es) .demo-bar__when {
+  min-width: 16.5em;
+}
+
 .demo-bar__languages {
   display: flex;
   gap: 2px;
@@ -177,6 +245,28 @@ button {
 
 .demo-bar__languages a[aria-current] {
   box-shadow: inset 0 -2px var(--bar-ink);
+}
+
+/*
+ * Below the panel's desk layout, its note, with the day and time's room, cannot share the row with the switch and the
+ * languages in every language: it takes a second row of its own, from the first paint.
+ */
+@media (min-width: 641px) and (max-width: 879px) {
+  .demo-bar:has(.demo-bar__note--panel) {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-block: 6px;
+  }
+
+  .demo-bar__note--panel {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .demo-bar:has(.demo-bar__note--panel) .demo-bar__languages {
+    margin-left: auto;
+  }
 }
 
 @media (max-width: 640px) {

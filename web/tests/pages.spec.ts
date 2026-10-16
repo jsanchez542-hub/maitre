@@ -1127,19 +1127,27 @@ test('every text is set as the copy is, on the site, in the chat and on the pane
 });
 
 test('nothing moves once the panel has read its restaurant: the bar’s time and the rail had their room from the first paint', async ({ page }) => {
+  // Each shift with what it moved and from where to where: on a failure, the report says which part moved.
   await page.addInitScript(() => {
-    const shifts: number[] = [];
+    type Shift = PerformanceEntry & { value: number; sources: { node: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[] };
+    const shifts: { value: number; moved: string[] }[] = [];
     Object.assign(window, { shifts });
+    const named = (node: Node | null) => (node instanceof Element ? `${node.tagName.toLowerCase()}.${[...node.classList].join('.')}` : `text in ${node?.parentElement?.className}`);
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) shifts.push((entry as PerformanceEntry & { value: number }).value);
+      for (const entry of list.getEntries() as Shift[]) {
+        shifts.push({
+          value: entry.value,
+          moved: entry.sources.map(({ node, previousRect: from, currentRect: to }) => `${named(node)} ${Math.round(from.x)},${Math.round(from.y)} → ${Math.round(to.x)},${Math.round(to.y)}`),
+        });
+      }
     }).observe({ type: 'layout-shift', buffered: true });
   });
   await open(page, '/panel/');
   await expect(page.locator('#demo-when')).not.toBeEmpty();
   await expect(page.locator('.rail__item')).toHaveCount(4);
-  const total = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((sum, value) => sum + value, 0));
+  const shifts = await page.evaluate(() => (window as unknown as { shifts: { value: number; moved: string[] }[] }).shifts);
   // The fonts, as they arrive, move a letter; the panel itself does not move.
-  expect(total).toBeLessThan(0.001);
+  expect(shifts.reduce((sum, shift) => sum + shift.value, 0), JSON.stringify(shifts, null, 1)).toBeLessThan(0.001);
 });
 
 test('between the phone and a wide screen the panel’s bar keeps its time and actions together, on a row of their own when short of room', async ({ page, isMobile }) => {
