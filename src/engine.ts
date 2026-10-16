@@ -971,11 +971,16 @@ export class BookingEngine {
 
     return this.#store.transaction((tx): StaffBookResult => {
       const exclusions: Exclusions = { sessionId: '' };
+      // A booking taken by hand for a time already gone, as a guest's would be.
+      if (!walkIn && this.#gone(date, time, clock)) {
+        return { status: 'unavailable', reason: 'too_soon', alternatives: this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true) };
+      }
       const check = this.#check(tx, date, time, partySize, clock, exclusions, newCache(), true, chosen?.group);
       if (!check.ok) {
         if (chosen && check.reason === 'full') return { status: 'table_taken', free: this.#freeTablesAt(tx, date, time, partySize, clock.nowMs) };
+        // A party at the door sits down now or not at all: another time is no answer to it.
         const alternatives =
-          check.reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true);
+          walkIn || check.reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true);
         return { status: 'unavailable', reason: check.reason, alternatives };
       }
       const id = this.#deps.ids.id();
@@ -1095,6 +1100,7 @@ export class BookingEngine {
         reason,
         alternatives: reason === 'too_far_ahead' ? [] : this.#alternatives(tx, date, time, partySize, language, clock, exclusions, true),
       });
+      if (moving && this.#gone(date, time, clock)) return unavailable('too_soon');
 
       // A table the staff chose: there or nowhere.
       if (chosen) {
@@ -1535,7 +1541,7 @@ export class BookingEngine {
     const asked = toMinutes(time);
     const service = sittingAt(this.#config, date, time)?.service;
     const free = (day: PlainDate, slot: PlainTime): boolean =>
-      this.#check(tx, day, slot, partySize, clock, exclusions, cache, staff).ok;
+      !this.#gone(day, slot, clock) && this.#check(tx, day, slot, partySize, clock, exclusions, cache, staff).ok;
     const byCloseness = (a: PlainTime, b: PlainTime): number =>
       Math.abs(toMinutes(a) - asked) - Math.abs(toMinutes(b) - asked) || toMinutes(a) - toMinutes(b);
     const slotsOfDay = (day: PlainDate): PlainTime[] =>
@@ -1579,6 +1585,11 @@ export class BookingEngine {
       })),
       ...(exception?.reason ? { note: localize(exception.reason, language) } : {}),
     };
+  }
+
+  /** Whether a day and time have gone by: the staff skip the notice period, never the clock. */
+  #gone(date: PlainDate, time: PlainTime, clock: Clock): boolean {
+    return daysBetween(clock.today, date) * 1440 + toMinutes(time) < clock.nowMinutes;
   }
 
   #hasStarted(booking: Booking, clock: Clock): boolean {

@@ -54,6 +54,16 @@ describe('a party on the spot', () => {
       problems: ['a party on the spot is booked for today'],
     });
   });
+
+  it('is turned away between services, with no other time offered to a party already at the door', () => {
+    // 14:35 in Paris: after the last lunch arrival, before dinner.
+    const h = harness('2026-10-16T12:35:00Z');
+    expect(h.engine.staffBook({ date: '2026-10-16', partySize: 2, walkIn: true })).toEqual({
+      status: 'unavailable',
+      reason: 'outside_hours',
+      alternatives: [],
+    });
+  });
 });
 
 describe('bookings entered by the staff', () => {
@@ -102,6 +112,17 @@ describe('bookings entered by the staff', () => {
     const note = `Anniversaire ! Gâteau « surprise »,  pas de bougie`;
     h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Martin', notes: note });
     expect(h.store.snapshot().bookings[0]?.notes).toBe(`Anniversaire ! Gâteau « surprise », pas de bougie`);
+  });
+
+  it('refuse a time already gone today, and offer only times still to come', () => {
+    const h = harness(FRIDAY_EVENING);
+    const result = h.engine.staffBook({ date: '2026-10-16', time: '19:30', partySize: 2, guestName: 'Martin' });
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'too_soon' });
+    // 19:00 and 19:15 are free but gone at 20:07: the nearest offers are 20:15 tonight and Saturday at 19:30.
+    expect(result.status === 'unavailable' && result.alternatives.map((offer) => `${offer.date} ${offer.time}`)).toEqual([
+      '2026-10-16 20:15',
+      '2026-10-17 19:30',
+    ]);
   });
 
   it('refuse a past date and a party too large for one table', () => {
@@ -184,6 +205,18 @@ describe('changes made by the staff', () => {
     // The same change asked twice moves the booking once.
     h.engine.staffChange(reference, { time: '20:20' });
     expect(h.store.snapshot().bookings[0]?.history).toHaveLength(1);
+  });
+
+  it('do not move a booking to a time already gone, and offer only times still to come', () => {
+    const h = harness(FRIDAY_EVENING);
+    const reference = staffBooks(h, { date: '2026-10-16', time: '21:00', partySize: 2, guestName: 'Martin' });
+    const result = h.engine.staffChange(reference, { time: '19:30' });
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'too_soon' });
+    expect(result.status === 'unavailable' && result.alternatives.map((offer) => `${offer.date} ${offer.time}`)).toEqual([
+      '2026-10-16 20:15',
+      '2026-10-17 19:30',
+    ]);
+    expect(h.store.snapshot().bookings[0]).toMatchObject({ time: '21:00', history: [] });
   });
 
   it('keep the table the staff gave the party when it still fits, and let the plan find another when it does not', () => {
