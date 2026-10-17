@@ -56,7 +56,7 @@ The comparison that chose the model, on commit ac58952, when there were nineteen
 | Mistral Medium 3.1 | 18/19 | 1.6 s | 2.7 s | $0.0010 |
 | Gemini 3.1 Flash Lite | 17/19 | 1.8 s | 2.8 s | $0.0025 |
 
-In the latest run, on 15 October, Claude Haiku 5.5 was right in all forty-one conversations three times each, and in all twenty-six on the phone.
+In the latest run, on 16 October, Claude Haiku 5.5 was right in all forty-one conversations three times each, and in all twenty-six on the phone.
 
 Fifteen runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Five of the failures they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
 
