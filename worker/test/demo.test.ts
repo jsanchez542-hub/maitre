@@ -267,6 +267,7 @@ describe('the public demo', () => {
 
   it('deletes the whole restaurant a day after it opened', async () => {
     fakeNetwork();
+    vi.useRealTimers();
     const sandbox = await opened();
     const restaurant = demoStub(env, sandbox);
     if (!restaurant) throw new Error('the test config must set DATA_JURISDICTION');
