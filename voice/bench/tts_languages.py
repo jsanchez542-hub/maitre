@@ -141,7 +141,7 @@ def listening_page(language: str, specs: list[str]) -> str:
         "body{font:15px system-ui;margin:24px}table{border-collapse:collapse}"
         "th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}"
     )
-    head = f'<!doctype html><html lang="{language}"><meta charset="utf-8"><title>Maître · {language}</title><style>{style}</style>'
+    head = f'<!doctype html><html lang="{language}"><meta charset="utf-8"><title>Maître | {language}</title><style>{style}</style>'
     return f"{head}<table><tr><th></th>{heads}</tr>{rows}</table></html>"
 
 

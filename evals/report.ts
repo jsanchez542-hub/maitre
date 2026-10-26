@@ -76,6 +76,6 @@ export function failureLines(id: string, records: RunRecord[]): string[] {
       const failed = record.skipped
         ? [`skipped: ${record.skipped}`]
         : record.checks.filter((check) => !check.ok).map((check) => `${check.name}${check.detail ? ` (${check.detail})` : ''}`);
-      return `- ${id} · ${record.scenario} · run ${record.run}: ${failed.join('; ')}`;
+      return `- ${id}, ${record.scenario}, run ${record.run}: ${failed.join('; ')}`;
     });
 }

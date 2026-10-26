@@ -23,13 +23,13 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 
 | Path | What it does |
 |---|---|
-| `src/calendar.ts`, `src/dates.ts` | Wall-clock dates and times in the business's time zone, and the dates guests say |
+| `src/calendar.ts`, `src/dates.ts` | Dates and clock times in the business's time zone, and the dates guests say |
 | `src/config.ts`, `src/schedule.ts` | The business: services, weekly hours, closures, tables, how long each party stays. Validated at startup |
 | `src/availability.ts` | Which tables are free, from the length of every stay, not only its start |
 | `src/seating.ts` | The floor plan: which real table each booking sits at, and when a table fixed by hand leaves no room |
 | `src/engine.ts` | Finding, holding, booking, changing, cancelling and confirming; the staff's view of the day, arrivals, seating and departures, and their own changes; requests to call back |
 | `src/activity.ts` | What the assistant did for the restaurant over a day, a week or a month, for the dashboard |
-| `src/store.ts` | The storage interface, with all-or-nothing transactions, and an in-memory store |
+| `src/store.ts` | The storage interface, whose transactions apply in full or not at all, and a store kept in memory |
 | `src/allergens.ts`, `src/menu.ts` | The fourteen allergens EU law requires restaurants to declare, and what the menu says about them |
 | `src/i18n/` | Everything the engine says, in French, English and Spanish |
 | `src/tools.ts` | The tools the language model calls, with their input checked before anything runs |
@@ -99,11 +99,11 @@ uv run ruff check .
 Beyond the usual unit tests:
 
 - **A randomised test** plays 40 seeded sequences of 300 steps by six guests at once (finding, booking, changing, cancelling, letting holds expire) while the staff move bookings to tables of their choice, and checks after every step, with code independent from the engine, that no group of tables is ever used more times than it exists, that no two parties share a table at the same moment, and that a table fixed by hand never moves. A failing sequence can be replayed exactly from its seed.
-- **A typography check** fails if any sentence the engine can say contains a dash that reads as machine text, or French punctuation without its non-breaking space.
+- **A typography check** fails if any sentence the engine can say contains a dash that reads as machine text, or French punctuation without the space French puts before it.
 - **The Worker is tested inside workerd**, the Workers runtime, with a real Durable Object and its SQLite database and the network cut off: two guests asking for the last table at the same moment, a transaction undone halfway, the alarm that clears expired holds and old data, and whole conversations with the model played by the test.
 - **Every recorded conversation of the demo is replayed** on the engine in the test suite. A change that would make the engine answer differently from the recording fails there, before a visitor could read a reply that is no longer true.
-- **Every page is checked in a browser**, on a phone screen and a desktop one, against a stand-in for the Worker that runs the real engine. In each language axe finds nothing to report in any view, and the page's content security policy lets no script run but its own. The staff's work is driven end to end: seating, changing, confirming and moving bookings, editing the settings, and a Worker that stops answering mid-service.
-- **The voice line is tested against a stand-in Worker**: turns as JSON lines, the keypad, the goodbye that hangs up, and the check-in that decides whether calls are offered. `voice/bench/caller.py` makes real calls through LiveKit, in each language, as a program.
+- **Every page is checked in a browser**, on a phone screen and a desktop one, against a test double of the Worker that runs the real engine. In each language axe finds nothing to report in any view, and the page's content security policy lets no script run but its own. The staff's work is driven end to end: seating, changing, confirming and moving bookings, editing the settings, and a Worker that stops answering in the middle of a service.
+- **The voice line is tested against a test double of the Worker**: turns as JSON lines, the keypad, the goodbye that hangs up, and the report the agent sends every minute, which decides whether calls are offered. `voice/bench/caller.py` makes real calls through LiveKit, in each language, as a program.
 
 ## The Worker
 
@@ -129,7 +129,7 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 - **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
 - **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.
-- **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech. The agent tries its speech again every hour, so a provider allowance spent mid-month turns calls off within the hour.
+- **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech. The agent tries its speech again every hour, so a provider allowance spent in the middle of the month turns calls off within the hour.
 - **Nothing to steal from a page:** the browser holds only Turnstile's public site key, and every secret is a platform secret of the Worker or the agent.
 
 To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.
@@ -146,7 +146,7 @@ To deploy, from `worker/` with Wrangler logged in to the account that holds the 
 
 - **Service:**
   - the plan of the room, drawn from the engine's floor plan, and the day's bookings;
-  - each table's card, for arrivals, seating, walk-ins, and changing, confirming, moving or cancelling a booking;
+  - each table's card, for arrivals, seating, guests at the door, and changing, confirming, moving or cancelling a booking;
   - bookings that new opening hours leave out, flagged so the staff can call those guests.
 - **Conversations:** each conversation as a thread, with what it booked, changed or passed to the team, and the technical trace (tools, latency, cost) folded away.
 - **Activity:** calls answered while the restaurant was closed, the time to answer, bookings by channel and conversations, over a day, a week or a month.

@@ -71,7 +71,7 @@ What it found, and what changed:
 | GPT-5.6 Luna | 35/57 |
 | Gemini 3.1 Flash Lite | 57/57 |
 
-**The new rule was wrong.** It asked about allergies in the same message as a yes-or-no question: "a table for 2 on the 24th, does anyone have an allergy?". A guest answering "Yes, that's right" had answered both, and the models, rightly careful, asked which allergy instead of booking. The question now goes only with the question for the name, which cannot be answered with a yes, and a guest who gives the name without mentioning allergies is booked without being asked twice. Of the four models measured, only Gemini was unaffected by the ambiguous rule.
+**The new rule was wrong.** It asked about allergies in the same message as a question answered with yes or no: "a table for 2 on the 24th, does anyone have an allergy?". A guest answering "Yes, that's right" had answered both, and the models, rightly careful, asked which allergy instead of booking. The question now goes only with the question for the name, which cannot be answered with a yes, and a guest who gives the name without mentioning allergies is booked without being asked twice. Of the four models measured, only Gemini was unaffected by the ambiguous rule.
 
 ### Run E: commit ac58952, the final code
 
@@ -83,7 +83,7 @@ What it found, and what changed:
 | Gemini 3.1 Flash Lite | 17/19 | 55/57 | 1.8 s | 2.8 s | 0/117 | $0.140 | $0.0025 |
 | Mistral Medium 3.1 | 18/19 | 56/57 | 1.6 s | 2.7 s | 0/117 | $0.058 | $0.0010 |
 
-- **Gemini's two failures are both real.** Once it asked about allergies although the guest had already given the name, and as a yes-or-no question, which the rule forbids; the guest's "Oui, parfait" was ambiguous again and nothing was booked. Once it sent a hold it had made up to the booking tool: the engine refused it, so no wrong booking was made, but the conversation ended without one.
+- **Gemini's two failures are both real.** Once it asked about allergies although the guest had already given the name, and as a question answered with yes or no, which the rule forbids; the guest's "Oui, parfait" was ambiguous again and nothing was booked. Once it sent a hold it had made up to the booking tool: the engine refused it, so no wrong booking was made, but the conversation ended without one.
 - Mistral Medium still asked twice before moving a booking, in one run of three.
 - When the guard stepped in for Haiku, the reply now reads cleanly: the exact sentences first, then what the model added, said once.
 
@@ -108,14 +108,14 @@ That is the last of seven runs of the whole suite that day; two shorter ones rep
 
 - **The replies guessed the guest's gender.** Read as a guest would, the first run said "monsieur Mercier", "Mr or Ms Clarke" and "señor Navarro", and once called a woman who had mentioned her husband "monsieur". A new universal check, "guesses no title for the guest", found it in 16 of the 84 comparable conversations when that run was scored again.
 - **The prompt did not fix it.**
-  - With the wrong form as an example, the model started the habit and corrected itself mid-reply: "De nada, señor Navarro… perdón, me he equivocado".
+  - With the wrong form as an example, the model started the habit and corrected itself halfway through the reply: "De nada, señor Navarro… perdón, me he equivocado".
   - With only right examples, it still put a title in all three English bookings, or wrote around the name: "Thank you, Clarke's table is all set".
 - **So the code keeps it, as with the allergen sheet.**
   - One guard takes a title and the name out when they address the guest: "Merci, monsieur Mercier." becomes "Merci.".
   - Another takes out the bare surname the guest booked under: "Thank you, Clarke.".
   - Both count as corrections, which is why the guard column rose. The prompt is the one of runs E and F.
 - **Two failures were the evaluator's.** The check against saying the mousse has no nuts caught "nut-free" in an offer to check the menu, then in "don't order it unless they confirm it is nut-free". It now counts only claims about the dish, outside a condition, with both replies among its tests, and those runs were scored again.
-- The scripted guest of the large-group scenarios answered "yes, call me back" to a question about the time. The time is now in the first message.
+- The scripted guest of the scenarios for large groups answered "yes, call me back" to a question about the time. The time is now in the first message.
 - `npm run eval:rescore` read `meta.json` as a model's results and stopped. It skips it now.
 - For each scenario, the export takes a run where no reply was corrected, when there is one.
 
@@ -159,7 +159,7 @@ The phone keeps Claude Haiku 5.5, routed to its fastest provider: the only model
 Three changes, each found by looking at a run:
 
 - **The rules were never cached.** Every model call sent about five thousand tokens of rules and tools, and Anthropic's models through OpenRouter cache only where they are told. The prompt now marks the stable part and the guest's last message (fd033d9). On the phone set a conversation costs a third of what it did.
-- **A yes that chooses nothing.** The design review found the assistant asking "which of the two?" six times to a guest who kept answering "oui, je confirme", and finally asking for "1". The prompt now says to ask once, as a yes-or-no question, whether the first time suits them, never to ask for a number and never a third time. New conversation `unclear-choice-fr`, with its phone twin.
+- **A yes that chooses nothing.** The design review found the assistant asking "which of the two?" six times to a guest who kept answering "oui, je confirme", and finally asking for "1". The prompt now says to ask once, as a question answered with yes or no, whether the first time suits them, never to ask for a number and never a third time. New conversation `unclear-choice-fr`, with its phone twin.
 - **A stalled provider.** In the full run below, three model calls took 451 seconds each: the 30-second limit stopped at the response's headers, which OpenRouter sends at once. It now covers the whole answer, and the phone gets 8 seconds and one retry (eefe791).
 
 | Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
@@ -214,7 +214,7 @@ Miguel used the chat in Spanish and found two things; a third came from the fall
 Three things seen in the dashboard's conversations, from live use.
 
 - **The allergen answer said it twice.** Besides the sheet's «La fiche du plat « Mousse au chocolat » ne précise pas s’il contient des fruits à coque», the model wrote «La fiche de la mousse au chocolat ne précise pas…»: 87 % of the sheet's words, under the 90 % the guard asked of a restatement. The guard now lets only the sheet speak for a dish and an allergen it was asked about. Any sentence of the model's that names them both goes, a restatement or a claim of its own, and what followed it goes on from the sheet's sentences.
-- **French spacing.** A sentence of the engine's already had its narrow spaces inside « », and the cleaning added a second one after «. A time copied with its no-break spaces lost the space after it: «21 h 30est disponible». Both are fixed in `frenchSpacing`.
+- **French spacing.** A sentence of the engine's already had its narrow spaces inside « », and the cleaning added a second one after «. A time copied with the spaces that keep it on one line lost the space after it: «21 h 30est disponible». Both are fixed in `frenchSpacing`.
 - **«et non dans le chat».** Told not to ask for the number "in the conversation", the model said so, and the field is in the chat. The tool now says "the phone number field at the bottom of the chat, rather than in a message".
 
 The one failure, `web-allergen-unknown-en` run 2, was the evaluator's: «I cannot confirm the mousse is nut-free» counted as a claim. The check now reads a doubt like a condition, and the run was scored again without calling a model.
@@ -245,7 +245,7 @@ The rule:
 
 1. Every conversation right in all three runs, in the final run and in the previous full one.
 2. Among those, the shortest wait for the guest at the 95th percentile, as long as a conversation costs under half a cent.
-3. Within half a second, the better score on [τ²-Bench Airline](https://openrouter.ai/benchmarks), an independent test of multi-turn conversations with tools: Claude Haiku 5.5 75.3 %, Gemini 3.1 Flash Lite 72.0 %, GPT-5.6 Luna 70.0 %, GPT-6 Luna 67.3 % (OpenRouter, 10 October 2026).
+3. Within half a second, the better score on [τ²-Bench Airline](https://openrouter.ai/benchmarks), an independent test of conversations over several turns, with tools: Claude Haiku 5.5 75.3 %, Gemini 3.1 Flash Lite 72.0 %, GPT-5.6 Luna 70.0 %, GPT-6 Luna 67.3 % (OpenRouter, 10 October 2026).
 
 Haiku, GPT-5.6 Luna and GPT-6 Luna were right in every conversation of runs B, C and E. Haiku and GPT-5.6 Luna were within half a second of each other at the 95th percentile in both runs (5.4 s against 5.2 s, then 5.7 s against 6.1 s), and Haiku scores higher on τ²-Bench. It also held up best of the three under the ambiguous rule of run D. A conversation costs about two tenths of a cent, so about 2 dollars for a thousand.
 

@@ -85,7 +85,7 @@ it('scores a recorded run again with the current checks', () => {
     after.forEach((record, index) => {
       const old = before[index];
       if (old && old.passed !== record.passed) {
-        changes.push(`- ${id} · ${record.scenario} · run ${record.run}: ${old.passed ? 'passed' : 'failed'}, now ${record.passed ? 'passes' : 'fails'}`);
+        changes.push(`- ${id}, ${record.scenario}, run ${record.run}: ${old.passed ? 'passed' : 'failed'}, now ${record.passed ? 'passes' : 'fails'}`);
       }
     });
     summary.push(summaryRow(id, after));

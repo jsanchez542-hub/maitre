@@ -77,7 +77,7 @@ def listening_page(letters: list[str]) -> str:
     )
     intro = "Écoutez chaque phrase avec chaque voix. Notez la meilleure et celle à écarter. Les lettres ne disent pas qui est qui."
     return (
-        f'<!doctype html><html lang="fr"><meta charset="utf-8"><title>Maître · voix à l’aveugle</title><style>{style}</style>'
+        f'<!doctype html><html lang="fr"><meta charset="utf-8"><title>Maître | voix à l’aveugle</title><style>{style}</style>'
         f"<h1>Quelle voix pour Merrain ?</h1><p>{intro}</p><table><tr><th>Phrase</th>{heads}</tr>{rows}</table></html>"
     )
 

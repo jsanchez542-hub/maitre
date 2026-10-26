@@ -55,7 +55,7 @@ uv run python -m maitre_voice.agent download-files   # the models the agent runs
 uv run python -m maitre_voice.agent dev
 ```
 
-On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow no-break spaces) that the console's default code page cannot print.
+On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow spaces that keep words together) that the console's default code page cannot print.
 
 | Variable | What it is |
 |---|---|
@@ -83,7 +83,7 @@ The model the phone uses is chosen with the evaluation's phone set (`MAITRE_EVAL
 
 ## Deploying
 
-The agent runs as one container on a server it may share with other services. The image is built on that server from the repository at the commit being deployed, and `deploy/compose.yaml` runs it within its share of memory and CPU, on a read-only file system, without privileges and with no port. It only reaches out: to LiveKit, the speech providers and the Worker.
+The agent runs as one container on a server it may share with other services. The image is built on that server from the repository at the commit being deployed, and `deploy/compose.yaml` runs it within its share of memory and CPU, on a file system it can only read, without privileges and with no port. It only reaches out: to LiveKit, the speech providers and the Worker.
 
 ```bash
 commit=$(git rev-parse --short HEAD)
@@ -96,4 +96,4 @@ ssh server "cp /opt/maitre-voice/releases/$commit/voice/deploy/compose.yaml /opt
 
 ## Credits
 
-The typing heard while the agent thinks is LiveKit's built-in clip: "keyboard-typing" by Anton, [freesound.org/s/137](https://freesound.org/s/137/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The typing heard while the agent thinks is the clip that comes with LiveKit: "keyboard-typing" by Anton, [freesound.org/s/137](https://freesound.org/s/137/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

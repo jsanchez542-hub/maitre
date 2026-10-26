@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Maître · appel local</title>
+<title>Maître | appel local</title>
 <style>
   :root { --ink: #111; --paper: #f6f6f4; --muted: #666; --line: #d8d8d4; --accent: #1f5135; }
   * { box-sizing: border-box; }
@@ -94,7 +94,7 @@
     const voice = day.bookings.filter((booking) => booking.channel === 'voice');
     const calls = await api(`/v1/demo/sandboxes/${sandbox}/calls`);
     $('day').textContent =
-      (voice.length ? voice.map((b) => `${b.time} · ${b.partySize} couverts · ${b.guestName} · ${b.phone ?? 'sans numéro'} · réf. ${b.reference}`).join('\n') : 'Aucune réservation prise au téléphone.') +
+      (voice.length ? voice.map((b) => `${b.time}, ${b.partySize} couverts, ${b.guestName}, ${b.phone ?? 'sans numéro'}, réf. ${b.reference}`).join('\n') : 'Aucune réservation prise au téléphone.') +
       '\n\n' + calls.map((c) => `Appel ${c.sessionId.slice(-6)} : ${c.seconds ?? '…'} s, fin : ${c.endedBy ?? 'en cours'}, réponses en ${(c.voiceToVoiceMs || []).map((ms) => (ms / 1000).toFixed(1) + ' s').join(', ') || '…'}`).join('\n');
   }
 
