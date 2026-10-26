@@ -21,7 +21,7 @@ describe('a party on the spot', () => {
     const h = harness(FRIDAY_EVENING);
     h.engine.staffBook({ date: '2026-10-16', partySize: 2, walkIn: true, language: 'fr' });
     const names = (['fr', 'en', 'es'] as const).map((language) => h.engine.serviceDay('2026-10-16', language).bookings[0]?.guestName);
-    expect(names).toEqual(['Client sur place', 'Walk-in guest', 'Cliente sin reserva']);
+    expect(names).toEqual(['Client sur place', 'Guest at the door', 'Cliente sin reserva']);
   });
 
   it('keeps a name the staff give it, and refuses one it cannot read', () => {

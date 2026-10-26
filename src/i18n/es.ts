@@ -107,7 +107,7 @@ export const es: Messages = {
   },
   callEnding(reason) {
     return {
-      silence: 'Ya no le oigo. No dude en volver a llamar. Adiós.',
+      silence: 'Ya no le oigo. Puede volver a llamar cuando quiera. Adiós.',
       time_limit: 'Tengo que terminar esta llamada, que ha llegado a su duración máxima. Gracias por llamar, adiós.',
       paused: 'Tengo que terminar esta llamada: el servicio de voz no está disponible en este momento. Gracias por llamar, adiós.',
     }[reason];

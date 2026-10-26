@@ -94,7 +94,7 @@ export const en: Messages = {
     return 'I did not receive a message. How can I help?';
   },
   walkInGuest() {
-    return 'Walk-in guest';
+    return 'Guest at the door';
   },
   working(errand) {
     return { looking: 'Let me check.', allergens: 'Let me check the kitchen’s sheet.', booking: 'I’ll take care of that.', other: 'One moment.' }[errand];
@@ -109,7 +109,7 @@ export const en: Messages = {
   },
   callEnding(reason) {
     return {
-      silence: 'I can no longer hear you. Feel free to call back. Goodbye.',
+      silence: 'I can no longer hear you. You can call back whenever you like. Goodbye.',
       time_limit: 'I have to end this call, which has reached its maximum length. Thank you for calling, goodbye.',
       paused: 'I have to end this call: the voice service is unavailable for now. Thank you for calling, goodbye.',
     }[reason];

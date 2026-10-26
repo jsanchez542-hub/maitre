@@ -239,7 +239,7 @@ describe('a call to the restaurant', () => {
     fakeNetwork();
     await step('call-voice-0005', 'start', { language: 'fr' });
     const ended = await step('call-voice-0005', 'end', { endedBy: 'silence', seconds: 95.4, voiceToVoiceMs: [820.4, 1190, 'fast', -5, 99_999] });
-    expect(await ended.json()).toEqual({ status: 'ok', say: 'Je ne vous entends plus. N’hésitez pas à rappeler. Au revoir.' });
+    expect(await ended.json()).toEqual({ status: 'ok', say: 'Je ne vous entends plus. Vous pouvez rappeler quand vous voulez. Au revoir.' });
     // A call ends once.
     expect(await (await step('call-voice-0005', 'end', { endedBy: 'caller', seconds: 120 })).json()).toEqual({ status: 'ok', say: '' });
 

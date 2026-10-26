@@ -115,7 +115,7 @@ export const fr: Messages = {
   },
   callEnding(reason) {
     return {
-      silence: 'Je ne vous entends plus. N’hésitez pas à rappeler. Au revoir.',
+      silence: 'Je ne vous entends plus. Vous pouvez rappeler quand vous voulez. Au revoir.',
       time_limit: 'Je dois mettre fin à cet appel, qui a atteint sa durée maximale. Merci d’avoir appelé, au revoir.',
       paused: `Je dois mettre fin à cet appel${THIN}: le service vocal est momentanément indisponible. Merci d’avoir appelé, au revoir.`,
     }[reason];
