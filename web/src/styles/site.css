@@ -544,7 +544,7 @@ a.chat__primary {
   text-transform: uppercase;
 }
 
-/* «Pessac- / Léognan» split across two lines reads as two places: a line breaks only after a «·». */
+/* «Pessac- / Léognan» split across two lines reads as two places: a line breaks only after a comma. */
 .cellar span {
   white-space: nowrap;
 }

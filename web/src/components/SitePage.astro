@@ -124,7 +124,7 @@ const poster = await getImage({ src: pass, format: 'avif', widths: cover.widths 
         <div class="cover__card">
           <h1 class="cover__name" id="merrain">Merrain</h1>
           <BarrelMark />
-          <p class="cover__kind">{t.kind} · {t.place}</p>
+          <p class="cover__kind">{t.kind}</p>
         </div>
         <a class="cover__next" href="#carte" aria-label={t.next}>
           <svg viewBox="0 0 40 20" aria-hidden="true"><path d="M1 1 20 19 39 1"></path></svg>
@@ -177,7 +177,7 @@ const poster = await getImage({ src: pass, format: 'avif', widths: cover.widths 
               CELLAR_SELECTION.map(({ group, names }) => (
                 <div>
                   <dt>{t.cellarGroups[group]}</dt>
-                  <dd>{names.map((name, index) => <Fragment>{index > 0 && ' · '}<span>{name}</span></Fragment>)}</dd>
+                  <dd>{names.map((name, index) => <Fragment>{index > 0 && ', '}<span>{name}</span></Fragment>)}</dd>
                 </div>
               ))
             }

@@ -21,7 +21,7 @@ function Row({ booking, minute, fresh, selected, focus, onSelect, t }: Omit<Prop
   const moved = booking.history[booking.history.length - 1]?.from.time;
   const details = [booking.walkIn ? t.walkIn : t.channel[booking.channel], moved ? t.movedFrom(moved) : '', booking.notes ?? '']
     .filter((part) => part !== '')
-    .join(' · ');
+    .join(', ');
   const table = isLive(booking) ? booking.table : undefined;
   const isNew = fresh.has(booking.reference);
   const body = (

@@ -518,7 +518,7 @@ export function RestaurantCall({ language }: { language: Language }) {
   const state = agent && phase === 'live' ? agent : phase;
   // Nothing before the call: the screen shows the restaurant, and «Appeler» says the rest.
   const said = phase === 'ready' ? '' : t.call.status[phase];
-  const status = phase === 'live' || phase === 'ended' ? `${said} · ${minutesAndSeconds(seconds)}` : said;
+  const status = phase === 'live' || phase === 'ended' ? `${said}, ${minutesAndSeconds(seconds)}` : said;
 
   return (
     <dialog ref={dialog} class="chat call" aria-label={t.call.title} onClose={close}>

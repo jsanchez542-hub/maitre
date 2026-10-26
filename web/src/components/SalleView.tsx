@@ -26,7 +26,7 @@ function nextService(config: BusinessConfig, today: PlainDate, time: string, t: 
   const next = nextArrivals(config, today, time);
   if (!next) return null;
   const hours = typeset(t.site.service(serviceName(config, next.sitting.service, language), next.sitting.firstSeating, next.sitting.lastSeating));
-  return next.date === today ? hours : `${typeset(formatDate(next.date, language, today))} · ${hours}`;
+  return next.date === today ? hours : `${typeset(formatDate(next.date, language, today))}, ${hours}`;
 }
 
 export function SalleView({ app }: { app: PanelApp }) {

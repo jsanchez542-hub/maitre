@@ -215,7 +215,7 @@ button {
   display: inline-block;
   min-width: 15em;
   font-variant-numeric: tabular-nums;
-  /* The text opens with « · »: a box of its own would drop that space as the start of its line. */
+  /* The text opens with «, »: a box of its own would drop that space as the start of its line. */
   white-space: pre-wrap;
 }
 

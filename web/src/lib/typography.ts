@@ -31,6 +31,9 @@ function isMeridiem(text: string, index: number): boolean {
  * loop, not a regular expression: the text comes from recordings and from the
  * engine, and a loop has no backtracking to worry about.
  */
+/** A label set inside a sentence, after a comma or a colon: «À table» becomes «à table». */
+export const lowerFirst = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1);
+
 export function typeset(text: string): string {
   let set = '';
   for (let index = 0; index < text.length; index += 1) {

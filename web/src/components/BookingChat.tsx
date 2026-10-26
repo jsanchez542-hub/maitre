@@ -75,7 +75,7 @@ export function BookingChat({ language }: { language: Language }) {
           {mode === 'live' && (
             <p class={`chat__status chat__status--${status}`}>
               <span class="chat__dot" aria-hidden="true" />
-              {status === 'live' ? `${t.chat.status.live} · ${t.chat.assistant}` : t.chat.status[status]}
+              {t.chat.status[status]}
             </p>
           )}
         </div>

@@ -1,5 +1,5 @@
 import type { Channel } from 'maitre';
-import { NNBSP } from '../lib/typography';
+import { lowerFirst, NNBSP } from '../lib/typography';
 import type { Messages } from './messages';
 import { PROVIDERS } from './providers';
 
@@ -22,7 +22,7 @@ export const fr: Messages = {
     languages: 'Langue',
     note: 'Données inventées pour la démonstration',
     product: 'assistant de réservation pour restaurants',
-    manager: 'Démo · Vous gérez Merrain',
+    manager: `Démo${NNBSP}: vous gérez Merrain`,
     next: (weekday) => `prochain service ${weekday.toLowerCase()}`,
     notLive: 'pas en direct',
     skip: 'Aller au contenu',
@@ -45,7 +45,7 @@ export const fr: Messages = {
     local: `Le direct n’est pas disponible pour le moment${NNBSP}: le panel montre une soirée enregistrée.`,
   },
   site: {
-    title: 'Maître · assistant de réservation pour restaurants',
+    title: 'Maître | assistant de réservation pour restaurants',
     description: `Maître, un assistant de réservation par IA pour les restaurants${NNBSP}: essayez-le chez Merrain, un bistrot inventé à Bordeaux, par chat ou à la voix.`,
     sections: 'Sections du site',
     menuButton: 'Menu',
@@ -70,7 +70,7 @@ export const fr: Messages = {
     book: 'Réserver',
     call: 'Appeler',
     close: 'Fermer',
-    kind: 'Bistrot',
+    kind: 'Bistrot à Bordeaux',
     place: 'Bordeaux',
     rule: (days, noticeMinutes) => `Les réservations sont ouvertes pour les ${days}${NNBSP}prochains jours, jusqu’à ${duration(noticeMinutes)} avant.`,
     courses: { starter: 'Entrées', main: 'Plats', side: 'Accompagnements', dessert: 'Desserts', drink: 'Boissons' },
@@ -78,14 +78,13 @@ export const fr: Messages = {
     service: (name, from, to) => `${name}${NNBSP}: arrivées de ${from} à ${to}`,
     closed: 'Fermé',
     weekdays: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'],
-    clock: (weekday, time) => `Bordeaux · ${weekday.toLowerCase()} ${time}`,
+    clock: (weekday, time) => `Bordeaux, ${weekday.toLowerCase()} ${time}`,
     days: (first, last) => `Du ${first.toLowerCase()} au ${last.toLowerCase()}`,
-    footer: 'Merrain · bistrot à Bordeaux',
+    footer: 'Merrain, bistrot à Bordeaux',
   },
   chat: {
     title: 'Réserver chez Merrain',
-    status: { connecting: 'Connexion à l’assistant…', live: 'En direct', down: 'Pas en direct pour le moment' },
-    assistant: 'L’assistant IA',
+    status: { connecting: 'Connexion à l’assistant…', live: 'L’assistant IA, en direct', down: 'Pas en direct pour le moment' },
     close: 'Fermer',
     log: 'Conversation',
     prompt: 'Choisissez une conversation enregistrée',
@@ -142,7 +141,7 @@ export const fr: Messages = {
     },
   },
   panel: {
-    title: 'Maître · panel du restaurant',
+    title: 'Maître | panel du restaurant',
     description: `Le panel de Maître${NNBSP}: la salle en direct, chaque table et chaque réservation du service, ici chez Merrain, un bistrot inventé.`,
     heading: 'Salle de Merrain',
     fromChat: (name, channel, readBack) => `Nouvelle réservation de ${name} ${via[channel]}${NNBSP}: ${readBack}.`,
@@ -196,7 +195,7 @@ export const fr: Messages = {
       call: 'Appeler',
       done: 'Fait',
       doneNotice: 'Demande traitée.',
-      when: (time, channel) => `${time} · ${channel}`,
+      when: (time, channel) => `${time}, ${via[channel]}`,
     },
     tour: {
       label: 'Découvrir le panel',
@@ -454,6 +453,7 @@ export const fr: Messages = {
     flow: 'Couverts au fil du service',
     curve: 'Couverts en salle, d’après la durée prévue de chaque table',
     curveLabel: (peak, peakAt, seats) => `Couverts en salle au fil du service${NNBSP}: jusqu’à ${peak} à ${peakAt}, pour ${seats} places.`,
+    peak: (covers, time) => `${covers}${NNBSP}à ${time}`,
     groups: { arrived: 'Arrivés', due: 'À venir', seated: 'À table', done: 'Terminées ou annulées' },
     stage: {
       booked: 'À confirmer',
@@ -462,7 +462,7 @@ export const fr: Messages = {
       seated: 'À table',
       left: 'Partie',
       cancelled: 'Annulée',
-      no_show: 'No-show',
+      no_show: 'Absent',
       held: 'Mise de côté',
       free: 'Libre',
     },
@@ -473,6 +473,7 @@ export const fr: Messages = {
     newBooking: 'Nouvelle',
     channel: { web: 'Web', whatsapp: 'WhatsApp', voice: 'Téléphone', staff: 'Équipe' },
     table: (number) => `Table ${number}`,
+    freeTitle: (number) => `Table ${number}, libre`,
     seats: (count) => `${count}${NNBSP}places`,
     allergy: 'Allergie',
     waiter: (name) => `servie par ${name}`,
@@ -493,15 +494,15 @@ export const fr: Messages = {
     moveTo: 'Vers la table',
     movedTo: (name, table) => `${name} passe à la table ${table}.`,
     cancel: 'Annuler',
-    noShow: 'No-show',
+    noShow: 'Absent',
     confirmCancel: 'Confirmer l’annulation',
-    confirmNoShow: 'Confirmer le no-show',
+    confirmNoShow: 'Confirmer l’absence',
     back: 'Retour',
     walkInAsk: `Client sur place${NNBSP}: combien de personnes${NNBSP}?`,
     walkInClosed: `Client sur place${NNBSP}: seulement pendant le service.`,
     walkInSize: (count) => (count <= 1 ? `${count}${NNBSP}personne` : `${count}${NNBSP}personnes`),
-    done: (name, stage) => `${name} · ${stage}`,
-    seatedAt: (name, table) => `${name} · table ${table}`,
+    done: (name, stage) => `${name}${NNBSP}: ${lowerFirst(stage)}`,
+    seatedAt: (name, table) => `${name}${NNBSP}: table ${table}`,
     refusal: {
       already_cancelled: 'Cette réservation est déjà annulée.',
       not_active: 'Cette réservation n’est plus en cours.',
@@ -529,7 +530,7 @@ export const fr: Messages = {
     noMatch: (query) => `Aucun client ne correspond à «${NNBSP}${query}${NNBSP}».`,
   },
   legal: {
-    title: 'Mentions légales et confidentialité · Maître',
+    title: 'Mentions légales et confidentialité | Maître',
     description: 'Qui publie la démonstration de Maître, où elle est hébergée, et ce que deviennent les messages du chat et les appels au restaurant.',
     heading: 'Mentions légales et confidentialité',
     back: 'Retour au site',
@@ -560,7 +561,7 @@ export const fr: Messages = {
         body: `Les réponses, dans le chat comme au téléphone, sont rédigées par ${PROVIDERS.model}, un modèle d’${PROVIDERS.modelMaker}. ${PROVIDERS.router} l’appelle d’abord chez ${PROVIDERS.modelHosts[0]} (Europe), puis chez ${PROVIDERS.modelHosts[1]} (Irlande) et, seulement si les deux échouent, chez ${PROVIDERS.modelMaker} (États-Unis). Ces fournisseurs ne se servent pas des messages pour entraîner leurs modèles${NNBSP}; certains peuvent les conserver pendant une durée limitée pour prévenir les abus, selon leurs conditions.`,
       },
       {
-        heading: 'Vérification anti-robots',
+        heading: 'Vérification contre les robots',
         body: `Avant d’ouvrir votre restaurant de démonstration, ${PROVIDERS.botCheck} vérifie qu’une personne est là. Il ne sert ni à la publicité ni au suivi.`,
       },
       {
@@ -574,7 +575,7 @@ export const fr: Messages = {
     ],
   },
   notFound: {
-    title: 'Page introuvable · Maître',
+    title: 'Page introuvable | Maître',
     heading: 'Cette page n’existe pas.',
     body: 'Le lien est peut-être ancien, ou mal recopié.',
     back: 'Revenir au site',

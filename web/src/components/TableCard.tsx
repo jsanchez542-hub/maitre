@@ -79,8 +79,8 @@ function HoldLine({ entry, timeZone, t }: Pick<Common, 'entry' | 'timeZone' | 't
 }
 
 /**
- * «Annuler» and «No-show»: each asks once more before it is done, since neither is undone by a click. A no-show
- * is offered once the booking's time has come, as the engine allows it.
+ * «Annuler» and «Absent»: each asks once more before it is done, since neither is undone by a click. Marking a
+ * guest absent is offered once the booking's time has come, as the engine allows it.
  */
 export function Undo({ party, t, onCancel, onNoShow }: { party: StaffBookingView; t: Messages['service']; onCancel: (reference: string) => void; onNoShow?: ((reference: string) => void) | undefined }) {
   const [asking, setAsking] = useState<'cancel' | 'no-show' | null>(null);
@@ -93,7 +93,7 @@ export function Undo({ party, t, onCancel, onNoShow }: { party: StaffBookingView
   };
   if (asking) {
     return (
-      <div class="card__undo" role="group" aria-label={`${party.guestName} · ${party.time}`}>
+      <div class="card__undo" role="group" aria-label={`${party.guestName}, ${party.time}`}>
         <button type="button" class="action" ref={first} onClick={() => (asking === 'cancel' ? onCancel(party.reference) : onNoShow?.(party.reference))}>
           {asking === 'cancel' ? t.confirmCancel : t.confirmNoShow}
         </button>
@@ -104,7 +104,7 @@ export function Undo({ party, t, onCancel, onNoShow }: { party: StaffBookingView
     );
   }
   return (
-    <div class="card__undo" role="group" aria-label={`${party.guestName} · ${party.time}`}>
+    <div class="card__undo" role="group" aria-label={`${party.guestName}, ${party.time}`}>
       <button type="button" class="action" ref={first} onClick={() => ask('cancel')}>
         {t.cancel}
       </button>
@@ -200,7 +200,7 @@ function Party({ party, ...props }: Common & { party: StaffBookingView }) {
     <li class={picked ? 'party party--picked' : 'party'} ref={item} aria-current={picked ? 'true' : undefined}>
       <p class="party__head">
         <span class="party__time">{party.time}</span>
-        <span>{`${party.guestName} · ${t.covers(party.partySize)}`}</span>
+        <span>{`${party.guestName}, ${t.covers(party.partySize)}`}</span>
       </p>
       <p class="card__detail">
         <Stage party={party} fresh={fresh} t={t} />
@@ -271,8 +271,8 @@ export function TableCard(props: Props) {
   const late = booking ? minutesLate(booking, minute) : 0;
   const moved = booking?.history[booking.history.length - 1]?.from.time;
   const title = booking
-    ? `${t.table(table.number)} · ${booking.guestName} · ${t.covers(booking.partySize)}`
-    : `${t.table(table.number)} · ${t.stage.free}`;
+    ? `${t.table(table.number)}, ${booking.guestName}, ${t.covers(booking.partySize)}`
+    : t.freeTitle(table.number);
   const detail = booking
     ? [
         late > 0 ? t.late(late) : '',
@@ -282,7 +282,7 @@ export function TableCard(props: Props) {
         entry.waiter ? t.waiter(entry.waiter) : '',
       ]
         .filter((part) => part !== '')
-        .join(' · ')
+        .join(', ')
     : '';
   const sizes = Array.from({ length: table.seats }, (_, index) => index + 1);
   const due = (party: StaffBookingView) => minute >= toMinutes(party.time);
@@ -396,7 +396,7 @@ export function BookedTableCard(props: Common & { parties: StaffBookingView[] })
       <span class="card__grabber" aria-hidden="true" />
       <div class="card__head">
         <h3 class="card__title" id="table-card-title" tabIndex={-1} ref={heading}>
-          {`${t.table(table.number)} · ${t.seats(table.seats)}`}
+          {`${t.table(table.number)}, ${t.seats(table.seats)}`}
         </h3>
         <button type="button" class="card__close" aria-label={t.close} onClick={onClose}>
           <Icon name="close" />

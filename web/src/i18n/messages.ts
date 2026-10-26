@@ -18,7 +18,7 @@ export interface Messages {
     note: string;
     /** What Maître is, beside its name in the bar on a wide screen, and after it in the site's title. */
     product: string;
-    /** «Démo · Vous gérez Merrain», before the restaurant's day and time on the restaurant's side. */
+    /** «Démo : vous gérez Merrain», before the restaurant's day and time on the restaurant's side. */
     manager: string;
     /** After the time, when the panel shows the next service: none is left today. */
     next: (weekday: string) => string;
@@ -91,10 +91,8 @@ export interface Messages {
   };
   chat: {
     title: string;
-    /** Under the title while the live chat opens, once it is live, and when it cannot be. */
+    /** Under the title while the live chat opens, once it is live (who answers, and that it is live), and when it cannot be. */
     status: { connecting: string; live: string; down: string };
-    /** Who answers, after «En direct». */
-    assistant: string;
     close: string;
     log: string;
     prompt: string;
@@ -222,7 +220,7 @@ export interface Messages {
       done: string;
       doneNotice: string;
       /** When the request came, and by which way. */
-      when: (time: string, channel: string) => string;
+      when: (time: string, channel: Channel) => string;
     };
     tour: {
       label: string;
@@ -424,6 +422,8 @@ export interface Messages {
     flow: string;
     curve: string;
     curveLabel: (peak: number, peakAt: string, seats: number) => string;
+    /** The curve's highest point, written over it: «32 à 20:30». */
+    peak: (covers: number, time: string) => string;
     groups: Record<GroupId, string>;
     stage: Record<StageLabel, string>;
     late: (minutes: number) => string;
@@ -433,6 +433,8 @@ export interface Messages {
     newBooking: string;
     channel: Record<Channel, string>;
     table: (number: string) => string;
+    /** A free table's card: «Table 11, libre». */
+    freeTitle: (number: string) => string;
     seats: (count: number) => string;
     allergy: string;
     waiter: (name: string) => string;

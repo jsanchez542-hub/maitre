@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { medianOf, type BookingEvent, type Conversation, type TurnRecord } from '../lib/conversations';
 import { dollarsOf, secondsOf } from '../lib/format';
 import { telHref } from '../lib/service-view';
-import { typeset } from '../lib/typography';
+import { lowerFirst, typeset } from '../lib/typography';
 import { Icon } from './Icons';
 import type { PanelApp } from './Panel';
 import { SectionBar } from './PanelBar';
@@ -110,7 +110,7 @@ export function ConversationsView({ app }: { app: PanelApp }) {
                       <span class="talk__who">{who}</span>
                       <span class="talk__when">{when(conversation.startedAt)}</span>
                     </span>
-                    <span class="talk__line">{[who === channel ? '' : channel, outcomeOf(conversation, app, words)].filter(Boolean).join(' · ')}</span>
+                    <span class="talk__line">{who === channel ? outcomeOf(conversation, app, words) : `${channel}, ${lowerFirst(outcomeOf(conversation, app, words))}`}</span>
                     {said && <span class="talk__said">{said}</span>}
                     {conversation.call && <span class="talk__call">{callOf(conversation, app)}</span>}
                   </button>
@@ -161,7 +161,7 @@ function outcomeOf(conversation: Conversation, app: PanelApp, words: Words): str
             : result === 'answered' && conversation.passedToTeam
               ? c.events.passed
               : c.result[result];
-  return conversation.passedToTeam && result !== 'answered' ? `${said} · ${c.passed}` : said;
+  return conversation.passedToTeam && result !== 'answered' ? `${said}, ${lowerFirst(c.passed)}` : said;
 }
 
 /** How long a call lasted and how it ended, or that it is still going. */
@@ -170,7 +170,7 @@ function callOf(conversation: Conversation, app: PanelApp): string {
   const { call } = conversation;
   if (!call) return '';
   const ended = wordFor(c.ended, call.endedBy ?? 'going');
-  return call.seconds === null ? ended : `${c.length(call.seconds)} · ${ended}`;
+  return call.seconds === null ? ended : `${c.length(call.seconds)}, ${lowerFirst(ended)}`;
 }
 
 interface ThreadProps {
@@ -201,10 +201,10 @@ function Thread({ conversation, app, words, heading, onBack }: ThreadProps) {
           {who}
         </h2>
         <p class="transcript__facts">
-          {facts.join(' · ')}
+          {facts.join(', ')}
           {conversation.phone && conversation.phone !== who && (
             <>
-              {' · '}
+              {', '}
               <a href={telHref(conversation.phone)}>{conversation.phone}</a>
             </>
           )}
@@ -308,7 +308,7 @@ function Trace({ turn, app }: { turn: TurnRecord; app: PanelApp }) {
           </ul>
         </div>
       )}
-      <p class="tech__line">{meta.join(' · ')}</p>
+      <p class="tech__line">{meta.join(', ')}</p>
     </li>
   );
 }

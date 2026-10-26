@@ -9,7 +9,7 @@ const SITES = [
     path: '/',
     lang: 'fr',
     book: 'Réserver',
-    clock: /^Bordeaux · vendredi 20\sh\s05$/,
+    clock: /^Bordeaux, vendredi 20\sh\s05$/,
     notice: /^N’écrivez aucune donnée réelle\s: tout est effacé au bout de 24\sh\.$/,
     // At 20:05 tonight's 20:30 is past its hour's notice: the restaurant suggests tomorrow's.
     chip: 'Une table demain soir',
@@ -28,7 +28,7 @@ const SITES = [
     path: '/en/',
     lang: 'en',
     book: 'Book a table',
-    clock: /^Bordeaux · Friday 8:05\spm$/,
+    clock: /^Bordeaux, Friday 8:05\spm$/,
     notice: /^Don’t enter any real details: everything is deleted after 24\shours\.$/,
     chip: 'A table tomorrow evening',
     example: /^Do you have a table for 2 tomorrow evening at 8:30\spm\?$/,
@@ -46,7 +46,7 @@ const SITES = [
     path: '/es/',
     lang: 'es',
     book: 'Reservar',
-    clock: /^Burdeos · viernes 20:05$/,
+    clock: /^Burdeos, viernes 20:05$/,
     notice: /^No escriba datos reales: todo se borra al cabo de 24\shoras\.$/,
     chip: 'Mesa mañana por la noche',
     example: /^¿Tienen mesa para 2 mañana por la noche a las 20:30\?$/,
@@ -64,7 +64,7 @@ const SITES = [
 
 const PANELS = [
   { path: '/panel/', lang: 'fr', heading: 'Salle de Merrain', plan: 'Plan', walkIn: 'Client sur place' },
-  { path: '/en/panel/', lang: 'en', heading: 'Merrain’s floor', plan: 'Floor plan', walkIn: 'Walk-in guest' },
+  { path: '/en/panel/', lang: 'en', heading: 'Merrain’s floor', plan: 'Floor plan', walkIn: 'Guest at the door' },
   { path: '/es/panel/', lang: 'es', heading: 'Sala de Merrain', plan: 'Plano', walkIn: 'Cliente sin reserva' },
 ] as const;
 
@@ -259,7 +259,7 @@ test('the live chat says it is live, scrolls as one conversation, and its exampl
   await open(page, '/');
   await openChat(page);
   const chat = page.getByRole('dialog', { name: 'Réserver chez Merrain' });
-  await expect(chat.locator('.chat__status')).toHaveText('En direct · L’assistant IA');
+  await expect(chat.locator('.chat__status')).toHaveText('L’assistant IA, en direct');
   // 20:05 at the restaurant: it greets as the evening asks.
   await expect(chat.locator('.chat__line--agent').first()).toHaveText(/^Bonsoir et bienvenue chez Merrain/);
   await expect(chat.locator('.chat__line--agent').first()).toBeInViewport({ ratio: 1 });
@@ -300,7 +300,7 @@ test('the chat says what time it is at Merrain by the restaurant’s own clock, 
   await open(page, '/');
   await openChat(page);
   // The tests' restaurant lives on Friday 16 at 20:05, whatever the day the tests run.
-  await expect(page.getByRole('dialog').locator('.chat__notice p').first()).toHaveText(/^Bordeaux · vendredi 20\sh\s0[56]$/);
+  await expect(page.getByRole('dialog').locator('.chat__notice p').first()).toHaveText(/^Bordeaux, vendredi 20\sh\s0[56]$/);
 });
 
 test('when the demo is closed today, the chat opens on the recordings without opening a restaurant', async ({ page }) => {
@@ -321,7 +321,7 @@ test('when the demo is closed today, the panel shows the demo evening and says i
   demo.status = { live: false, calls: null };
   await open(page, '/panel/');
   await expect(page.getByRole('status').first()).toContainText('Le direct n’est pas disponible pour le moment');
-  await expect(page.locator('.demo-bar__note')).toHaveText(/pas en direct$/);
+  await expect(page.locator('.demo-bar__note')).toHaveText(/\(pas en direct\)$/);
 });
 
 test.describe('the call to the restaurant, from the browser', () => {
@@ -363,7 +363,7 @@ test.describe('the call to the restaurant, from the browser', () => {
     const call = page.getByRole('dialog', { name: 'Appeler Merrain' });
     // A phone's call screen: the restaurant and its local time, «Appeler», and the terms once and small.
     await expect(call.getByRole('heading', { name: 'Merrain' })).toBeVisible();
-    await expect(call.locator('.call__place')).toHaveText(/^Bordeaux · vendredi 20\sh\s05$/);
+    await expect(call.locator('.call__place')).toHaveText(/^Bordeaux, vendredi 20\sh\s05$/);
     await expect(call.locator('.call__status')).toHaveCount(0);
     await expect(call.getByRole('button', { name: 'Appeler', exact: true })).toBeFocused();
     await expect(call.locator('.call__terms')).toHaveText(/^Jusqu’à 4\smin par appel\. Votre voix n’est pas enregistrée\.$/);
@@ -391,7 +391,7 @@ test.describe('the call to the restaurant, from the browser', () => {
       await expect(trigger).toHaveText('Llamar al restaurante');
       await trigger.click();
       const call = page.getByRole('dialog', { name: 'Llamar a Merrain' });
-      await expect(call.locator('.call__place')).toHaveText('Burdeos · viernes 20:05');
+      await expect(call.locator('.call__place')).toHaveText('Burdeos, viernes 20:05');
       await call.getByRole('button', { name: 'Llamar', exact: true }).click();
       await expect(call.locator('.call__status')).toHaveText(/^(Llamando…|Está sonando…)$/);
       await expect(call.getByRole('button', { name: 'Colgar' })).toBeFocused();
@@ -656,7 +656,7 @@ test('when the live demo is paused, the chat says so and plays a recorded conver
   // The panel shows the recorded booking in the evening of the browser, and its bar says it is not live.
   await chat.getByRole('link', { name: 'Voir côté restaurant' }).click();
   await expect(page.getByRole('status')).toContainText('Mercier sur le site');
-  await expect(page.locator('.demo-bar__note')).toHaveText(/, 20\sh\s\d\d · pas en direct$/);
+  await expect(page.locator('.demo-bar__note')).toHaveText(/, 20\sh\s\d\d \(pas en direct\)$/);
   expect(errors).toEqual([]);
 });
 
@@ -764,7 +764,7 @@ test('the restaurant’s side says who the visitor is, and when, by the restaura
   await open(page, '/panel/');
   const line = page.locator('.demo-bar__note');
   // Live, and today's service still going: nothing after the time. The clock is the real one, with no button to move it.
-  await expect(line).toHaveText(/^Démo · Vous gérez Merrain · vendredi 16\soctobre, 20\sh\s0[56]$/);
+  await expect(line).toHaveText(/^Démo\s: vous gérez Merrain, vendredi 16\soctobre, 20\sh\s0[56]$/);
   await expect(page.getByRole('button', { name: /^Avancer/ })).toHaveCount(0);
 });
 
@@ -773,7 +773,7 @@ test('on a day the restaurant is closed, the panel opens on the next service, an
   demo = new FakeDemo(new Date('2026-10-19T13:00:00.000Z'));
   await demo.install(page);
   await open(page, '/panel/');
-  await expect(page.locator('.demo-bar__note')).toHaveText(/^Démo · Vous gérez Merrain · lundi 19\soctobre, 15\sh(\s01)? · prochain service mardi$/);
+  await expect(page.locator('.demo-bar__note')).toHaveText(/^Démo\s: vous gérez Merrain, lundi 19\soctobre, 15\sh(\s01)?, prochain service mardi$/);
   await expect(page.getByRole('heading', { level: 2 })).toHaveText('mardi 20 octobre');
   await expectAccessible(page);
 });
@@ -795,7 +795,7 @@ test('after the last seating, a booking by hand starts on the next day with a ti
 
 for (const [panel, closed, next] of [
   [PANELS[0], /^Client sur place\s: seulement pendant le service\.$/, /^dîner\s: arrivées de 19:00 à 21:30$/],
-  [PANELS[1], /^Walk-in: only during service\.$/, /^dinner: seating from 19:00 to 21:30$/],
+  [PANELS[1], /^At the door: only during service\.$/, /^dinner: seating from 19:00 to 21:30$/],
   [PANELS[2], /^Sin reserva: solo durante el servicio\.$/, /^cena: llegadas de 19:00 a 21:30$/],
 ] as const) {
   test(`${panel.path}: between services a party at the door is told when the next one opens, not offered a size`, async ({ page }) => {
@@ -827,7 +827,7 @@ test('after the last seating of the day, a party at the door is told the next op
   await open(page, '/panel/');
   await expect(page.locator('#main')).toHaveAttribute('aria-busy', 'false');
   await page.locator('.topbar__walk-in .topbar__action').click();
-  await expect(page.locator('#walk-in-sizes-bar .wait__next')).toHaveText(/^samedi 17\soctobre · déjeuner\s: arrivées de 12:00 à 13:45$/);
+  await expect(page.locator('#walk-in-sizes-bar .wait__next')).toHaveText(/^samedi 17\soctobre, déjeuner\s: arrivées de 12:00 à 13:45$/);
 });
 
 for (const panel of PANELS) {
@@ -1274,7 +1274,7 @@ test.describe('the panel’s sections, down its rail', () => {
   test('the recorded evening keeps no conversations: its rail leads to the service and the settings only', async ({ page }) => {
     demo.status = { live: false, calls: null };
     await open(page, '/panel/#conversations');
-    await expect(page.locator('.demo-bar__note')).toHaveText(/pas en direct$/);
+    await expect(page.locator('.demo-bar__note')).toHaveText(/\(pas en direct\)$/);
     await expect(page.getByRole('navigation', { name: 'Rubriques' }).getByRole('link')).toHaveText(['Service', 'Réglages']);
     // Asked for a section it cannot fill, the panel shows the service.
     await expect(page.getByRole('heading', { level: 1, name: 'Salle de Merrain' })).toBeAttached();
@@ -1319,13 +1319,13 @@ test.describe('the panel’s sections, down its rail', () => {
     // Who wrote, when, what it came to, said as the guest heard it, and the guest's last words before the number.
     await expect(row.locator('.talk__who')).toHaveText('Lemoine');
     await expect(row.locator('.talk__when')).toHaveText('20:05');
-    await expect(row.locator('.talk__line')).toHaveText(/^Web · Réservé\s: une table pour 2\spersonnes le samedi 17\soctobre à 20\sh\s30$/);
+    await expect(row.locator('.talk__line')).toHaveText(/^Web, réservé\s: une table pour 2\spersonnes le samedi 17\soctobre à 20\sh\s30$/);
     await expect(row.locator('.talk__said')).toHaveText('Au nom de Lemoine');
     // Side by side the latest is open already; on the phone it opens from the list.
     if (!(await page.locator('.transcript').isVisible())) await row.click();
     const thread = page.locator('.transcript');
     await expect(thread.getByRole('heading', { level: 2 })).toHaveText('Lemoine');
-    await expect(thread.locator('.transcript__facts')).toHaveText('Web · 20:05 · français · +33 6 39 98 00 21');
+    await expect(thread.locator('.transcript__facts')).toHaveText('Web, 20:05, français, +33 6 39 98 00 21');
     await expect(thread.getByRole('link', { name: '+33 6 39 98 00 21' })).toHaveAttribute('href', 'tel:+33639980021');
     await expect(thread.locator('.bubble--guest').first()).toContainText('Avez-vous une table pour 2 demain soir à 20');
     await expect(thread.locator('.bubble--assistant')).toHaveCount(3);
@@ -1342,7 +1342,7 @@ test.describe('the panel’s sections, down its rail', () => {
     await details.locator('summary').click();
     await expect(details.locator('.tech__list').first()).toContainText('Chercher une table');
     await expect(details.locator('.tech__status').first()).toHaveText('libre');
-    await expect(details.locator('.tech__line').first()).toHaveText(/^Réponse en 2,4\ss · coût 0,0011\s\$$/);
+    await expect(details.locator('.tech__line').first()).toHaveText(/^Réponse en 2,4\ss, coût 0,0011\s\$$/);
     await expectAccessible(page);
     expect(errors).toEqual([]);
   });
@@ -1376,12 +1376,12 @@ test.describe('the panel’s sections, down its rail', () => {
     await open(page, '/panel/#conversations');
     const row = page.getByRole('list', { name: 'Conversations récentes' }).getByRole('button').first();
     await expect(row.locator('.talk__who')).toHaveText('+44 7700 900123');
-    await expect(row.locator('.talk__line')).toHaveText('Téléphone · Renseignement');
+    await expect(row.locator('.talk__line')).toHaveText('Téléphone, renseignement');
     await expect(row.locator('.talk__said')).toHaveText('Do you have a table for four on Saturday at eight?');
-    await expect(row.locator('.talk__call')).toHaveText(/^3\smin\s12\ss · Raccroché après l’au revoir$/);
+    await expect(row.locator('.talk__call')).toHaveText(/^3\smin\s12\ss, raccroché après l’au revoir$/);
     if (!(await page.locator('.transcript').isVisible())) await row.click();
     const thread = page.locator('.transcript');
-    await expect(thread.locator('.transcript__facts')).toHaveText(/^Téléphone · 19:50 · anglais · 3\smin\s12\ss · Raccroché après l’au revoir$/);
+    await expect(thread.locator('.transcript__facts')).toHaveText(/^Téléphone, 19:50, anglais, 3\smin\s12\ss, raccroché après l’au revoir$/);
     await expect(thread.locator('.bubble--guest p[lang]')).toHaveAttribute('lang', 'en');
     const details = thread.locator('details.tech');
     await details.locator('summary').click();
@@ -1979,7 +1979,7 @@ test.describe('the owner changes the restaurant’s settings, and the assistant 
     await expect(notice.getByRole('heading', { level: 2 })).toBeFocused();
     await expect(notice.getByRole('heading', { level: 2 })).toBeInViewport();
     const roux = notice.getByRole('listitem').filter({ hasText: 'Roux' });
-    await expect(roux).toContainText(/Roux · 2\scouverts/);
+    await expect(roux).toContainText(/Roux, 2\scouverts/);
     await expect(roux.getByRole('link')).toHaveAttribute('href', /^tel:\+/);
     const before = await notice.getByRole('listitem').count();
     await expectAccessible(page);
@@ -2031,7 +2031,7 @@ test.describe('the owner changes the restaurant’s settings, and the assistant 
     await expect(row(page, 'Roux').locator('.pill--outside')).toHaveText('Hors horaires');
     await showPlan(page);
     await page.getByRole('button', { name: /^1, Martin/ }).click();
-    const next = page.getByRole('region', { name: /^Table 1 · Martin/ }).locator('.card__next');
+    const next = page.getByRole('region', { name: /^Table 1, Martin/ }).locator('.card__next');
     await expect(next).toContainText('Girard');
     await expect(next.locator('.pill--outside')).toHaveText('Hors horaires');
     await expectAccessible(page);
@@ -2119,12 +2119,12 @@ test.describe('the staff at work, on the French panel', () => {
     await open(page, '/panel/');
 
     await row(page, 'Moreau').click();
-    const card = page.getByRole('heading', { name: /^Table \d+ · Moreau · 4 couverts$/ });
+    const card = page.getByRole('heading', { name: /^Table \d+, Moreau, 4 couverts$/ });
     await expect(card).toBeVisible();
     await expectAccessible(page);
 
     await page.getByRole('button', { name: /^Installer à la table \d+$/ }).click();
-    await expect(page.getByRole('status')).toHaveText('Moreau · À table');
+    await expect(page.getByRole('status')).toHaveText(/^Moreau\s: à table$/);
     await expect(card).toBeFocused();
     expect(errors).toEqual([]);
   });
@@ -2135,12 +2135,12 @@ test.describe('the staff at work, on the French panel', () => {
     await showPlan(page);
 
     await page.getByRole('button', { name: /^4,/ }).click();
-    await expect(page.getByRole('heading', { name: 'Table 4 · Libre' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Table 4, libre' })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Ensuite\u202F: Roux à 20:30' })).toBeVisible();
     await expectAccessible(page);
 
     await page.getByRole('button', { name: '2 personnes', exact: true }).click();
-    await expect(page.getByRole('status')).toHaveText('Client sur place · À table');
+    await expect(page.getByRole('status')).toHaveText(/^Client sur place\s: à table$/);
     await expect(page.getByRole('button', { name: /^4,/ })).toHaveClass(/is-seated/);
     await expect(page.getByRole('button', { name: /^\d+, Roux 20:30, .*réservation suivante/ })).toHaveCount(1);
     expect(errors).toEqual([]);
@@ -2160,7 +2160,7 @@ test.describe('the staff at work, on the French panel', () => {
     await expect(sizes).toHaveCount(6);
     expect(new Set(await sizes.evaluateAll((buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().top)))).size).toBe(1);
     await page.getByRole('group', { name: /^Client sur place/ }).getByRole('button', { name: '2 personnes', exact: true }).click();
-    await expect(page.getByRole('status')).toHaveText(/^Client sur place · table \d+$/);
+    await expect(page.getByRole('status')).toHaveText(/^Client sur place\s: table \d+$/);
   });
 
   test('mark a party that arrives ahead of its time', async ({ page }) => {
@@ -2168,7 +2168,7 @@ test.describe('the staff at work, on the French panel', () => {
     await showPlan(page);
     await page.getByRole('button', { name: /^\d+, Bernard 20:15, / }).click();
     await page.getByRole('group', { name: 'Ensuite\u202F: Bernard à 20:15' }).getByRole('button', { name: 'Marquer l’arrivée' }).click();
-    await expect(page.getByRole('status')).toHaveText('Bernard · Arrivée');
+    await expect(page.getByRole('status')).toHaveText(/^Bernard\s: arrivée$/);
     await expect(page.getByRole('button', { name: /^Installer à la table \d+$/ })).toBeVisible();
   });
 
@@ -2222,29 +2222,29 @@ test.describe('the staff at work, on the French panel', () => {
     expect(errors).toEqual([]);
   });
 
-  test('cancel a booking and mark a no-show, each only after a second step', async ({ page }) => {
+  test('cancel a booking and mark a guest absent, each only after a second step', async ({ page }) => {
     await open(page, '/panel/');
     await showPlan(page);
-    // Roux comes at 20:30: not due yet, so it can be cancelled but not marked a no-show.
+    // Roux comes at 20:30: not due yet, so it can be cancelled but not marked absent.
     await page.getByRole('button', { name: /^4, Roux 20:30, / }).click();
-    const roux = page.getByRole('group', { name: 'Roux · 20:30' });
-    await expect(roux.getByRole('button', { name: 'No-show' })).toHaveCount(0);
+    const roux = page.getByRole('group', { name: 'Roux, 20:30' });
+    await expect(roux.getByRole('button', { name: 'Absent' })).toHaveCount(0);
     await roux.getByRole('button', { name: 'Annuler' }).click();
     await expect(roux.getByRole('button', { name: 'Confirmer l’annulation' })).toBeFocused();
     await expectAccessible(page);
     await roux.getByRole('button', { name: 'Confirmer l’annulation' }).click();
-    await expect(page.getByRole('status')).toHaveText('Roux · Annulée');
+    await expect(page.getByRole('status')).toHaveText(/^Roux\s: annulée$/);
 
-    // Petit was due at 20:00 and has not come: a no-show, once confirmed.
+    // Petit was due at 20:00 and has not come: absent, once confirmed.
     // Late, the table is still kept for it: the plan names it first, with how late it is.
     await page.getByRole('button', { name: /^3, Petit, .*de retard/ }).click();
-    const petit = page.getByRole('group', { name: 'Petit · 20:00' });
-    await petit.getByRole('button', { name: 'No-show' }).click();
+    const petit = page.getByRole('group', { name: 'Petit, 20:00' });
+    await petit.getByRole('button', { name: 'Absent' }).click();
     await petit.getByRole('button', { name: 'Retour' }).click();
-    await expect(petit.getByRole('button', { name: 'No-show' })).toBeVisible();
-    await petit.getByRole('button', { name: 'No-show' }).click();
-    await petit.getByRole('button', { name: 'Confirmer le no-show' }).click();
-    await expect(page.getByRole('status')).toHaveText('Petit · No-show');
+    await expect(petit.getByRole('button', { name: 'Absent' })).toBeVisible();
+    await petit.getByRole('button', { name: 'Absent' }).click();
+    await petit.getByRole('button', { name: 'Confirmer l’absence' }).click();
+    await expect(page.getByRole('status')).toHaveText(/^Petit\s: absent$/);
   });
 
   test('«Aujourd’hui» brings the panel back to today from another day', async ({ page }) => {
@@ -2305,7 +2305,7 @@ test.describe('the staff at work, on the French panel', () => {
     // Martin sits at table 1, a table for two.
     await page.getByRole('button', { name: /^1, Martin/ }).click();
     // Martin's own «Modifier» comes first; Girard's, the next party, is in its group below.
-    await page.getByRole('region', { name: /^Table 1 · Martin/ }).getByRole('button', { name: 'Modifier' }).first().click();
+    await page.getByRole('region', { name: /^Table 1, Martin/ }).getByRole('button', { name: 'Modifier' }).first().click();
     const sheet = page.getByRole('dialog', { name: 'Modifier la réservation' });
     await expect(sheet.getByLabel('Date')).toBeDisabled();
     await expect(sheet.getByLabel('Heure')).toBeDisabled();
@@ -2319,7 +2319,7 @@ test.describe('the staff at work, on the French panel', () => {
     const choice = (await free.getByRole('button').first().getAttribute('aria-label')) ?? '';
     await free.getByRole('button').first().click();
     await expect(sheet).toHaveCount(0);
-    await expect(page.getByRole('region', { name: new RegExp(`^${choice} · Martin · 4\\scouverts`) })).toBeVisible();
+    await expect(page.getByRole('region', { name: new RegExp(`^${choice}, Martin, 4\\scouverts`) })).toBeVisible();
   });
 
   test('the booking’s own table, when the engine lists it among the free ones, is named as its current one', async ({ page }) => {
@@ -2380,7 +2380,7 @@ test.describe('the staff at work, on the French panel', () => {
     await open(page, '/panel/');
     await showPlan(page);
     await page.getByRole('button', { name: /^1, Martin/ }).click();
-    const next = page.getByRole('region', { name: /^Table 1 · Martin/ }).getByRole('group', { name: /^Ensuite\s: Girard à 21:00$/ });
+    const next = page.getByRole('region', { name: /^Table 1, Martin/ }).getByRole('group', { name: /^Ensuite\s: Girard à 21:00$/ });
     await expect(next.getByRole('button', { name: 'Confirmer', exact: true })).toBeVisible();
     await expect(next.getByRole('button', { name: 'Annuler' })).toBeVisible();
     await expectAccessible(page);
@@ -2395,7 +2395,7 @@ test.describe('the staff at work, on the French panel', () => {
     await open(page, '/panel/');
     await expect(page.locator('#main')).toHaveAttribute('aria-busy', 'false');
     await row(page, 'Girard').click();
-    const card = page.getByRole('region', { name: /^Table 1 · / });
+    const card = page.getByRole('region', { name: /^Table 1, / });
     await expect(card.getByRole('group', { name: /^Ensuite\s: Martin à 19:00$/ })).toBeVisible();
     const later = card.getByRole('group', { name: 'Plus tard à cette table' });
     const girard = later.getByRole('listitem').filter({ hasText: 'Girard' });
@@ -2426,7 +2426,7 @@ test.describe('the staff at work, on the French panel', () => {
     // Back: the same press goes through.
     await page.unroute(/\/v1\/demo\/sandboxes\//);
     await card.getByRole('button', { name: 'Confirmer', exact: true }).click();
-    await expect(page.getByRole('status')).toHaveText('Bernard · Confirmée');
+    await expect(page.getByRole('status')).toHaveText(/^Bernard\s: confirmée$/);
     expect(errors).toEqual([]);
   });
 
@@ -2436,7 +2436,7 @@ test.describe('the staff at work, on the French panel', () => {
     await page.getByRole('button', { name: /^9, Bernard 20:15, / }).click();
     const card = page.getByRole('region', { name: /^Table 9/ });
     await card.getByRole('button', { name: 'Confirmer', exact: true }).click();
-    await expect(page.getByRole('status')).toHaveText('Bernard · Confirmée');
+    await expect(page.getByRole('status')).toHaveText(/^Bernard\s: confirmée$/);
     await expect(card.getByRole('button', { name: 'Confirmer', exact: true })).toHaveCount(0);
   });
 
@@ -2453,7 +2453,7 @@ test.describe('the staff at work, on the French panel', () => {
     await expectAccessible(page);
     await tables.getByRole('button', { name: 'Table 5', exact: true }).click();
     await expect(page.getByRole('status')).toHaveText('Petit passe à la table 5.');
-    await expect(page.getByRole('region', { name: /^Table 5 · Petit/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Table 5, Petit/ })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Vers la table' })).toHaveCount(0);
   });
 
@@ -2557,16 +2557,16 @@ test.describe('the frame of the demo: the bar, the browser tab, and what a share
       }),
     );
   const HEADS = [
-    { path: '/', title: 'Maître · assistant de réservation pour restaurants', indexed: true },
-    { path: '/en/', title: 'Maître · booking assistant for restaurants', indexed: true },
-    { path: '/es/', title: 'Maître · asistente de reservas para restaurantes', indexed: true },
-    { path: '/panel/', title: 'Maître · panel du restaurant', indexed: false },
-    { path: '/en/panel/', title: 'Maître · restaurant panel', indexed: false },
-    { path: '/es/panel/', title: 'Maître · panel del restaurante', indexed: false },
-    { path: '/mentions-legales/', title: 'Mentions légales et confidentialité · Maître', indexed: true },
-    { path: '/en/legal/', title: 'Legal notice and privacy · Maître', indexed: true },
-    { path: '/es/aviso-legal/', title: 'Aviso legal y privacidad · Maître', indexed: true },
-    { path: '/404.html', title: 'Page introuvable · Maître', indexed: false },
+    { path: '/', title: 'Maître | assistant de réservation pour restaurants', indexed: true },
+    { path: '/en/', title: 'Maître | booking assistant for restaurants', indexed: true },
+    { path: '/es/', title: 'Maître | asistente de reservas para restaurantes', indexed: true },
+    { path: '/panel/', title: 'Maître | panel du restaurant', indexed: false },
+    { path: '/en/panel/', title: 'Maître | restaurant panel', indexed: false },
+    { path: '/es/panel/', title: 'Maître | panel del restaurante', indexed: false },
+    { path: '/mentions-legales/', title: 'Mentions légales et confidentialité | Maître', indexed: true },
+    { path: '/en/legal/', title: 'Legal notice and privacy | Maître', indexed: true },
+    { path: '/es/aviso-legal/', title: 'Aviso legal y privacidad | Maître', indexed: true },
+    { path: '/404.html', title: 'Page introuvable | Maître', indexed: false },
   ] as const;
 
   for (const head of HEADS) {

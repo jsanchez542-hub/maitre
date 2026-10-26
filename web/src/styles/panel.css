@@ -2567,7 +2567,7 @@ button.row:hover {
   -webkit-line-clamp: 2;
 }
 
-/* The guest's last words on one line: rows that came to the same, «Web · Renseignement», still tell themselves apart. */
+/* The guest's last words on one line: rows that came to the same, «Web, renseignement», still tell themselves apart. */
 .talk__said {
   overflow: hidden;
   color: var(--muted);

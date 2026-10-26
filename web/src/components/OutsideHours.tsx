@@ -57,7 +57,7 @@ export function OutsideHours({ app, folded, onEdit }: { app: PanelApp; folded: b
               return (
                 <li class="outside__item" key={booking.reference}>
                   <p class="outside__who" id={who}>
-                    {booking.guestName} · {t.service.covers(booking.partySize)}
+                    {booking.guestName}, {t.service.covers(booking.partySize)}
                   </p>
                   <p class="outside__when">{`${typeset(formatDate(booking.date, language, snapshot.today))}, ${booking.time}`}</p>
                   {booking.phone && <p class="outside__phone">{booking.phone}</p>}

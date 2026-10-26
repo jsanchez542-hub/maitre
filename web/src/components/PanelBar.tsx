@@ -39,8 +39,8 @@ export function Clock({ app }: { app: PanelApp }) {
     const next = serviceDayAt(snapshot.now);
     const day = typeset(formatDate(snapshot.today, language, snapshot.today));
     const time = typeset(formatTime(snapshot.time, language));
-    const ahead = next === snapshot.today ? '' : ` · ${t.demo.next(t.site.weekdays[isoWeekday(next) - 1] ?? '')}`;
-    when.textContent = ` · ${day}, ${time}${ahead}`;
+    const ahead = next === snapshot.today ? '' : `, ${t.demo.next(t.site.weekdays[isoWeekday(next) - 1] ?? '')}`;
+    when.textContent = `, ${day}, ${time}${ahead}`;
   });
 
   return (

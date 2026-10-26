@@ -34,7 +34,7 @@ export function CoversChart({ points, minute, seats, t }: Props) {
         ))}
         {peak.covers > 0 && (
           <span class={peakTowardsEnd ? 'chart__peak' : 'chart__peak chart__peak--before'} style={{ left: `${peakAt}%`, bottom: `${share(peak.covers)}%` }}>
-            {`${peak.covers} · ${peak.time}`}
+            {t.peak(peak.covers, peak.time)}
           </span>
         )}
         {now !== undefined && <span class="chart__now" style={{ left: `${now}%` }} />}

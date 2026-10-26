@@ -364,7 +364,7 @@ export function Panel({ language }: { language: Language }) {
   // Said in the bar for as long as it lasts: the panel shows the evening in the browser, not the visitor's live restaurant.
   useEffect(() => {
     const marker = document.getElementById('demo-not-live');
-    if (marker) marker.textContent = settled && !live ? ` · ${t.demo.notLive}` : '';
+    if (marker) marker.textContent = settled && !live ? ` (${t.demo.notLive})` : '';
   }, [settled, live]);
 
   // The live restaurant changes without the panel: what the assistant books arrives on the next read.

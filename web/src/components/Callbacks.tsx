@@ -19,7 +19,7 @@ export function Callbacks({ t, language, timeZone, today, callbacks, onDone, onC
   const when = (callback: CallbackView) => {
     const moment = localNow(new Date(callback.createdAt), timeZone);
     const time = moment.date === today ? moment.time : `${formatDate(moment.date, language, today)}, ${moment.time}`;
-    return typeset(c.when(time, t.service.channel[callback.channel]));
+    return typeset(c.when(time, callback.channel));
   };
   return (
     <div class="popover popover--list" id="callbacks" role="group" aria-label={c.title}>

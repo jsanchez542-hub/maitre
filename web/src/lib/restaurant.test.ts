@@ -36,11 +36,11 @@ describe('the restaurant as its site and its settings show it', () => {
   it('says where the restaurant is and its own day and time, as a phone shows the callee’s, without a break inside the time', () => {
     const NBSP = '\u00A0';
     const friday = new Date(DEMO_EVENING_AT);
-    expect(clockOf(DEMO_RESTAURANT, friday, 'fr', messagesFor('fr').site)).toBe(`Bordeaux · vendredi 20${NBSP}h${NBSP}05`);
-    expect(clockOf(DEMO_RESTAURANT, friday, 'en', messagesFor('en').site)).toBe(`Bordeaux · Friday 8:05${NNBSP}pm`);
-    expect(clockOf(DEMO_RESTAURANT, friday, 'es', messagesFor('es').site)).toBe('Burdeos · viernes 20:05');
+    expect(clockOf(DEMO_RESTAURANT, friday, 'fr', messagesFor('fr').site)).toBe(`Bordeaux, vendredi 20${NBSP}h${NBSP}05`);
+    expect(clockOf(DEMO_RESTAURANT, friday, 'en', messagesFor('en').site)).toBe(`Bordeaux, Friday 8:05${NNBSP}pm`);
+    expect(clockOf(DEMO_RESTAURANT, friday, 'es', messagesFor('es').site)).toBe('Burdeos, viernes 20:05');
     // In Bordeaux's time, whatever the visitor's: 23:30 in UTC is already Saturday there.
-    expect(clockOf(DEMO_RESTAURANT, new Date('2026-10-16T23:30:00Z'), 'fr', messagesFor('fr').site)).toBe(`Bordeaux · samedi 1${NBSP}h${NBSP}30`);
+    expect(clockOf(DEMO_RESTAURANT, new Date('2026-10-16T23:30:00Z'), 'fr', messagesFor('fr').site)).toBe(`Bordeaux, samedi 1${NBSP}h${NBSP}30`);
   });
 
   it('names the evening a guest asks for as they would: tonight, tomorrow, or its weekday', () => {

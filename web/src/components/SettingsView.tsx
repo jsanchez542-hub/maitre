@@ -216,7 +216,7 @@ export function SettingsView({ app }: { app: PanelApp }) {
                 <ul class="plain">
                   {config.waiters.map((waiter) => {
                     const services = waiter.services?.map((service) => serviceName(config, service, language)).join(', ');
-                    return <li key={waiter.id}>{s.waiterTables(services ? `${waiter.name} · ${services}` : waiter.name, waiter.tables.join(', '))}</li>;
+                    return <li key={waiter.id}>{s.waiterTables(services ? `${waiter.name}, ${services}` : waiter.name, waiter.tables.join(', '))}</li>;
                   })}
                 </ul>
               </>
