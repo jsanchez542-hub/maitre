@@ -46,6 +46,7 @@ from livekit.agents.voice.events import (
     UserInputTranscribedEvent,
     UserStateChangedEvent,
 )
+from livekit.agents.worker import ServerEnvOption
 from livekit.plugins import noise_cancellation, silero
 
 from .brain import TURN, UNREACHABLE, CallState, Goodbye, RestaurantBrain, Spoken
@@ -59,9 +60,27 @@ from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
 load_dotenv(".env.local")
 logger = logging.getLogger("maitre.voice")
 settings = Settings.from_env()
+
+
+def call_load(agent: AgentServer) -> float:
+    """How full the agent is, as it tells LiveKit: the calls it is answering, out of those it answers at once.
+
+    LiveKit sends no call to an agent that says it is full. Left to itself the agent measures its processor, which
+    says nothing of its memory: a call too many passes the container's limit, and calls already going are cut.
+    """
+    return min(1.0, len(agent.active_jobs) / max(settings.max_calls, 1))
+
+
 # A call takes 200 to 300 MB. One that grows past 700 MB is ended alone, before the container reaches its own limit
-# and before the services it shares a server with feel it.
-server = AgentServer(job_memory_warn_mb=400, job_memory_limit_mb=700)
+# and before the services it shares a server with feel it. As many processes wait for a call as calls are answered
+# at once: LiveKit works out from that number what a call about to start will weigh.
+server = AgentServer(
+    job_memory_warn_mb=400,
+    job_memory_limit_mb=700,
+    load_fnc=call_load,
+    load_threshold=1.0,
+    num_idle_processes=ServerEnvOption(dev_default=0, prod_default=settings.max_calls),
+)
 
 #: Seconds without a key before a number typed without the hash key is sent anyway.
 KEYPAD_PAUSE_SECONDS = 4.0

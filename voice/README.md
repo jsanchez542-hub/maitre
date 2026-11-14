@@ -64,6 +64,7 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow spaces
 | `VOICE_STT` | Speech recognition as `provider:model`. By default Deepgram's Nova-3, with Deepgram's own key. |
 | `VOICE_TTS`, `VOICE_TTS_EN`, `VOICE_TTS_ES` | The voice for French, English and Spanish, as `provider:model:voice`, all from one provider. By default Cartesia Sonic 3.5's French Conversational Lady (chosen by ear), Fiona (British) and Sofía (Mexican, chosen for a natural pace on the phone), with Cartesia's own key. Through LiveKit Inference, the same voices are `inference:cartesia/sonic-3.5:<voice>`. |
 | `VOICE_EOT_THRESHOLD`, `VOICE_EOT_TIMEOUT_MS` | With Flux only: when it decides the caller has finished. |
+| `VOICE_MAX_CALLS` | The calls answered at once, 2 by default: the agent tells LiveKit it is full at that number, and takes no call past it. |
 | `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `MISTRAL_API_KEY`, `ELEVEN_API_KEY` | The keys of the providers called directly: by default Deepgram's and Cartesia's. The agent refuses calls, and says which key is missing, when the chosen speech lacks one. |
 
 ## Tests
@@ -95,6 +96,8 @@ ssh server "cp /opt/maitre-voice/releases/$commit/voice/deploy/compose.yaml /opt
 ```
 
 `/opt/maitre-voice/.env`, mode 600, holds the variables of `.env.example` with `MAITRE_API_URL` set to the Worker's public address, `MAITRE_VOICE_VERSION` set to the commit, and an agent token of its own that the Worker shares as `AGENT_TOKEN`. A developer's agent registers under another name (`MAITRE_AGENT_NAME`, and `LIVEKIT_AGENT_NAME` in the local Worker), so it never answers the public demo's calls.
+
+How many calls it answers at once is a matter of memory. Measured on the server on 14 November, the container held about 700 MB before any call and 940 MB at the peak of one, so each call adds 200 to 250 MB: two fit under its 1,200 MB, and a third would pass it and cut calls already going. `VOICE_MAX_CALLS` says that number to LiveKit, which sends a full agent no call, and `DEMO_OPEN_CALLS` says it to the Worker, which tells one more caller the line is busy before it rings. A container with more memory can raise both.
 
 ### Checking the deployed agent with a call
 

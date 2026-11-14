@@ -53,6 +53,10 @@ class Settings:
     usage_every_seconds: float
     #: Soft typing while the restaurant works out its answer, instead of silence.
     thinking_sound: bool
+    #: The calls the agent answers at once: what its memory holds. On the server it runs on, the agent takes about
+    #: 700 MB before any call and a call adds 200 to 250 MB, so two fit under the container's 1,200 MB and a third
+    #: would pass it (measured on 14 November). The Worker's DEMO_OPEN_CALLS says the same number.
+    max_calls: int
     #: The speech providers' keys the environment has, by name only.
     keys: frozenset[str] = frozenset()
     #: The voice for each language, as "provider:model:voice" (VOICE_TTS for French, VOICE_TTS_EN, VOICE_TTS_ES).
@@ -81,6 +85,7 @@ class Settings:
             max_call_seconds=float(values.get("VOICE_MAX_CALL_SECONDS", "900")),
             usage_every_seconds=float(values.get("VOICE_USAGE_EVERY_SECONDS", "30")),
             thinking_sound=values.get("VOICE_THINKING_SOUND", "on") != "off",
+            max_calls=int(values.get("VOICE_MAX_CALLS", "2")),
             keys=frozenset(name for names in PROVIDER_KEYS.values() for name in names if values.get(name)),
             voices={
                 "fr": values.get("VOICE_TTS") or DEFAULT_VOICES["fr"],
@@ -96,6 +101,8 @@ class Settings:
             found.append("MAITRE_AGENT_TOKEN is missing")
         if not self.api_url.startswith(("http://127.0.0.1", "http://localhost", "https://")):
             found.append("MAITRE_API_URL must be https, or the local Worker")
+        if self.max_calls < 1:
+            found.append("VOICE_MAX_CALLS must be at least 1")
         for spec in (self.stt, *self.voices.values()):
             provider = spec.split(":", 1)[0]
             if provider not in PROVIDER_KEYS:
