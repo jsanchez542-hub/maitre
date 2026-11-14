@@ -1,5 +1,6 @@
 import { env, listDurableObjectIds, reset, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { demoPrices } from '../src/demo.js';
 import { budgetStub, demoStub } from '../src/env.js';
 import worker from '../src/index.js';
 
@@ -17,13 +18,15 @@ afterEach(async () => {
 });
 
 type Message = { role: string; content: string | null };
-type Answer = object | ((messages: Message[]) => object);
+/** A message of the model, or one worked out from the conversation so far. A function may also give the provider's whole answer, as it comes. */
+type Answer = object | ((messages: Message[]) => object | Response);
 
 /**
  * The network as the tests play it: Turnstile vouches (or not) for the visitor,
- * and OpenRouter answers in order. Nothing leaves the test.
+ * and OpenRouter answers in order, saying what each answer cost unless the test
+ * gives it another `usage`. Nothing leaves the test.
  */
-function fakeNetwork(options: { person?: boolean; answers?: Answer[] } = {}): { authorization: string | null; body: string }[] {
+function fakeNetwork(options: { person?: boolean; answers?: Answer[]; usage?: object } = {}): { authorization: string | null; body: string }[] {
   const answers = [...(options.answers ?? [])];
   const requests: { authorization: string | null; body: string }[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -35,9 +38,19 @@ function fakeNetwork(options: { person?: boolean; answers?: Answer[] } = {}): { 
     const answer = answers.shift();
     if (answer === undefined) throw new Error('the model was called once too often');
     const message = typeof answer === 'function' ? answer((JSON.parse(body) as { messages: Message[] }).messages) : answer;
-    return Response.json({ choices: [{ message }], usage: { prompt_tokens: 1500, completion_tokens: 40, cost: 0.0004 } });
+    if (message instanceof Response) return message;
+    return Response.json({ choices: [{ message }], usage: options.usage ?? { prompt_tokens: 1500, completion_tokens: 40, cost: 0.0004 } });
   });
   return requests;
+}
+
+/** What a request the provider did not price is counted at, by the prices the test config gives: half a token a byte, and the longest reply. */
+function atMost(request: { body: string }): number {
+  return (new TextEncoder().encode(request.body).length * 0.5 * 0.25 + 700 * 1.2) / 1_000_000;
+}
+
+async function spentToday(): Promise<number | undefined> {
+  return (await budgetStub(env)?.spending())?.day.usd;
 }
 
 const say = (content: string) => ({ content });
@@ -331,6 +344,102 @@ describe('the public demo', () => {
       const refused = await worker.fetch(opening, settings);
       expect([refused.status, await refused.json()]).toEqual([503, { error: 'not_configured' }]);
       expect((await worker.fetch(new IncomingRequest(`${DEMO}/sandboxes/${sandbox}/clock`), settings)).status).toBe(503);
+    }
+  });
+});
+
+describe('what the public demo spends', () => {
+  const hello = { sessionId: 'visitor-session-10', message: 'Bonsoir', language: 'fr' };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(FRIDAY_EVENING));
+  });
+
+  it('counts a turn whose cost the provider did not report, from its tokens at the highest price', async () => {
+    fakeNetwork({ answers: [say('Bonsoir. Que puis-je faire pour vous ?')], usage: { prompt_tokens: 6000, completion_tokens: 100 } });
+    const sandbox = await opened();
+    expect((await send(sandbox, 'chat', hello)).status).toBe(200);
+    // 6,000 tokens in at $0.25 a million and 100 out at $1.20.
+    expect(await spentToday()).toBeCloseTo(0.00162, 10);
+  });
+
+  it('counts an answer that says nothing of its cost at the most the request could cost', async () => {
+    const requests = fakeNetwork({ answers: [() => new Response('<html>Bad gateway</html>')] });
+    const sandbox = await opened();
+    const answered = await send(sandbox, 'chat', hello);
+    expect(await answered.json()).toMatchObject({ status: 'ok', outcome: 'failed_retry' });
+    expect(requests).toHaveLength(1);
+    expect(await spentToday()).toBeCloseTo(atMost(requests[0] ?? { body: '' }), 10);
+    expect(await spentToday()).toBeGreaterThan(0.001);
+  });
+
+  it('counts every request that got no answer: the provider may have run it all the same', async () => {
+    const offline = (): object => {
+      throw new Error('the connection dropped');
+    };
+    // The first model twice, then the fallback model twice.
+    const requests = fakeNetwork({ answers: [offline, offline, offline, offline] });
+    const sandbox = await opened();
+    const answered = await send(sandbox, 'chat', hello);
+    expect(await answered.json()).toMatchObject({ status: 'ok', outcome: 'failed_retry' });
+    expect(requests).toHaveLength(4);
+    expect(await spentToday()).toBeCloseTo(
+      requests.reduce((sum, request) => sum + atMost(request), 0),
+      10,
+    );
+  });
+
+  it('counts what a turn spent even when the turn could not be kept', async () => {
+    fakeNetwork({ answers: [say('Bonsoir. Que puis-je faire pour vous ?')] });
+    const sandbox = await opened();
+    const restaurant = demoStub(env, sandbox);
+    if (!restaurant) throw new Error('the test config must set DATA_JURISDICTION');
+    // The log of turns is gone: the reply is written, paid for, and then cannot be logged.
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      state.storage.sql.exec('DROP TABLE turns');
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect((await send(sandbox, 'chat', hello)).status).toBe(500);
+    expect(await spentToday()).toBeCloseTo(0.0004, 10);
+  });
+
+  it('stops a restaurant that has spent what one may, between two requests of the same turn too', async () => {
+    // Each answer costs more than a restaurant may spend in its whole life.
+    const requests = fakeNetwork({
+      answers: [call('opening_hours', {}), say('Nous sommes ouverts du mardi au dimanche.')],
+      usage: { prompt_tokens: 1500, completion_tokens: 40, cost: 0.06 },
+    });
+    const sandbox = await opened();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const crossed = await send(sandbox, 'chat', { ...hello, message: 'Vos horaires ?' });
+    // The turn stops at the request that crossed the limit, with the words for a failure: the second one never left.
+    expect(await crossed.json()).toMatchObject({ status: 'ok', outcome: 'failed_retry' });
+    expect(requests).toHaveLength(1);
+
+    const next = await send(sandbox, 'chat', hello);
+    expect([next.status, await next.json()]).toEqual([429, { error: 'sandbox_limit' }]);
+    // No call either: its turns are the model's too.
+    const agent = { authorization: 'Bearer test-agent-token', 'content-type': 'application/json' };
+    await SELF.fetch(`${DEMO}/voice/check-in`, { method: 'POST', headers: agent, body: JSON.stringify({ ready: true }) });
+    const ringing = await send(sandbox, 'calls', { language: 'fr' });
+    expect([ringing.status, await ringing.json()]).toEqual([429, { error: 'sandbox_limit' }]);
+    expect(requests).toHaveLength(1);
+    expect(await spentToday()).toBeCloseTo(0.06, 10);
+
+    // What it spent is kept with the restaurant, and another visitor's restaurant is not held to it.
+    const restaurant = demoStub(env, sandbox);
+    if (!restaurant) throw new Error('the test config must set DATA_JURISDICTION');
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      expect(await state.storage.get('demo:spent')).toBeCloseTo(0.06, 10);
+    });
+  });
+
+  it('cannot count without the most a token costs: a price missing, unreadable or of zero is no price', () => {
+    expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toEqual({ inputPerMillion: 0.25, outputPerMillion: 1.2 });
+    for (const price of ['', '0', 'free', '-1']) {
+      expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: price, DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toBeUndefined();
+      expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: price })).toBeUndefined();
     }
   });
 });

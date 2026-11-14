@@ -54,6 +54,15 @@
     "DEMO_MONTHLY_USD": "10",
     "DEMO_SANDBOXES_PER_IP": "5",
     "DEMO_MESSAGES_PER_SANDBOX": "60",
+    // What one restaurant may spend on the model. Its sixty messages cost about three cents when
+    // they are ordinary ones, so only a restaurant made to cost more meets this.
+    "DEMO_USD_PER_SANDBOX": "0.05",
+    // What a request is counted at when OpenRouter does not say what it cost: its tokens at these
+    // prices per million. They are list prices of 14 November 2026, the dearest between the model
+    // above and GPT-5.6 Luna, the fallback model of the tests: Luna's cache write and its output.
+    // A dearer model needs them raised.
+    "DEMO_INPUT_USD_PER_MILLION": "0.25",
+    "DEMO_OUTPUT_USD_PER_MILLION": "1.2",
     // Calls from the demo's browser: a few per restaurant, four minutes each, which is time
     // enough to book. A minute of voice is counted at what speech recognition, speech
     // synthesis and LiveKit cost at list price, even while free tiers pay for it, so the
@@ -65,7 +74,7 @@
     "LIVEKIT_AGENT_NAME": "maitre-voice"
   }
   // Secrets, never in this file: OPENROUTER_API_KEY, AGENT_TOKEN, STAFF_TOKEN,
-  // DEMO_OPENROUTER_API_KEY, TURNSTILE_SECRET, and the LiveKit project's
-  // LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET, set with
+  // DEMO_OPENROUTER_API_KEY, TURNSTILE_SECRET, DEMO_SANDBOX_SECRET, and the LiveKit
+  // project's LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET, set with
   // `wrangler secret put` in production and in .dev.vars locally.
 }

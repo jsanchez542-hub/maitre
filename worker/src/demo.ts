@@ -1,5 +1,4 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { TurnResult } from '../../src/agent/agent.js';
 import { demoEvening, demoSuggestion, serviceDayAt, type DemoSuggestion } from '../../src/demo/evening.js';
 import type { Language } from '../../src/i18n/index.js';
 import { normalizePhone } from '../../src/phone.js';
@@ -14,6 +13,7 @@ import {
   type KeypadEntry,
   type PhoneResponse,
 } from './restaurant.js';
+import type { TokenPrices } from './spend.js';
 
 /**
  * The public demo, live: each visitor opens a restaurant of their own, in its
@@ -23,10 +23,12 @@ import {
  * and on no one else's, and the whole restaurant is deleted a day later.
  *
  * Abuse is kept out in layers: Turnstile before a restaurant opens, a few
- * restaurants a day per visitor, a ceiling on the messages of each restaurant,
- * and the demo's spending counted against a daily and a monthly limit, under a
- * key of its own whose credit OpenRouter also caps. Past a limit the demo is
- * paused, and says so; it never runs open.
+ * restaurants a day per visitor, a ceiling on the messages of each restaurant
+ * and on what it may spend on the model, and the demo's spending counted
+ * against a daily and a monthly limit, under a key of its own whose credit
+ * OpenRouter also caps. Every request to the model is counted, whether or not
+ * the provider says what it cost. Past a limit the demo is paused, and says so;
+ * it never runs open.
  */
 
 /** How long a visitor's restaurant lives before it deletes itself. */
@@ -79,6 +81,7 @@ function base64url(bytes: Uint8Array): string {
 
 const EXPIRES_AT = 'demo:expiresAt';
 const MESSAGES = 'demo:messages';
+const SPENT = 'demo:spent';
 const CALL = 'demo:call:';
 /** Time to join a call once its pass is given, before the call's own clock starts, in seconds. */
 const JOIN_SECONDS = 60;
@@ -91,7 +94,7 @@ const JOIN_SECONDS = 60;
 export type SandboxState =
   | { status: 'ok'; expiresAt: string; clock: string; day: string; suggestion: DemoSuggestion; callsLeft: number }
   | { status: 'not_found' };
-/** Why a demo turn did not run: the restaurant is gone, the visitor writes too fast or has used its messages, or the demo is paused. */
+/** Why a demo turn did not run: the restaurant is gone, the visitor writes too fast, the restaurant has used its messages or what it may spend, or the demo is paused. */
 type Refusal = { status: 'not_found' } | { status: 'rate_limited' } | { status: 'sandbox_limit' } | { status: 'live_paused' };
 export type DemoChatResponse = ChatResponse | Refusal;
 export type DemoPhoneResponse = PhoneResponse | Invalid | Refusal;
@@ -115,19 +118,32 @@ interface MessageCount {
   inMinute: number;
 }
 
-/** A whole number at least 0 from a setting, or undefined when it cannot be read. */
+/** A number at least 0 from a setting, or undefined when it cannot be read. */
 function setting(value: string | undefined): number | undefined {
   const number = Number(value);
   return value !== undefined && value.trim() !== '' && Number.isFinite(number) && number >= 0 ? number : undefined;
 }
 
+/**
+ * The most a million tokens cost on the models the demo answers with: what a request is counted at when the
+ * provider does not say what it cost. Undefined when a price is missing or is not above zero, which would count nothing.
+ */
+export function demoPrices(env: Pick<Env, 'DEMO_INPUT_USD_PER_MILLION' | 'DEMO_OUTPUT_USD_PER_MILLION'>): TokenPrices | undefined {
+  const inputPerMillion = setting(env.DEMO_INPUT_USD_PER_MILLION);
+  const outputPerMillion = setting(env.DEMO_OUTPUT_USD_PER_MILLION);
+  return inputPerMillion && outputPerMillion ? { inputPerMillion, outputPerMillion } : undefined;
+}
+
 export class DemoRestaurant extends Restaurant {
   #expiresAt = 0;
+  /** What this restaurant has spent on the model, requests still on their way counted at the most they could cost. */
+  #spentUsd = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
       this.#expiresAt = (await ctx.storage.get<number>(EXPIRES_AT)) ?? 0;
+      this.#spentUsd = (await ctx.storage.get<number>(SPENT)) ?? 0;
     });
   }
 
@@ -135,8 +151,27 @@ export class DemoRestaurant extends Restaurant {
     return this.env.DEMO_OPENROUTER_API_KEY;
   }
 
-  protected override async turnCompleted(result: TurnResult): Promise<void> {
-    if (result.costUsd !== undefined && result.costUsd > 0) await budgetStub(this.env)?.record(result.costUsd);
+  protected override tokenPrices(): TokenPrices | undefined {
+    return demoPrices(this.env);
+  }
+
+  /** Between two requests of the same turn too: a turn that crosses the restaurant's limit stops at that request. */
+  protected override mayCallModel(): boolean {
+    return !this.#hasSpentItsShare();
+  }
+
+  protected override modelSpent(usd: number): void {
+    this.#spentUsd += usd;
+  }
+
+  protected override async turnCompleted(usd: number): Promise<void> {
+    await this.ctx.storage.put(SPENT, this.#spentUsd);
+    if (usd > 0) await budgetStub(this.env)?.record(usd);
+  }
+
+  /** Whether this restaurant has spent on the model all that one restaurant may. A limit that cannot be read is none to spend. */
+  #hasSpentItsShare(): boolean {
+    return this.#spentUsd >= (setting(this.env.DEMO_USD_PER_SANDBOX) ?? 0);
   }
 
   #open(): boolean {
@@ -215,6 +250,8 @@ export class DemoRestaurant extends Restaurant {
     if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined) return { status: 'live_paused' };
     const left = await this.#callsLeft();
     if (left === 0) return { status: 'call_limit' };
+    // A call's turns are the model's too: a restaurant that has spent its share would ring and never be answered.
+    if (this.#hasSpentItsShare()) return { status: 'sandbox_limit' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
     const sessionId = `call_${randomToken()}`;
@@ -310,13 +347,13 @@ export class DemoRestaurant extends Restaurant {
     return billed;
   }
 
-  /** Whether the visitor may have the assistant answer once more: this restaurant's limits, then the demo's budget. */
+  /** Whether the visitor may have the assistant answer once more: this restaurant's messages and spending, then the demo's budget. */
   async #mayTalk(): Promise<Refusal | undefined> {
     const limit = setting(this.env.DEMO_MESSAGES_PER_SANDBOX) ?? 0;
     const minute = Math.floor(Date.now() / 60_000);
     const count = (await this.ctx.storage.get<MessageCount>(MESSAGES)) ?? { total: 0, minute, inMinute: 0 };
     const inMinute = count.minute === minute ? count.inMinute : 0;
-    if (count.total >= limit) return { status: 'sandbox_limit' };
+    if (count.total >= limit || this.#hasSpentItsShare()) return { status: 'sandbox_limit' };
     if (inMinute >= MESSAGES_PER_MINUTE) return { status: 'rate_limited' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
@@ -330,6 +367,7 @@ export class DemoRestaurant extends Restaurant {
       await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       this.#expiresAt = 0;
+      this.#spentUsd = 0;
       return;
     }
     if (this.#expiresAt !== 0) await this.ctx.storage.setAlarm(this.#expiresAt);
@@ -440,8 +478,12 @@ export class DemoBudget extends DurableObject<Env> {
     };
   }
 
-  /** Past a limit, or with a limit that cannot be read, the demo pauses: it fails closed. */
+  /**
+   * Past a limit, or with a limit that cannot be read, the demo pauses: it fails closed. The same without what a
+   * restaurant may spend or the prices an unpriced request is counted at: its spending could not be told.
+   */
   async #paused(): Promise<boolean> {
+    if (setting(this.env.DEMO_USD_PER_SANDBOX) === undefined || !demoPrices(this.env)) return true;
     const { day, month, dailyLimit, monthlyLimit } = await this.spending();
     return dailyLimit === null || monthlyLimit === null || day.usd >= dailyLimit || month.usd >= monthlyLimit;
   }

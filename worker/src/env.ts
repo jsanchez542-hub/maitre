@@ -32,6 +32,14 @@ export interface Env {
   DEMO_SANDBOXES_PER_IP: string;
   /** Messages one demo restaurant takes in its whole life. */
   DEMO_MESSAGES_PER_SANDBOX: string;
+  /** What one demo restaurant may spend on the model in its whole life, in dollars. */
+  DEMO_USD_PER_SANDBOX: string;
+  /**
+   * What a million tokens cost at most on the demo's models, in dollars: a request the provider did not price is
+   * counted at these. Missing or unreadable keeps the demo paused, like its limits.
+   */
+  DEMO_INPUT_USD_PER_MILLION: string;
+  DEMO_OUTPUT_USD_PER_MILLION: string;
   /** Calls one demo restaurant may make, the longest a demo call lasts in seconds, and what a minute of voice costs the demo's budget. */
   DEMO_CALLS_PER_SANDBOX: string;
   DEMO_CALL_SECONDS: string;

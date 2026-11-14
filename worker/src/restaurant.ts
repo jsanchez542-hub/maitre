@@ -28,6 +28,7 @@ import type { PhoneSource } from '../../src/store.js';
 import { errandOf, runTool, type ToolOutput } from '../../src/tools.js';
 import { CALL_ENDINGS, Conversations, RETENTION_DAYS, type CallEndedBy, type CallLog, type TurnLog } from './conversations.js';
 import type { Env } from './env.js';
+import { ModelSpend, type TokenPrices } from './spend.js';
 import { SqlStore } from './sql-store.js';
 
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -267,8 +268,24 @@ export class Restaurant extends DurableObject<Env> {
     return this.env.OPENROUTER_API_KEY;
   }
 
-  /** Called after every answered turn, with what it cost: the public demo counts its spending here. */
-  protected async turnCompleted(_result: TurnResult): Promise<void> {}
+  /** What a million tokens cost at most, to count a request the provider did not price. The public demo sets them. */
+  protected tokenPrices(): TokenPrices | undefined {
+    return undefined;
+  }
+
+  /** Asked before every request to the model. The public demo stops a restaurant that has spent what one may. */
+  protected mayCallModel(): boolean {
+    return true;
+  }
+
+  /** Told what each request to the model costs as it happens: first the most it could, then the difference once known. */
+  protected modelSpent(_usd: number): void {}
+
+  /**
+   * Called once a turn's requests to the model are over, with what they cost, whatever became of the turn: one
+   * that failed, or that could not be kept, was paid for all the same. The public demo counts its spending here.
+   */
+  protected async turnCompleted(_usd: number): Promise<void> {}
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const problems: string[] = [];
@@ -341,18 +358,24 @@ export class Restaurant extends DurableObject<Env> {
       : fallbackId
         ? { maxRetries: 1 }
         : {};
-    const primary = openRouterModel({ apiKey, model: modelId, ...limits });
+    const spend = new ModelSpend({ prices: this.tokenPrices(), mayCall: () => this.mayCallModel(), onSpend: (usd) => this.modelSpent(usd) });
+    const primary = openRouterModel({ apiKey, model: modelId, fetch: spend.fetch, ...limits });
     let fellBack = false;
     const model = fallbackId
-      ? withFallback(primary, openRouterModel({ apiKey, model: fallbackId, ...limits }), (error) => {
+      ? withFallback(primary, openRouterModel({ apiKey, model: fallbackId, fetch: spend.fetch, ...limits }), (error) => {
           fellBack = true;
           console.warn('Maître answered with the fallback model:', describe(error));
         })
       : primary;
-    const result = await respond(this.#engine, model, session, transcript, message, {
-      onError: (error) => console.error('Maître turn failed:', describe(error)),
-      ...(hooks.onToolCalls ? { onToolCalls: hooks.onToolCalls } : {}),
-    });
+    let result: TurnResult;
+    try {
+      result = await respond(this.#engine, model, session, transcript, message, {
+        onError: (error) => console.error('Maître turn failed:', describe(error)),
+        ...(hooks.onToolCalls ? { onToolCalls: hooks.onToolCalls } : {}),
+      });
+    } finally {
+      await this.turnCompleted(spend.usd);
+    }
     const effects = turnEffects(result.tools);
     // A booking waiting for the number is asked for in every turn, not only the one whose tool said so: the model may
     // ask again on its own, and the phone's keypad and the web chat's field must open all the same.
@@ -377,7 +400,6 @@ export class Restaurant extends DurableObject<Env> {
       ...(hooks.unheardBefore ? { unheardBefore: true as const } : {}),
       ...(fellBack ? { fellBack: true as const } : {}),
     });
-    await this.turnCompleted(result);
     await this.#keepTidy();
     return answer;
   }
