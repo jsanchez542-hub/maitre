@@ -72,7 +72,8 @@ On Windows, set `PYTHONUTF8=1`: replies contain French typography (narrow spaces
 uv run pytest                        # the line, the keypad and the brain, against a stand-in Worker
 uv run ruff check .
 uv run python bench/line_check.py    # a French booking call against the local Worker and the real model, without LiveKit
-uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: it books the evening the demo suggests, types the number, says goodbye, and passes when the restaurant hangs up
+uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: it books the evening the demo suggests, types the number, says goodbye, thanks the restaurant for its own, and passes when the restaurant hangs up without another word
+uv run python bench/caller.py es en  # the same call in Spanish with that last thanks in English: the call must stay in Spanish
 uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to call the local demo restaurant yourself
 uv run python bench/tts_languages.py es "<voice>" ...   # each voice reads the restaurant's lines; speech recognition says what it heard
 ```

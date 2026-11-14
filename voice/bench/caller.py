@@ -1,6 +1,7 @@
 """A real call to the demo restaurant, made by a program: the end-to-end test of the voice channel.
 
     uv run python bench/caller.py          # in French; "en" or "es" for the other languages the line speaks
+    uv run python bench/caller.py es en    # in Spanish, with the thanks after the goodbye said in English
 
 It does what a visitor's browser does. It opens a demo restaurant on the local
 Worker, asks for the pass to call, and joins the LiveKit room as the caller; the
@@ -9,8 +10,11 @@ its lines through a microphone of its own (speech synthesized once with a native
 voice unlike the agent's), types the number on the keypad as DTMF tones, and
 listens. Each language is a test of its own: calls in Spanish were silent while
 the calls in French, the only ones tested, went well. From the caller's side it measures, for every answer, the time from its
-last word to the agent's first sound. At the end it checks the restaurant's
-evening: the booking must be there, with the number from the keypad.
+last word to the agent's first sound. Once the restaurant has said goodbye, it
+says thanks back, as people do: the restaurant must hang up without another word,
+and stay in the call's language whatever language the thanks was in. At the end
+it checks the restaurant's evening: the booking must be there, with the number
+from the keypad.
 """
 
 from __future__ import annotations
@@ -69,7 +73,15 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
         "orion",
     ),
 }
+#: What the caller says back to the restaurant's goodbye. Nobody answers that: the line hangs up.
+THANKS = {
+    "fr": "Merci, bonne soirée à vous aussi.",
+    "es": "Gracias, igualmente, buenas noches.",
+    "en": "Okay, thank you, bye bye.",
+}
 LANGUAGE = sys.argv[1] if len(sys.argv) > 1 else "fr"
+#: The language of that thanks: the call's own, or another, which must not move the call into it.
+THANKS_IN = sys.argv[2] if len(sys.argv) > 2 else LANGUAGE
 SCRIPT, GUEST, CALLER_VOICE = CALLS[LANGUAGE]
 WEEKDAYS = {
     "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
@@ -107,14 +119,14 @@ KEYPAD = "maitre.keypad"
 OUT = Path(__file__).with_name("runs")
 
 
-def caller_voice(voice: str) -> str:
+def caller_voice(voice: str, language: str) -> str:
     """Deepgram's own Aura-2 voice with Deepgram's key, else the same voice through LiveKit Inference."""
-    return f"deepgram:aura-2-{voice}-{LANGUAGE}" if os.environ.get("DEEPGRAM_API_KEY") else f"inference:deepgram/aura-2:{voice}"
+    return f"deepgram:aura-2-{voice}-{language}" if os.environ.get("DEEPGRAM_API_KEY") else f"inference:deepgram/aura-2:{voice}"
 
 
-async def synthesize_lines(lines: list[str]) -> list[np.ndarray]:
-    """The caller's lines as 48 kHz mono 16-bit samples."""
-    engine = build_tts(caller_voice(CALLER_VOICE), LANGUAGE)
+async def synthesize_lines(lines: list[str], language: str = LANGUAGE, voice: str = CALLER_VOICE) -> list[np.ndarray]:
+    """The caller's lines as 48 kHz mono 16-bit samples, said by a voice native to their language."""
+    engine = build_tts(caller_voice(voice, language), language)
     clips = []
     async with http_context.open():
         for line in lines:
@@ -243,6 +255,7 @@ async def main() -> None:
     synthesized = await synthesize_lines(lines)
     print("  silence after the last word of each line:", [f"{trailing_silence(clip):.2f} s" for clip in synthesized])
     clips = iter(synthesized)
+    thanks = (await synthesize_lines([THANKS[THANKS_IN]], THANKS_IN, CALLS[THANKS_IN][2]))[0]
 
     async with aiohttp.ClientSession() as http:
         async with http.post(f"{API}/v1/demo/sandboxes", json={"turnstile": "local-test-token"}) as response:
@@ -326,14 +339,34 @@ async def main() -> None:
                 else f"  caller: {label}\n    no answer heard"
             )
 
-        # The caller's last line is a goodbye: the restaurant answers it and hangs up, as a restaurant does.
+        # The caller's last line is a goodbye: the restaurant answers it and hangs up, as a restaurant does. The caller
+        # says thanks back first, in the pause the line leaves: that is no turn, and the restaurant says nothing more.
+        thanked: float | None = None
+        if not hung_up.is_set():
+            try:
+                thanked = await speak(source, thanks)
+                print(f"  caller, back to the goodbye, in {THANKS_IN}: {THANKS[THANKS_IN]}")
+            except Exception as error:
+                # The line may hang up while the caller is still speaking: the room is gone, and the microphone with it.
+                print(f"  the caller's thanks was cut: {type(error).__name__}")
+        last_word = said if thanked is None else thanked
         try:
             await asyncio.wait_for(hung_up.wait(), timeout=20)
-            hung_up_after: float | None = time.monotonic() - said
-            print(f"  the restaurant hung up {hung_up_after:.1f} s after the caller's goodbye")
+            hung_up_after: float | None = time.monotonic() - last_word
+            print(f"  the restaurant hung up {hung_up_after:.1f} s after the caller's last word")
         except TimeoutError:
             hung_up_after = None
             print("  the restaurant did not hang up after the goodbye")
+        # What the restaurant said once it had been thanked: nothing, when the thanks is taken for what it is.
+        spoke_again = [] if thanked is None else ear.parts_after(thanked, time.monotonic())
+        if thanked is None:
+            print("  the thanks was not said: the line had hung up")
+        else:
+            print(
+                f"  the restaurant spoke again after the thanks, at {spoke_again} s"
+                if spoke_again
+                else "  the restaurant said nothing after the thanks"
+            )
         # Released by hand, whoever hung up: left to the garbage collector, LiveKit's handles fail their checks at exit.
         await room.disconnect()
         await source.aclose()
@@ -367,6 +400,11 @@ async def main() -> None:
         "callLog": calls,
         "restaurantTurns": heard_by_the_restaurant,
         "keypadAttribute": keypad,
+        "thanksAfterTheGoodbye": {
+            "said": THANKS[THANKS_IN] if thanked is not None else None,
+            "language": THANKS_IN,
+            "restaurantSpokeAgainAtSeconds": spoke_again,
+        },
         "restaurantHungUpAfterSeconds": round(hung_up_after, 2) if hung_up_after is not None else None,
     }
     (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -377,7 +415,8 @@ async def main() -> None:
     print("What the restaurant heard and answered:")
     for turn in heard_by_the_restaurant:
         flags = " ".join(name for name in ("unheardBefore", "phoneEntered", "fellBack") if turn.get(name))
-        print(f"  {turn.get('guest') or '(keypad)'!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r} {flags}")
+        heard = turn.get("guest") or "(keypad)"
+        print(f"  [{turn.get('language')}] {heard!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r} {flags}")
     # The keypad opened when the number was asked for, and closed once it was typed.
     print(f"Keypad attribute: {keypad or 'never set'}")
     ok = (
@@ -390,6 +429,10 @@ async def main() -> None:
         # The restaurant, not the caller, ended the call after the goodbye.
         and hung_up_after is not None
         and any(call.get("endedBy") == "goodbye" for call in calls)
+        # The thanks said back to the goodbye got no answer, and the call stayed in its language to the end.
+        and thanked is not None
+        and not spoke_again
+        and all(turn.get("language") == LANGUAGE for turn in heard_by_the_restaurant)
     )
     if booked and GUEST not in str(booked[0].get("guestName", "")).lower():
         print(f"Name heard as {booked[0].get('guestName')!r}, said as {GUEST.title()!r}: a recognition note, not a failure")
