@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localNow } from '../../src/calendar.js';
 import { parseDay, resolveDate } from '../../src/dates.js';
 import { restaurantStub } from '../src/env.js';
+import { visitorBlock } from '../src/http.js';
 import worker from '../src/index.js';
 import { SqlStore } from '../src/sql-store.js';
 
@@ -443,22 +444,23 @@ describe('the floor', () => {
 });
 
 describe('the API limit', () => {
+  const minute = (): number => Math.floor(Date.now() / 60_000);
+  /** 125 requests in a row, each from the address given for it, and whether they all fell in the same minute of the clock. */
+  const spend = async (address: (request: number) => string): Promise<{ statuses: number[]; inOneMinute: boolean }> => {
+    const started = minute();
+    const made: number[] = [];
+    for (let i = 0; i < 125; i += 1) made.push((await SELF.fetch('https://maitre.test/v1/demo', { headers: { 'cf-connecting-ip': address(i) } })).status);
+    return { statuses: made, inOneMinute: minute() === started };
+  };
+
   it('lets one address spend only its share of a minute, and never counts the voice agent', async () => {
-    const minute = (): number => Math.floor(Date.now() / 60_000);
-    /** 125 requests in a row from one address, and whether they all fell in the same minute of the clock. */
-    const spend = async (address: Record<string, string>): Promise<{ statuses: number[]; inOneMinute: boolean }> => {
-      const started = minute();
-      const made: number[] = [];
-      for (let i = 0; i < 125; i += 1) made.push((await SELF.fetch('https://maitre.test/v1/demo', { headers: address })).status);
-      return { statuses: made, inOneMinute: minute() === started };
-    };
     // The limit counts by the minute of the clock. Requests that straddle two minutes are counted in two halves and
     // may never reach it, so they are made again from another address: two runs of a second do not both straddle one.
     let from = { 'cf-connecting-ip': '198.51.100.7' };
-    let spent = await spend(from);
+    let spent = await spend(() => '198.51.100.7');
     if (!spent.inOneMinute) {
       from = { 'cf-connecting-ip': '198.51.100.9' };
-      spent = await spend(from);
+      spent = await spend(() => '198.51.100.9');
     }
     const { statuses } = spent;
     expect(spent.inOneMinute).toBe(true);
@@ -473,6 +475,39 @@ describe('the API limit', () => {
     });
     expect(checkIn.status).toBe(200);
     expect((await SELF.fetch('https://maitre.test/health', { headers: from })).status).toBe(200);
+  });
+
+  it('counts an IPv6 visitor by their /64, whatever address of it each request comes from', async () => {
+    // A home or a phone holds a whole /64: here every request comes from another of its addresses.
+    let block = '2001:db8:17:4';
+    let spent = await spend((request) => `${block}:a:b:c:${request.toString(16)}`);
+    if (!spent.inOneMinute) {
+      block = '2001:db8:17:6';
+      spent = await spend((request) => `${block}:a:b:c:${request.toString(16)}`);
+    }
+    expect(spent.inOneMinute).toBe(true);
+    expect(spent.statuses.slice(0, 120).every((status) => status === 200)).toBe(true);
+    expect(spent.statuses.at(-1)).toBe(429);
+    // The connection next door is another visitor.
+    expect((await SELF.fetch('https://maitre.test/v1/demo', { headers: { 'cf-connecting-ip': '2001:db8:17:5::1' } })).status).toBe(200);
+  });
+
+  it('reads the visitor in an address: an IPv4 address whole, an IPv6 one by its first 64 bits', () => {
+    expect(visitorBlock('203.0.113.7')).toBe('203.0.113.7');
+    // The same /64 however it is written: in full, shortened, in capitals, with zeros in front.
+    for (const address of ['2001:db8:17:4::1', '2001:0db8:0017:0004:ffff:ffff:ffff:ffff', '2001:DB8:17:4:A:B:C:D', '2001:db8:17:4::']) {
+      expect(visitorBlock(address)).toBe('2001:db8:17:4::/64');
+    }
+    expect(visitorBlock('2001:db8:17:5::1')).toBe('2001:db8:17:5::/64');
+    expect(visitorBlock('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(visitorBlock('::1')).toBe('0:0:0:0::/64');
+    // An IPv4 visitor written the IPv6 way is that IPv4 visitor, not one of a block they would all share.
+    expect(visitorBlock('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    // What is not an address counts as it is, and never by more than an address is long.
+    for (const odd of ['unknown', '2001:db8::17::4', '2001:db8:17', '1:2:3:4:5:6:7:8:9', '2001:db8:xyz:4::1', 'fe80::1%eth0', '64:ff9b::203.0.113.7']) {
+      expect(visitorBlock(odd)).toBe(odd);
+    }
+    expect(visitorBlock('A'.repeat(500))).toBe('a'.repeat(45));
   });
 });
 

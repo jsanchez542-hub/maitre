@@ -7,7 +7,7 @@ export interface Env {
   DEMO_RESTAURANTS: DurableObjectNamespace<DemoRestaurant>;
   /** What the public demo has spent, today and this month, and how many restaurants each visitor opened today. */
   DEMO_BUDGET: DurableObjectNamespace<DemoBudget>;
-  /** Requests per visitor address per minute, across the API: what one address may spend of what all share. */
+  /** Requests per visitor per minute, across the API: what one IPv4 address, or one IPv6 /64, may spend of what all share. */
   API_LIMITER?: RateLimit;
   /** The site's own files (web/dist). The Worker reaches them for the demo's films, which it serves in ranges. */
   ASSETS: Fetcher;

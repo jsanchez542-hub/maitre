@@ -66,6 +66,36 @@ async function readBounded(request: Request): Promise<string | undefined> {
   return new TextDecoder().decode(bytes);
 }
 
+/** The longest address read: an IPv6 address that ends in an IPv4 one takes 45 characters. */
+const MAX_ADDRESS_CHARS = 45;
+const HEXTET = /^[0-9a-f]{1,4}$/;
+
+/**
+ * A visitor's address as the limits count it. An IPv4 address counts whole. An
+ * IPv6 address counts by its first 64 bits: a home or a phone is given that
+ * whole block, and could take another of its addresses for every request and
+ * never meet a limit. Anything that is not read as an address counts as it is.
+ */
+export function visitorBlock(address: string): string {
+  const text = address.slice(0, MAX_ADDRESS_CHARS).toLowerCase();
+  // An IPv4 visitor written the IPv6 way.
+  if (text.startsWith('::ffff:') && text.includes('.')) return text.slice('::ffff:'.length);
+  if (!text.includes(':') || text.includes('.')) return text;
+  const halves = text.split('::');
+  if (halves.length > 2) return text;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves[1] ? halves[1].split(':') : [];
+  // "::" stands for the groups left out, one at least; without it all eight are written.
+  const leftOut = 8 - head.length - tail.length;
+  if (halves.length === 2 ? leftOut < 1 : leftOut !== 0) return text;
+  const groups = [...head, ...Array<string>(leftOut).fill('0'), ...tail];
+  if (!groups.every((group) => HEXTET.test(group))) return text;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => Number.parseInt(group, 16).toString(16))
+    .join(':')}::/64`;
+}
+
 /**
  * Compares a bearer token with the expected secret in constant time. Both are
  * hashed first, so their lengths cannot leak through the comparison either.

@@ -125,9 +125,9 @@ Each group has its own bearer token. A route whose secret is not set answers 503
 
 The public demo has its own routes under `/v1/demo`. A visitor opens a restaurant of their own, a Durable Object deleted after a day, and chats with it, calls it and runs its dashboard. What keeps it up and within budget when anyone can reach it:
 
-- **Turnstile** before a restaurant is opened, and **five restaurants per visitor a day**, counted by a keyed hash of the address that changes daily, never by the address itself.
+- **Turnstile** before a restaurant is opened, and **five restaurants per visitor a day**, counted by a keyed hash of the address that changes daily, never by the address itself. A visitor is an IPv4 address or an IPv6 /64, here and in the limit on requests: a connection that holds a whole block of addresses is still one visitor.
 - **Ids signed by the Worker:** a restaurant's id carries its signature, checked before any Durable Object is reached, so an id the Worker never gave opens nothing and leaves nothing behind.
-- **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
+- **120 requests a minute per visitor** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
 - **Settings held to what a restaurant writes:** a name is one line of 80 characters, an answer a paragraph of 400, a menu sixty dishes. Their texts reach the assistant, so whoever edits a restaurant would otherwise decide what every turn costs. What a conversation carries from its past and what the tools add to one turn are bounded by weight as well.
 - **Five cents of model spending per restaurant,** checked before each request to the model, and **every request counted:** at what the provider reports; at its tokens at the highest list price when the provider gives no cost; in full when no answer came, since the provider may have run it all the same.

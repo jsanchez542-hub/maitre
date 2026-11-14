@@ -6,7 +6,7 @@ import { isLanguage } from '../../src/i18n/index.js';
 import { isSandboxId, newSandboxId, sandboxKey, verifyTurnstile, visitorKey, type DemoBudget, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
 import { serveFilm } from './films.js';
-import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
+import { hasBearer, json, jsonLines, problem, readJson, visitorBlock } from './http.js';
 import { callPass, liveKitProject } from './livekit.js';
 import type { CallEnd, CallTurn, ChatRequest, Restaurant } from './restaurant.js';
 
@@ -98,7 +98,7 @@ function matcher(request: Request, rest: readonly string[]) {
 }
 
 /**
- * Whether this request fits its address's share of the API. Every request from
+ * Whether this request fits its visitor's share of the API. Every request from
  * the internet carries the address Cloudflare saw; one without it did not come
  * through the edge, and there is nothing to count it by.
  */
@@ -107,7 +107,7 @@ async function withinLimit(request: Request, env: Env): Promise<boolean> {
   if (!env.API_LIMITER || !address) return true;
   // The voice agent answers many callers from one server: its token vouches for it, not its address.
   if (env.AGENT_TOKEN && (await hasBearer(request, env.AGENT_TOKEN))) return true;
-  return (await env.API_LIMITER.limit({ key: address })).success;
+  return (await env.API_LIMITER.limit({ key: visitorBlock(address) })).success;
 }
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -530,8 +530,9 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   const body = await readJson(request);
   if (!body.ok) return body.response;
   const ip = request.headers.get('cf-connecting-ip');
+  // Turnstile checks the address its widget saw; the day's count is by visitor, as the API's limit is.
   if (!(await verifyTurnstile(env.TURNSTILE_SECRET, String(body.value['turnstile'] ?? ''), ip))) return problem(403, 'turnstile_failed');
-  const allowed = await budget.allowSandbox(await visitorKey(ip ?? 'unknown', env.TURNSTILE_SECRET));
+  const allowed = await budget.allowSandbox(await visitorKey(ip ? visitorBlock(ip) : 'unknown', env.TURNSTILE_SECRET));
   if (allowed === 'too_many_sandboxes') return problem(429, 'too_many_sandboxes');
   if (allowed === 'live_paused') return problem(503, 'live_paused');
   const sandboxId = await newSandboxId(key);

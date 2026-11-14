@@ -142,6 +142,14 @@ describe('the public demo', () => {
     expect((await open('203.0.113.9')).code).toBe(201);
   });
 
+  it('counts an IPv6 visitor by their /64: another address of the same connection opens no more restaurants', async () => {
+    fakeNetwork();
+    for (let opened = 0; opened < 5; opened += 1) expect((await open(`2001:db8:17:4::${opened + 1}`)).code).toBe(201);
+    expect(await open('2001:db8:17:4:aaaa:bbbb:cccc:dddd')).toMatchObject({ code: 429, body: { error: 'too_many_sandboxes' } });
+    // The connection next door is another visitor.
+    expect((await open('2001:db8:17:5::1')).code).toBe(201);
+  });
+
   it('books with the real assistant and the demo’s own key, in that visitor’s restaurant and no one else’s', async () => {
     const requests = fakeNetwork({
       answers: [
