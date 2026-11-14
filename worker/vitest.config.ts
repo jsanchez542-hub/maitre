@@ -3,9 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 // Tests run inside workerd, the Workers runtime, with a real Durable Object and its SQLite database.
 // The network is cut off and the model key is a fake one, whatever .dev.vars holds: the tests
-// answer for OpenRouter themselves, so no test can reach a paid API. The demo's limits are the
-// ones wrangler.jsonc gives production, here too, even when .dev.vars raises them to try the
-// demo by hand.
+// answer for OpenRouter themselves, so no test can reach a paid API. The demo's limits and the
+// voice agent's name are the ones wrangler.jsonc gives production, here too, even when .dev.vars
+// raises the limits to try the demo by hand or names a developer's own agent.
 export default defineConfig({
   plugins: [
     cloudflareTest({
@@ -22,6 +22,7 @@ export default defineConfig({
           LIVEKIT_URL: 'wss://maitre-test.livekit.cloud',
           LIVEKIT_API_KEY: 'test-livekit-key',
           LIVEKIT_API_SECRET: 'test-livekit-secret',
+          LIVEKIT_AGENT_NAME: 'maitre-voice',
           FALLBACK_MODEL: 'openai/gpt-5.6-luna',
           DEMO_DAILY_USD: '1',
           DEMO_MONTHLY_USD: '10',
