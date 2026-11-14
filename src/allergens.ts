@@ -31,7 +31,9 @@ export type AllergenAnswer = AllergenStatus | 'unknown';
 
 const STATUSES: readonly string[] = ['contains', 'may_contain', 'free'];
 
-export type DishCategory = 'starter' | 'main' | 'dessert' | 'drink' | 'side';
+export const DISH_CATEGORIES = ['starter', 'main', 'dessert', 'drink', 'side'] as const;
+
+export type DishCategory = (typeof DISH_CATEGORIES)[number];
 
 export interface Dish {
   id: string;

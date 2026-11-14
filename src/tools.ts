@@ -1,4 +1,4 @@
-import { ALLERGENS, isAllergen, type Allergen, type DishCategory } from './allergens.js';
+import { ALLERGENS, DISH_CATEGORIES, isAllergen, type Allergen, type DishCategory } from './allergens.js';
 import { DAY_FORMS, parseDay, type DateSpec } from './dates.js';
 import { HANDOFF_REASONS, type BookingEngine, type CallbackResult, type Session } from './engine.js';
 import { localize, messages, type Errand } from './i18n/index.js';
@@ -41,7 +41,6 @@ export interface ToolOutput {
   [key: string]: unknown;
 }
 
-const CATEGORIES: readonly DishCategory[] = ['starter', 'main', 'dessert', 'drink', 'side'];
 const MAX_TEXT = 600;
 
 /**
@@ -142,7 +141,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     description: 'The dishes on the menu with their ids and prices. Use the ids with check_dish.',
     inputSchema: {
       type: 'object',
-      properties: { category: { type: 'string', enum: CATEGORIES } },
+      properties: { category: { type: 'string', enum: DISH_CATEGORIES } },
       additionalProperties: false,
     },
   },
@@ -234,6 +233,13 @@ const ERRANDS: Readonly<Record<ToolName, Errand>> = {
   hand_over: 'other',
   end_call: 'other',
 };
+
+const LOOKUPS: ReadonlySet<string> = new Set<ToolName>(['my_bookings', 'get_menu', 'dishes_without', 'opening_hours', 'business_info']);
+
+/** Whether a tool only looks something up. Its answer can be left out of a turn: nothing was done that the model must know of. */
+export function isLookup(name: string): boolean {
+  return LOOKUPS.has(name);
+}
 
 /** What a batch of tool calls is about, for the line the phone says while they run: the most specific errand wins. */
 export function errandOf(names: readonly string[]): Errand {
@@ -391,8 +397,8 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
     }
     case 'get_menu': {
       const category = input['category'];
-      if (category !== undefined && !CATEGORIES.includes(category as DishCategory)) {
-        return invalid([`category must be one of ${CATEGORIES.join(', ')}`]);
+      if (category !== undefined && !DISH_CATEGORIES.includes(category as DishCategory)) {
+        return invalid([`category must be one of ${DISH_CATEGORIES.join(', ')}`]);
       }
       return { status: 'ok', dishes: menuView(engine.config, language, category as DishCategory | undefined) };
     }

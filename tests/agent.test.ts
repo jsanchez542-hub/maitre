@@ -3,6 +3,7 @@ import { respond, trimTranscript, turnEffects, turnEvents } from '../src/agent/a
 import { ModelError, type TranscriptEntry } from '../src/agent/model.js';
 import { buildSystemPrompt } from '../src/agent/prompt.js';
 import { scriptedModel } from '../src/agent/providers/scripted.js';
+import { utf8Length } from '../src/agent/size.js';
 import { BookingEngine } from '../src/engine.js';
 import type { BookingStore } from '../src/store.js';
 import { TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
@@ -148,6 +149,33 @@ describe('a turn of conversation', () => {
     const result = await respond(h.engine, looping, guest('g1'), [], 'Horaires ?', { maxModelCalls: 3 });
     expect(result).toMatchObject({ outcome: 'failed_handed_over', modelCalls: 3 });
     expect(result.tools).toHaveLength(3);
+  });
+
+  it('leaves out a lookup that does not fit in what the tools may add to a turn, then runs nothing more', async () => {
+    const h = harness();
+    const hours = utf8Length(JSON.stringify(h.engine.openingHours('fr')));
+    const model = scriptedModel([
+      {
+        toolCalls: [
+          { name: 'opening_hours', input: {} },
+          { name: 'opening_hours', input: {} },
+          { name: 'find_table', input: { day: 'friday', time: '20:00', partySize: 4 } },
+          { name: 'hand_over', input: { reason: 'other', summary: 'Rappeler le client.' } },
+        ],
+      },
+      { text: 'Nous sommes ouverts du mardi au dimanche.' },
+    ]);
+    const result = await respond(h.engine, model, guest('g1'), [], 'Vos horaires ?', { maxToolBytes: hours + 10 });
+    // The second lookup does not fit and is left out. The table is held and told all the same, which uses up
+    // the rest, so the request to the team is not run at all.
+    expect(result.tools.map((tool) => tool.output.status)).toEqual(['ok', 'too_long', 'available', 'not_run']);
+    expect(h.store.snapshot().holds).toHaveLength(1);
+    expect(h.store.snapshot().callbacks).toHaveLength(0);
+    // The model reads what became of each call, and the hours once.
+    const read = model.requests[1]?.transcript.flatMap((entry) => (entry.role === 'tool' ? [utf8Length(JSON.stringify(entry.output))] : [])) ?? [];
+    expect(read[0]).toBe(hours);
+    expect(read[1]).toBeLessThan(400);
+    expect(read[3]).toBeLessThan(400);
   });
 
   it('tells the phone line which tools are about to run, and a listener that fails changes nothing', async () => {
@@ -305,6 +333,34 @@ describe('the transcript', () => {
     const trimmed = trimTranscript(entries, 10);
     expect(trimmed.length).toBeLessThanOrEqual(10);
     expect(trimmed[0]?.role).toBe('user');
+  });
+
+  it('keeps them in bounds by weight too: a few long tool answers are not sent again with every call', () => {
+    const turn = (index: number, answer: string): TranscriptEntry[] => [
+      { role: 'user', text: `message ${index}` },
+      { role: 'assistant', text: '', toolCalls: [{ id: `c${index}`, name: 'get_menu', input: {} }] },
+      { role: 'tool', callId: `c${index}`, name: 'get_menu', output: { status: 'ok', dishes: answer } },
+      { role: 'assistant', text: 'ok', toolCalls: [] },
+    ];
+    // Sixteen entries, far from sixty, of 20,000 bytes a turn: two turns fit in 48,000, and the two before them go whole.
+    const heavy = [0, 1, 2, 3].flatMap((index) => turn(index, 'x'.repeat(20_000)));
+    expect(trimTranscript(heavy)).toEqual(heavy.slice(8));
+    // 7,000 wine glasses are 14,000 characters to a string and 28,000 bytes to a model: only the last turn fits.
+    const glasses = [0, 1].flatMap((index) => turn(index, String.fromCodePoint(0x1f377).repeat(7_000)));
+    expect(trimTranscript(glasses)).toEqual(glasses.slice(4));
+    // A last turn too heavy on its own leaves nothing of the past.
+    expect(trimTranscript(turn(0, 'x'.repeat(60_000)))).toEqual([]);
+    expect(trimTranscript(heavy, 60, 100_000)).toEqual(heavy);
+  });
+});
+
+describe('the weight of a text', () => {
+  it('is its bytes in UTF-8, whatever its characters', () => {
+    const half = String.fromCharCode(0xd83c);
+    for (const text of ['', 'table', 'crème brûlée', '12 €', String.fromCodePoint(0x1f377), `${half}x`, `x${half}`]) {
+      expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length);
+    }
+    expect(utf8Length(String.fromCodePoint(0x1f377))).toBe(4);
   });
 });
 

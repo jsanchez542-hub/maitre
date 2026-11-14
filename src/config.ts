@@ -1,4 +1,4 @@
-import { ALLERGENS, isAllergenStatus, type Dish } from './allergens.js';
+import { ALLERGENS, DISH_CATEGORIES, isAllergenStatus, type Dish } from './allergens.js';
 import { assertTimeZone, isPlainDate, isPlainTime, toMinutes, type PlainDate, type PlainTime, type Weekday } from './calendar.js';
 import { LANGUAGES, isLanguage, type Language, type LocalizedText } from './i18n/index.js';
 import { physicalTables } from './seating.js';
@@ -110,18 +110,56 @@ export interface BusinessConfig {
   faq: readonly FaqEntry[];
 }
 
+/**
+ * How much a restaurant's settings may hold. Their texts reach the assistant: the dishes' names in its
+ * instructions, the rest in what its tools answer. Without bounds, whoever edits the settings decides what
+ * every turn costs. The longest menu and the longest answers allowed here still fit in one turn of the
+ * assistant (MAX_TURN_TOOL_BYTES in agent/agent.ts).
+ */
+export const SETTINGS_LIMITS = {
+  /** A name, a question or the reason for a closure, in characters: one line. */
+  line: 80,
+  /** A dish's description or an answer, in characters. */
+  paragraph: 400,
+  dishes: 60,
+  answers: 30,
+  exceptions: 100,
+  sittingsPerDay: 6,
+} as const;
+
 const ALLOWED_SLOT_MINUTES = [5, 10, 15, 20, 30, 60];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/**
+ * Characters that break a line or cannot be seen. A dish's name is a line of the assistant's instructions: with a
+ * line break in it, whoever wrote the name would be writing instructions.
+ */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+/** The same, except the line feed: a paragraph may have several lines. */
+const CONTROL_IN_PARAGRAPH = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/;
+
+type TextKind = 'line' | 'paragraph';
 
 function isWholeNumber(value: unknown, min: number, max: number): boolean {
   return Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
 }
 
-function checkLocalized(text: LocalizedText | undefined, where: string, problems: string[]): void {
+/** What is wrong with a text of the settings, if anything. Its length is checked first, so the pattern never runs over a long text. */
+function textProblem(value: string, kind: TextKind): string | undefined {
+  if (value.length > SETTINGS_LIMITS[kind]) return `is longer than ${SETTINGS_LIMITS[kind]} characters`;
+  if (kind === 'line') return CONTROL.test(value) ? 'must be one line, without control characters' : undefined;
+  return CONTROL_IN_PARAGRAPH.test(value) ? 'has control characters' : undefined;
+}
+
+function checkLocalized(text: LocalizedText | undefined, where: string, problems: string[], kind: TextKind = 'line'): void {
   if (text === undefined) return;
   for (const language of LANGUAGES) {
     const value = Object.hasOwn(text, language) ? text[language] : undefined;
-    if (typeof value !== 'string' || value.trim() === '') problems.push(`${where} has no ${language} text`);
+    if (typeof value !== 'string' || value.trim() === '') {
+      problems.push(`${where} has no ${language} text`);
+      continue;
+    }
+    const problem = textProblem(value, kind);
+    if (problem) problems.push(`${where} ${language} text ${problem}`);
   }
 }
 
@@ -141,6 +179,7 @@ function checkSittings(
   slotMinutes: number,
   problems: string[],
 ): void {
+  if (sittings.length > SETTINGS_LIMITS.sittingsPerDay) problems.push(`${where}: more than ${SETTINGS_LIMITS.sittingsPerDay} sittings`);
   const ranges: [number, number][] = [];
   for (const sitting of sittings) {
     if (!serviceIds.has(sitting.service)) problems.push(`${where}: unknown service "${sitting.service}"`);
@@ -231,6 +270,10 @@ export function validateConfig(config: BusinessConfig): string[] {
 
   if (!ID_PATTERN.test(config.id)) problems.push('id must be lowercase letters, digits and dashes');
   if (config.name.trim() === '') problems.push('name is empty');
+  else {
+    const problem = textProblem(config.name, 'line');
+    if (problem) problems.push(`name ${problem}`);
+  }
   try {
     assertTimeZone(config.timeZone);
   } catch {
@@ -261,6 +304,7 @@ export function validateConfig(config: BusinessConfig): string[] {
     checkSittings(sittings, `weekday ${weekday}`, serviceIds, slotMinutes, problems);
   }
 
+  if (config.exceptions.length > SETTINGS_LIMITS.exceptions) problems.push(`there are more than ${SETTINGS_LIMITS.exceptions} exceptions`);
   const exceptionDates = new Set<string>();
   for (const exception of config.exceptions) {
     if (!isPlainDate(exception.date)) problems.push(`exception date "${exception.date}" is not a calendar date`);
@@ -301,10 +345,14 @@ export function validateConfig(config: BusinessConfig): string[] {
   if (!isWholeNumber(config.maxAdvanceDays, 1, 730)) problems.push('maxAdvanceDays must be from 1 to 730');
   if (!isWholeNumber(config.holdMinutes, 1, 30)) problems.push('holdMinutes must be from 1 to 30');
 
+  if (config.menu.length > SETTINGS_LIMITS.dishes) problems.push(`the menu has more than ${SETTINGS_LIMITS.dishes} dishes`);
   checkUniqueIds(config.menu, 'dish', problems);
   for (const dish of config.menu) {
     checkLocalized(dish.name, `dish "${dish.id}"`, problems);
-    checkLocalized(dish.description, `dish "${dish.id}" description`, problems);
+    checkLocalized(dish.description, `dish "${dish.id}" description`, problems, 'paragraph');
+    if (!(DISH_CATEGORIES as readonly string[]).includes(dish.category)) {
+      problems.push(`dish "${dish.id}": category must be one of ${DISH_CATEGORIES.join(', ')}`);
+    }
     if (dish.priceCents !== undefined && !isWholeNumber(dish.priceCents, 0, 1_000_000)) {
       problems.push(`dish "${dish.id}" price must be a whole number of cents`);
     }
@@ -314,10 +362,11 @@ export function validateConfig(config: BusinessConfig): string[] {
     }
   }
 
+  if (config.faq.length > SETTINGS_LIMITS.answers) problems.push(`there are more than ${SETTINGS_LIMITS.answers} answers`);
   checkUniqueIds(config.faq, 'faq entry', problems);
   for (const entry of config.faq) {
     checkLocalized(entry.question, `faq "${entry.id}" question`, problems);
-    checkLocalized(entry.answer, `faq "${entry.id}" answer`, problems);
+    checkLocalized(entry.answer, `faq "${entry.id}" answer`, problems, 'paragraph');
   }
 
   return problems;

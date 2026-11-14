@@ -129,6 +129,7 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 - **Ids signed by the Worker:** a restaurant's id carries its signature, checked before any Durable Object is reached, so an id the Worker never gave opens nothing and leaves nothing behind.
 - **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
+- **Settings held to what a restaurant writes:** a name is one line of 80 characters, an answer a paragraph of 400, a menu sixty dishes. Their texts reach the assistant, so whoever edits a restaurant would otherwise decide what every turn costs. What a conversation carries from its past and what the tools add to one turn are bounded by weight as well.
 - **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.
 - **Calls offered only while a voice agent checks in** every minute with speech that works, and not for a quarter of an hour after a call fails on its speech. The agent tries its speech again every hour, so a provider allowance spent in the middle of the month turns calls off within the hour.
 - **Nothing to steal from a page:** the browser holds only Turnstile's public site key, and every secret is a platform secret of the Worker or the agent.
@@ -184,6 +185,7 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 - Opening hours that span the night the clocks change (between 2 and 3 am) are not supported.
 - The evaluation is forty-one written conversations, twenty-six of them also on the phone, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors are measured separately, with real calls made by a program.
 - Data cannot be pinned to the EU when running locally, because workerd does not implement jurisdictions; the local configuration has to say so explicitly.
+- A restaurant's settings hold sixty dishes, thirty answers and a hundred special days at most. The dashboard says that a change was not kept, not which limit it met.
 - The dashboard does not reply to guests on their channel: the staff call them.
 - The dashboard's routes share one token, and there is no staff login. A real restaurant needs one, and a real deployment puts Cloudflare Access in front of them.
 - The voice line spends the speech providers' allowance: Deepgram's credit and Cartesia's monthly plan. When either runs out, calls are not offered until it comes back. LiveKit's own $2.50 a month of Inference ran out during testing on 15 October, which is why speech now goes to the providers directly.

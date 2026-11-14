@@ -1,15 +1,18 @@
 import type { BookingEngine, Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
-import { bookingWaitsForPhone, runTool, toolDefinitions, type ToolOutput } from '../tools.js';
+import { bookingWaitsForPhone, isLookup, runTool, toolDefinitions, type ToolOutput } from '../tools.js';
 import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
+import { utf8Length } from './size.js';
 
 export interface AgentOptions {
   /** Model calls allowed in one turn before giving up: a guard against loops. */
   maxModelCalls?: number;
   maxOutputTokens?: number;
+  /** UTF-8 bytes the tools may add to one turn: past them a lookup is left out, and then nothing more is run. */
+  maxToolBytes?: number;
   /** Hears about failures that the guest only sees as a polite message. */
   onError?: (error: unknown) => void;
   /** Milliseconds, for latency. Injected so tests are predictable. */
@@ -101,6 +104,20 @@ const ENDING: ToolOutput = { status: 'ending', instruction: 'Write your goodbye 
 
 const KEPT_OPEN: ToolOutput = { status: 'kept_open', instruction: 'The reply asked the caller something, so the line stayed open for the answer.' };
 
+/** A lookup whose answer does not fit in what the turn's tools may still add: the model reads none of it. */
+const TOO_LONG: ToolOutput = {
+  status: 'too_long',
+  instruction:
+    'This answer is too long to read now. Ask for less if the tool can narrow it (one category, one day); otherwise tell the guest you cannot answer this here and offer hand_over.',
+};
+
+/** A tool call made once the turn's tools had added all they may: it was not run. */
+const NOT_RUN: ToolOutput = {
+  status: 'not_run',
+  instruction:
+    'Too much was looked up in this turn, so this call was not run and nothing was done. Answer the guest with what you already have, and never say this was done: if they asked for it, ask them to say it again.',
+};
+
 /** A reply that asks the caller something waits for the answer: it is never the last of a call. */
 const ASKS = /[?¿]/;
 
@@ -165,15 +182,39 @@ export interface TurnResult {
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TRANSCRIPT_ENTRIES = 60;
+/**
+ * The most a conversation's past may weigh when it is sent again, in UTF-8 bytes: some twelve thousand
+ * tokens of ordinary text. A count of entries alone let sixty long tool answers ride along with every call.
+ */
+export const MAX_TRANSCRIPT_BYTES = 48_000;
+/**
+ * The most the tools may add to one turn, in UTF-8 bytes. The longest menu a restaurant may write fits
+ * (SETTINGS_LIMITS in config.ts): only a turn that looks everything up over and over meets this.
+ */
+export const MAX_TURN_TOOL_BYTES = 40_000;
+/** The most the model writes in one call, in tokens, unless whoever calls `respond` says otherwise. */
+export const MAX_OUTPUT_TOKENS = 700;
 
 /**
- * Keeps a long conversation within bounds by dropping its oldest part, always
- * cutting before a guest message so no tool result is left without its call.
+ * Keeps a long conversation within bounds, in entries and in bytes, by dropping
+ * its oldest part, always cutting before a guest message so no tool result is
+ * left without its call.
  */
-export function trimTranscript(transcript: readonly TranscriptEntry[], max = MAX_TRANSCRIPT_ENTRIES): TranscriptEntry[] {
-  if (transcript.length <= max) return [...transcript];
-  let start = transcript.length - max;
-  while (start < transcript.length && transcript[start]?.role !== 'user') start += 1;
+export function trimTranscript(
+  transcript: readonly TranscriptEntry[],
+  maxEntries = MAX_TRANSCRIPT_ENTRIES,
+  maxBytes = MAX_TRANSCRIPT_BYTES,
+): TranscriptEntry[] {
+  const sizes = transcript.map((entry) => utf8Length(JSON.stringify(entry)));
+  if (transcript.length <= maxEntries && sizes.reduce((sum, size) => sum + size, 0) <= maxBytes) return [...transcript];
+  // From the end backwards: the conversation is kept from the earliest guest message that still fits.
+  let start = transcript.length;
+  let bytes = 0;
+  for (let index = transcript.length - 1; index >= 0 && transcript.length - index <= maxEntries; index -= 1) {
+    bytes += sizes[index] ?? 0;
+    if (bytes > maxBytes) break;
+    if (transcript[index]?.role === 'user') start = index;
+  }
   return transcript.slice(start);
 }
 
@@ -228,6 +269,8 @@ export async function respond(
   const system = buildSystemPrompt(engine.config, session.language, session.channel, engine.now());
   const offered = toolDefinitions(session.channel);
   const maxCalls = options.maxModelCalls ?? 6;
+  const maxToolBytes = options.maxToolBytes ?? MAX_TURN_TOOL_BYTES;
+  let toolBytes = 0;
   // Where this turn's entries begin, after the guest's message.
   const turnStart = working.length;
 
@@ -290,7 +333,7 @@ export async function respond(
         system,
         transcript: working,
         tools: offered,
-        maxOutputTokens: options.maxOutputTokens ?? 700,
+        maxOutputTokens: options.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
       });
     } catch (error) {
       modelMs.push(clock() - before);
@@ -385,12 +428,17 @@ export async function respond(
       const toolStarted = clock();
       const needless = needlessHandOver(toolCall.name, toolCall.input, working);
       if (needless) guarded.push('needless_hand_over');
-      const output: ToolOutput =
-        toolCall.name === 'end_call' && session.channel === 'voice'
-          ? ENDING
-          : needless
-            ? { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) }
-            : runTool(engine, session, toolCall.name, toolCall.input, options.onError);
+      let output: ToolOutput;
+      if (toolCall.name === 'end_call' && session.channel === 'voice') output = ENDING;
+      else if (needless) output = { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) };
+      else if (toolBytes >= maxToolBytes) output = NOT_RUN;
+      else {
+        output = runTool(engine, session, toolCall.name, toolCall.input, options.onError);
+        const bytes = utf8Length(JSON.stringify(output));
+        // A lookup that does not fit is left out. What a tool did is always told, and counts against what follows.
+        if (toolBytes + bytes > maxToolBytes && isLookup(toolCall.name)) output = TOO_LONG;
+        else toolBytes += bytes;
+      }
       tools.push({ name: toolCall.name, input: toolCall.input, output, ms: clock() - toolStarted });
       working.push({ role: 'tool', callId: toolCall.id, name: toolCall.name, output });
     }
