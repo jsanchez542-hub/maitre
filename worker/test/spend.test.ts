@@ -4,9 +4,9 @@ import { ModelError } from '../../src/agent/model.js';
 import { ModelSpend } from '../src/spend.js';
 
 const PRICES = { inputPerMillion: 0.25, outputPerMillion: 1.2 };
-/** 4,000 bytes of request: 2,000 tokens at the most, and a reply of 700. */
+/** 4,000 bytes of request: 4,000 tokens at the most, and a reply of 700. */
 const REQUEST = { method: 'POST' as const, headers: {}, body: 'x'.repeat(4000) };
-const AT_MOST = (2000 * 0.25 + 700 * 1.2) / 1_000_000;
+const AT_MOST = (4000 * 0.25 + 700 * 1.2) / 1_000_000;
 
 function answering(status: number, body: string): Fetch {
   return async () => ({ ok: status >= 200 && status < 300, status, headers: new Headers(), text: async () => body });

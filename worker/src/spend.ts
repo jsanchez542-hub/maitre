@@ -19,8 +19,12 @@ interface SpendOptions {
   fetch?: Fetch;
 }
 
-/** A request is counted at one token for every two bytes it sends: twice what ordinary text weighs, at four bytes a token. */
-const TOKENS_PER_BYTE = 0.5;
+/**
+ * A request is counted at one token for every byte it sends, which is more than it can hold: a token is a byte at
+ * least. The demo's model counts one for every two or three bytes of an ordinary request, and a text made to weigh
+ * more cannot pass this.
+ */
+const TOKENS_PER_BYTE = 1;
 
 /**
  * What one turn spends on the model. Every request is counted before it leaves, at the most it could cost, and

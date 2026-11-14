@@ -44,9 +44,9 @@ function fakeNetwork(options: { person?: boolean; answers?: Answer[]; usage?: ob
   return requests;
 }
 
-/** What a request the provider did not price is counted at, by the prices the test config gives: half a token a byte, and the longest reply. */
+/** What a request the provider did not price is counted at, by the prices the test config gives: a token a byte, and the longest reply. */
 function atMost(request: { body: string }): number {
-  return (new TextEncoder().encode(request.body).length * 0.5 * 0.25 + 700 * 1.2) / 1_000_000;
+  return (new TextEncoder().encode(request.body).length * 0.25 + 700 * 1.2) / 1_000_000;
 }
 
 async function spentToday(): Promise<number | undefined> {
