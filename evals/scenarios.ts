@@ -658,7 +658,8 @@ const ON_THE_SITE: Scenario[] = [
     expect: [
       { kind: 'no_booking' },
       { kind: 'reply', pattern: /champ|num[ée]ro/i },
-      { kind: 'no_reply', pattern: /est (?:bien )?(?:confirmée|enregistrée|faite)|c[’']est (?:réservé|confirmé|noté pour)/i },
+      // Said to be confirmed, not held: "n’est confirmée qu’après…" and "est bien réservée à votre nom, mais…" are right answers (real replies).
+      { kind: 'no_reply', pattern: /(?<!n[’'])est (?:bien )?(?:confirmée|enregistrée|faite)|c[’']est (?:réservé|confirmé|noté pour)/i },
     ],
   },
   {
