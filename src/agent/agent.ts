@@ -3,6 +3,7 @@ import { messages } from '../i18n/index.js';
 import { bookingWaitsForPhone, isLookup, runTool, toolDefinitions, type ToolOutput } from '../tools.js';
 import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
 import { addUsage, NO_USAGE, type LanguageModel, type TranscriptEntry, type Usage } from './model.js';
+import { NOTES, ownWords, type TurnInput } from './notes.js';
 import { buildSystemPrompt } from './prompt.js';
 import { sanitizeReply } from './sanitize.js';
 import { utf8Length } from './size.js';
@@ -27,19 +28,6 @@ export interface ToolRecord {
   output: ToolOutput;
   ms: number;
 }
-
-/**
- * What the code tells the model once the guest has typed their number in the
- * web chat's own field, so the turn goes on without the guest having to write
- * "done". The guest never writes this and never sees it: the chat shows the
- * number sent, then the reply.
- */
-export const PHONE_ENTERED =
-  '[Note from the website, not written by the guest: they have just typed their phone number in the field below the chat. Carry on from where you were.]';
-
-/** The same note on the phone, once the caller has typed their number on the keypad and pressed the hash key. */
-export const KEYPAD_ENTERED =
-  '[Note from the phone line, not said by the caller: they have just typed their phone number on the keypad. Carry on from where you were.]';
 
 /** What a turn did, read from the engine's answers and never from the reply: what a chat or a dashboard shows besides the words. */
 export interface TurnEffects {
@@ -233,7 +221,8 @@ export function trimTranscript(
 }
 
 /**
- * One turn of the conversation: the guest's message in, the reply out.
+ * One turn of the conversation: the guest's message in, the reply out. A turn
+ * the code starts in the guest's place is given as a note, by its name (NOTES).
  *
  * The model may call tools several times before answering. If anything fails,
  * or the model loops, the guest gets a message written by the code, never an
@@ -245,13 +234,13 @@ export async function respond(
   model: LanguageModel,
   session: Session,
   transcript: readonly TranscriptEntry[],
-  message: string,
+  message: TurnInput,
   options: AgentOptions = {},
 ): Promise<TurnResult> {
   const clock = options.clock ?? (() => Date.now());
   const started = clock();
   const words = messages(session.language);
-  const text = message.trim().slice(0, MAX_MESSAGE_LENGTH);
+  const text = typeof message === 'string' ? ownWords(message.trim().slice(0, MAX_MESSAGE_LENGTH)) : NOTES[message.note];
 
   if (text === '') {
     return {

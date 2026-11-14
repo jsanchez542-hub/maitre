@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import { activityOf, type Activity } from '../../src/activity.js';
-import { KEYPAD_ENTERED, PHONE_ENTERED, respond, turnEffects, turnEvents, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
+import { respond, turnEffects, turnEvents, waitsForNumber, type TurnEffects, type TurnResult } from '../../src/agent/agent.js';
 import { ModelError, type TranscriptEntry } from '../../src/agent/model.js';
+import type { TurnInput } from '../../src/agent/notes.js';
 import { withFallback } from '../../src/agent/providers/fallback.js';
 import { openRouterModel } from '../../src/agent/providers/openai.js';
 import { validateConfig, type BusinessConfig } from '../../src/config.js';
@@ -341,13 +342,13 @@ export class Restaurant extends DurableObject<Env> {
       this.#engine.addPhoneToCallbacks(session);
       const apiKey = this.modelKey();
       if (!apiKey) return { status: 'ok', phone: formatPhone(e164) };
-      const turn = await this.#turn(session, stored.transcript, PHONE_ENTERED, apiKey);
+      const turn = await this.#turn(session, stored.transcript, { note: 'phone_entered' }, apiKey);
       return { ...turn, phone: formatPhone(e164) };
     });
   }
 
   /** One turn with the model, kept in the conversation and in the log the owner reads. */
-  async #turn(session: Session, transcript: TranscriptEntry[], message: string, apiKey: string, hooks: TurnHooks = {}): Promise<ChatAnswer> {
+  async #turn(session: Session, transcript: TranscriptEntry[], message: TurnInput, apiKey: string, hooks: TurnHooks = {}): Promise<ChatAnswer> {
     // The phone may use a faster model than the chat, and waits less for a stalled one: a caller is on the line.
     const voice = session.channel === 'voice';
     const modelId = voice && this.env.VOICE_MODEL ? this.env.VOICE_MODEL : this.env.MODEL;
@@ -391,7 +392,9 @@ export class Restaurant extends DurableObject<Env> {
       updatedAt: now,
       ...(hooks.turnId ? { lastTurn: { id: hooks.turnId, answer } } : {}),
     });
-    const typedPhone = message === PHONE_ENTERED || message === KEYPAD_ENTERED;
+    // The code's own turn, after a number typed in the field or on the keypad. A guest who writes those words is
+    // logged with what they wrote, like any other message.
+    const typedPhone = typeof message !== 'string';
     const working = hooks.working?.();
     this.#conversations.log({
       ...this.#turnLog(session, typedPhone ? '' : message, result, now),
@@ -524,7 +527,7 @@ export class Restaurant extends DurableObject<Env> {
       const session: Session = { id: request.sessionId, channel: 'voice', language: stored.language, phone: { e164, source: 'keypad' } };
       // The team may already have been asked to call back, before the number was known.
       this.#engine.addPhoneToCallbacks(session);
-      const answer = await this.#turn(session, stored.transcript, KEYPAD_ENTERED, apiKey, this.#workingLine(request.turnId, stored.language, send));
+      const answer = await this.#turn(session, stored.transcript, { note: 'keypad_entered' }, apiKey, this.#workingLine(request.turnId, stored.language, send));
       send({ type: 'answer', ...answer });
     });
   }

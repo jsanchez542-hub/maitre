@@ -126,7 +126,7 @@ That is the last of seven runs of the whole suite that day; two shorter ones rep
 
 ### Run H: the number carries the turn on (12 October, night)
 
-In the web chat, the phone field now sets the turn going by itself. The code hands the model a note that the guest has typed their number (`PHONE_ENTERED`), and the booking or the request goes through in the same answer, with nothing more for the guest to write. The Worker does the same once the number arrives, and its answers now say what the turn did, read from the engine: the bookings made or moved, a request passed to the team, the field to show. The seven site conversations with the field lost their "C'est fait", "Done" and "Ya está".
+In the web chat, the phone field now sets the turn going by itself. The code hands the model a note that the guest has typed their number (`phone_entered` in `src/agent/notes.ts`), and the booking or the request goes through in the same answer, with nothing more for the guest to write. The Worker does the same once the number arrives, and its answers now say what the turn did, read from the engine: the bookings made or moved, a request passed to the team, the field to show. The seven site conversations with the field lost their "C'est fait", "Done" and "Ya está".
 
 | Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Cost |
 |---|---|---|---|---|---|---|

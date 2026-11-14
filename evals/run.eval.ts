@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { PHONE_ENTERED, respond, type TurnResult } from '../src/agent/agent.js';
+import { respond, type TurnResult } from '../src/agent/agent.js';
+import type { TurnInput } from '../src/agent/notes.js';
 import { openRouterModel } from '../src/agent/providers/openai.js';
 import { ModelError, type LanguageModel } from '../src/agent/model.js';
 import { applySetup } from '../src/demo/replay.js';
@@ -68,7 +69,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
   const turns: TurnResult[] = [];
   const errors: string[][] = [];
   let transcript: TurnResult['transcript'] = [];
-  const take = async (message: string, by: { guest?: string; fieldPhone?: string }): Promise<void> => {
+  const take = async (message: TurnInput, by: { guest?: string; fieldPhone?: string }): Promise<void> => {
     const seen: string[] = [];
     const result = await respond(engine, model, session, transcript, message, {
       onError: (error) =>
@@ -86,7 +87,7 @@ async function runScenario(model: LanguageModel, scenario: Scenario, run: number
     if (scenario.fieldPhone?.afterTurn === index) {
       session = { ...session, phone: { e164: scenario.fieldPhone.phone, source: 'form' } };
       engine.addPhoneToCallbacks(session);
-      await take(PHONE_ENTERED, { fieldPhone: scenario.fieldPhone.phone });
+      await take({ note: 'phone_entered' }, { fieldPhone: scenario.fieldPhone.phone });
     }
   }
 
