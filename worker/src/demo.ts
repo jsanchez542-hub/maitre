@@ -255,8 +255,8 @@ export class DemoRestaurant extends Restaurant {
     if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined) return { status: 'live_paused' };
     const left = await this.#callsLeft();
     if (left === 0) return { status: 'call_limit' };
-    // A call's turns are the model's too: a restaurant that has spent its share would ring and never be answered.
-    if (this.#hasSpentItsShare()) return { status: 'sandbox_limit' };
+    // A call's turns are messages too, and the model's: a restaurant with none left would ring and never be answered.
+    if (this.#canAnswerNoMore(await this.#messages())) return { status: 'sandbox_limit' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
     const sessionId = `call_${randomToken()}`;
@@ -352,13 +352,21 @@ export class DemoRestaurant extends Restaurant {
     return billed;
   }
 
+  async #messages(): Promise<MessageCount> {
+    return (await this.ctx.storage.get<MessageCount>(MESSAGES)) ?? { total: 0, minute: 0, inMinute: 0 };
+  }
+
+  /** Whether the assistant can answer nothing more here: the restaurant has taken its messages, or spent what it may on the model. */
+  #canAnswerNoMore(count: MessageCount): boolean {
+    return count.total >= (setting(this.env.DEMO_MESSAGES_PER_SANDBOX) ?? 0) || this.#hasSpentItsShare();
+  }
+
   /** Whether the visitor may have the assistant answer once more: this restaurant's messages and spending, then the demo's budget. */
   async #mayTalk(): Promise<Refusal | undefined> {
-    const limit = setting(this.env.DEMO_MESSAGES_PER_SANDBOX) ?? 0;
     const minute = Math.floor(Date.now() / 60_000);
-    const count = (await this.ctx.storage.get<MessageCount>(MESSAGES)) ?? { total: 0, minute, inMinute: 0 };
+    const count = await this.#messages();
     const inMinute = count.minute === minute ? count.inMinute : 0;
-    if (count.total >= limit || this.#hasSpentItsShare()) return { status: 'sandbox_limit' };
+    if (this.#canAnswerNoMore(count)) return { status: 'sandbox_limit' };
     if (inMinute >= MESSAGES_PER_MINUTE) return { status: 'rate_limited' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };

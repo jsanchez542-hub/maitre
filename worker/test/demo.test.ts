@@ -230,6 +230,11 @@ describe('the public demo', () => {
     });
     const used = await send(sandbox, 'chat', message);
     expect([used.status, await used.json()]).toEqual([429, { error: 'sandbox_limit' }]);
+    // No call either, although it has made none: a call's turns are messages, and it would ring to say nothing.
+    const agent = { authorization: 'Bearer test-agent-token', 'content-type': 'application/json' };
+    await SELF.fetch(`${DEMO}/voice/check-in`, { method: 'POST', headers: agent, body: JSON.stringify({ ready: true }) });
+    const ringing = await send(sandbox, 'calls', { language: 'fr' });
+    expect([ringing.status, await ringing.json()]).toEqual([429, { error: 'sandbox_limit' }]);
     // A number that cannot be read costs nothing either.
     expect((await send(sandbox, `sessions/${message.sessionId}/phone`, { phone: 'pas un numéro' })).status).toBe(400);
     expect(requests).toHaveLength(0);
