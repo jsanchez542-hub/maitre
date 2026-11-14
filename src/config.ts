@@ -141,6 +141,25 @@ const CONTROL_IN_PARAGRAPH = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u20
 
 type TextKind = 'line' | 'paragraph';
 
+/** The problems found in a configuration, in the order they were found. */
+class Problems {
+  readonly #found: { problem: string; overBounds: boolean }[] = [];
+
+  /** A problem that would break a service. */
+  push(problem: string): void {
+    this.#found.push({ problem, overBounds: false });
+  }
+
+  /** A text or a list over what settings may hold (SETTINGS_LIMITS): the service would run all the same. */
+  over(problem: string): void {
+    this.#found.push({ problem, overBounds: true });
+  }
+
+  list(withBounds: boolean): string[] {
+    return this.#found.filter((found) => withBounds || !found.overBounds).map((found) => found.problem);
+  }
+}
+
 function isWholeNumber(value: unknown, min: number, max: number): boolean {
   return Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
 }
@@ -152,7 +171,7 @@ function textProblem(value: string, kind: TextKind): string | undefined {
   return CONTROL_IN_PARAGRAPH.test(value) ? 'has control characters' : undefined;
 }
 
-function checkLocalized(text: LocalizedText | undefined, where: string, problems: string[], kind: TextKind = 'line'): void {
+function checkLocalized(text: LocalizedText | undefined, where: string, problems: Problems, kind: TextKind = 'line'): void {
   if (text === undefined) return;
   for (const language of LANGUAGES) {
     const value = Object.hasOwn(text, language) ? text[language] : undefined;
@@ -161,11 +180,11 @@ function checkLocalized(text: LocalizedText | undefined, where: string, problems
       continue;
     }
     const problem = textProblem(value, kind);
-    if (problem) problems.push(`${where} ${language} text ${problem}`);
+    if (problem) problems.over(`${where} ${language} text ${problem}`);
   }
 }
 
-function checkUniqueIds(items: readonly { id: string }[], where: string, problems: string[]): void {
+function checkUniqueIds(items: readonly { id: string }[], where: string, problems: Problems): void {
   const seen = new Set<string>();
   for (const item of items) {
     if (!ID_PATTERN.test(item.id)) problems.push(`${where} id "${item.id}" must be lowercase letters, digits and dashes`);
@@ -179,9 +198,9 @@ function checkSittings(
   where: string,
   serviceIds: ReadonlySet<string>,
   slotMinutes: number,
-  problems: string[],
+  problems: Problems,
 ): void {
-  if (sittings.length > SETTINGS_LIMITS.sittingsPerDay) problems.push(`${where}: more than ${SETTINGS_LIMITS.sittingsPerDay} sittings`);
+  if (sittings.length > SETTINGS_LIMITS.sittingsPerDay) problems.over(`${where}: more than ${SETTINGS_LIMITS.sittingsPerDay} sittings`);
   const ranges: [number, number][] = [];
   for (const sitting of sittings) {
     if (!serviceIds.has(sitting.service)) problems.push(`${where}: unknown service "${sitting.service}"`);
@@ -207,7 +226,7 @@ function checkSittings(
 
 const TABLE_NUMBER = /^[A-Za-z0-9][A-Za-z0-9-]{0,7}$/;
 
-function checkFloor(config: BusinessConfig, problems: string[]): void {
+function checkFloor(config: BusinessConfig, problems: Problems): void {
   if (!config.floor) return;
   const zones = config.floor.zones ?? [];
   checkUniqueIds(zones, 'zone', problems);
@@ -242,7 +261,7 @@ function checkFloor(config: BusinessConfig, problems: string[]): void {
   }
 }
 
-function checkWaiters(config: BusinessConfig, serviceIds: ReadonlySet<string>, problems: string[]): void {
+function checkWaiters(config: BusinessConfig, serviceIds: ReadonlySet<string>, problems: Problems): void {
   const waiters = config.waiters ?? [];
   checkUniqueIds(waiters, 'waiter', problems);
   const tableNumbers = new Set(physicalTables(config).map((table) => table.number));
@@ -266,15 +285,14 @@ function checkWaiters(config: BusinessConfig, serviceIds: ReadonlySet<string>, p
   }
 }
 
-/** Every problem in a configuration, in plain words. An empty list means it is safe to run. */
-export function validateConfig(config: BusinessConfig): string[] {
-  const problems: string[] = [];
+function problemsOf(config: BusinessConfig): Problems {
+  const problems = new Problems();
 
   if (!ID_PATTERN.test(config.id)) problems.push('id must be lowercase letters, digits and dashes');
   if (config.name.trim() === '') problems.push('name is empty');
   else {
     const problem = textProblem(config.name, 'line');
-    if (problem) problems.push(`name ${problem}`);
+    if (problem) problems.over(`name ${problem}`);
   }
   try {
     assertTimeZone(config.timeZone);
@@ -306,7 +324,7 @@ export function validateConfig(config: BusinessConfig): string[] {
     checkSittings(sittings, `weekday ${weekday}`, serviceIds, slotMinutes, problems);
   }
 
-  if (config.exceptions.length > SETTINGS_LIMITS.exceptions) problems.push(`there are more than ${SETTINGS_LIMITS.exceptions} exceptions`);
+  if (config.exceptions.length > SETTINGS_LIMITS.exceptions) problems.over(`there are more than ${SETTINGS_LIMITS.exceptions} exceptions`);
   const exceptionDates = new Set<string>();
   for (const exception of config.exceptions) {
     if (!isPlainDate(exception.date)) problems.push(`exception date "${exception.date}" is not a calendar date`);
@@ -347,13 +365,13 @@ export function validateConfig(config: BusinessConfig): string[] {
   if (!isWholeNumber(config.maxAdvanceDays, 1, 730)) problems.push('maxAdvanceDays must be from 1 to 730');
   if (!isWholeNumber(config.holdMinutes, 1, 30)) problems.push('holdMinutes must be from 1 to 30');
 
-  if (config.menu.length > SETTINGS_LIMITS.dishes) problems.push(`the menu has more than ${SETTINGS_LIMITS.dishes} dishes`);
+  if (config.menu.length > SETTINGS_LIMITS.dishes) problems.over(`the menu has more than ${SETTINGS_LIMITS.dishes} dishes`);
   checkUniqueIds(config.menu, 'dish', problems);
   for (const dish of config.menu) {
     checkLocalized(dish.name, `dish "${dish.id}"`, problems);
     checkLocalized(dish.description, `dish "${dish.id}" description`, problems, 'paragraph');
     if (!(DISH_CATEGORIES as readonly string[]).includes(dish.category)) {
-      problems.push(`dish "${dish.id}": category must be one of ${DISH_CATEGORIES.join(', ')}`);
+      problems.over(`dish "${dish.id}": category must be one of ${DISH_CATEGORIES.join(', ')}`);
     }
     if (dish.priceCents !== undefined && !isWholeNumber(dish.priceCents, 0, 1_000_000)) {
       problems.push(`dish "${dish.id}" price must be a whole number of cents`);
@@ -364,7 +382,7 @@ export function validateConfig(config: BusinessConfig): string[] {
     }
   }
 
-  if (config.faq.length > SETTINGS_LIMITS.answers) problems.push(`there are more than ${SETTINGS_LIMITS.answers} answers`);
+  if (config.faq.length > SETTINGS_LIMITS.answers) problems.over(`there are more than ${SETTINGS_LIMITS.answers} answers`);
   checkUniqueIds(config.faq, 'faq entry', problems);
   for (const entry of config.faq) {
     checkLocalized(entry.question, `faq "${entry.id}" question`, problems);
@@ -374,8 +392,25 @@ export function validateConfig(config: BusinessConfig): string[] {
   return problems;
 }
 
-/** Throws with every problem listed, so a bad configuration stops the service at startup. */
+/**
+ * Every problem in a configuration, in plain words: what would break a service, and what is over the bounds
+ * settings may hold. An empty list means an owner may keep it.
+ */
+export function validateConfig(config: BusinessConfig): string[] {
+  return problemsOf(config).list(true);
+}
+
+/**
+ * The problems that would break a service, without the bounds on what settings may hold. Settings kept before a
+ * bound existed still run, and are held to it the next time they are changed: a restaurant must not stop because
+ * of a text that was allowed when it was written.
+ */
+export function validateKeptConfig(config: BusinessConfig): string[] {
+  return problemsOf(config).list(false);
+}
+
+/** Throws with every problem that would break a service listed, so a bad configuration stops it at startup. */
 export function assertValidConfig(config: BusinessConfig): void {
-  const problems = validateConfig(config);
+  const problems = validateKeptConfig(config);
   if (problems.length > 0) throw new Error(`Invalid configuration for "${config.id}":\n- ${problems.join('\n- ')}`);
 }

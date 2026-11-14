@@ -186,7 +186,7 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 - Opening hours that span the night the clocks change (between 2 and 3 am) are not supported.
 - The evaluation is forty-one written conversations, twenty-six of them also on the phone, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors are measured separately, with real calls made by a program.
 - Data cannot be pinned to the EU when running locally, because workerd does not implement jurisdictions; the local configuration has to say so explicitly.
-- A restaurant's settings hold sixty dishes, thirty answers and a hundred special days at most. The dashboard says that a change was not kept, not which limit it met.
+- A restaurant's settings hold sixty dishes, thirty answers and a hundred special days at most. The dashboard says that a change was not kept, not which limit it met. Settings kept before a limit existed still run, and are held to it at their next change.
 - The dashboard does not reply to guests on their channel: the staff call them.
 - The dashboard's routes share one token, and there is no staff login. A real restaurant needs one, and a real deployment puts Cloudflare Access in front of them.
 - The voice line spends the speech providers' allowance: Deepgram's credit and Cartesia's monthly plan. When either runs out, calls are not offered until it comes back. LiveKit's own $2.50 a month of Inference ran out during testing on 15 October, which is why speech now goes to the providers directly.

@@ -1,7 +1,8 @@
-import { reset, SELF } from 'cloudflare:test';
+import { env, reset, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localNow } from '../../src/calendar.js';
 import { parseDay, resolveDate } from '../../src/dates.js';
+import { demoStub } from '../src/env.js';
 
 const BASE = 'https://maitre.test/v1/restaurants/demo';
 const DEMO = 'https://maitre.test/v1/demo';
@@ -173,5 +174,34 @@ describe('a restaurant’s settings', () => {
     // What a restaurant does write is kept as before.
     const renamed = [{ ...dish, name: { ...dish.name, fr: 'Entrecôte grillée, beurre maître d’hôtel' } }, ...dishes];
     expect((await change(mine, { menu: renamed }, JSON_BODY)).status).toBe(200);
+  });
+
+  it('keep a restaurant running when it kept them before a bound existed, and are held to the bound at its next change', async () => {
+    vouchingTurnstile();
+    const id = await sandbox();
+    const mine = `${DEMO}/sandboxes/${id}`;
+    const before = (await read(mine, JSON_BODY)) as { menu: { id: string; name: Record<string, string> }[]; maxPartySize: number };
+    const [dish, ...dishes] = before.menu;
+    if (!dish) throw new Error('the demo restaurant has a menu');
+    const kept = { ...before, menu: [{ ...dish, name: { ...dish.name, fr: 'Entrecôte grillée, '.repeat(1000) } }, ...dishes] };
+    const restaurant = demoStub(env, id);
+    if (!restaurant) throw new Error('the test config must set DATA_JURISDICTION');
+    // As the code before the bounds kept a name of 19,000 characters: written straight into the restaurant's own storage.
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      state.storage.sql.exec(`INSERT INTO meta (key, value) VALUES ('config', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, JSON.stringify(kept));
+    });
+    // Restarted, as a deploy restarts every restaurant: the next request builds it again from what it kept.
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      state.abort('restarted by the test');
+    }).catch(() => undefined);
+
+    // It runs, and shows its owner the settings as they are.
+    expect(await read(mine, JSON_BODY)).toEqual(kept);
+    expect((await SELF.fetch(`${mine}/clock`)).status).toBe(200);
+    // Any change is refused until the name fits, and the change that makes it fit is kept.
+    const other = await change(mine, { maxPartySize: before.maxPartySize }, JSON_BODY);
+    expect([other.status, await other.json()]).toEqual([400, { status: 'invalid', problems: [`dish "${dish.id}" fr text is longer than 80 characters`] }]);
+    expect((await change(mine, { menu: before.menu }, JSON_BODY)).status).toBe(200);
+    expect(await read(mine, JSON_BODY)).toEqual(before);
   });
 });

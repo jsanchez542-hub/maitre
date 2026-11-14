@@ -1,5 +1,5 @@
 import {
-  validateConfig,
+  validateKeptConfig,
   type Activity,
   type BusinessConfig,
   type FreeTablesResult,
@@ -324,13 +324,16 @@ export async function readCalls(sandbox: string, limit: number): Promise<CallRec
   return callsFrom(await list(`sandboxes/${segment(sandbox)}/calls?limit=${limit}`));
 }
 
-/** Settings as the restaurant sent them, checked as the engine checks them: the panel draws every part of them. */
+/**
+ * Settings as the restaurant sent them, checked as the engine checks them: the panel draws every part of them.
+ * Settings over a bound that came after them are read all the same: their owner has to see them to shorten them.
+ */
 function configFrom(value: unknown): BusinessConfig {
   if (!isRecord(value)) throw new LiveError('unexpected');
   const config = value as unknown as BusinessConfig;
   let problems: string[];
   try {
-    problems = validateConfig(config);
+    problems = validateKeptConfig(config);
   } catch {
     // A part of the wrong kind altogether, which the validator cannot even walk.
     problems = ['the settings are not in the expected shape'];

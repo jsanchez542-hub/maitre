@@ -1,5 +1,6 @@
+import { DEMO_RESTAURANT } from 'maitre/demo';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LiveError, openLine, openSandbox, readClockOf, readDemoStatus, say, sendPhone } from './live';
+import { LiveError, openLine, openSandbox, readClockOf, readConfig, readDemoStatus, say, sendPhone } from './live';
 
 /** Friday 16 at 20:05 in Bordeaux: tonight's 20:30 is past its hour's notice, so the table offered is Saturday's. */
 const TIME = { clock: '2026-10-16T18:05:00.000Z', day: '2026-10-16', suggestion: { date: '2026-10-17', time: '20:30', partySize: 2 }, callsLeft: 3 };
@@ -30,6 +31,15 @@ describe('the live demo’s API', () => {
     expect(fetch).toHaveBeenCalledWith('/v1/demo/sandboxes', expect.objectContaining({ method: 'POST', body: JSON.stringify({ turnstile: 'token', language: 'en' }) }));
     answering(201, { sandbox: 'abc', expiresAt: '2026-10-13T20:00:00.000Z', ...TIME, calls: null });
     await expect(openSandbox('token', 'fr')).resolves.toMatchObject({ calls: null });
+  });
+
+  it('reads the settings a restaurant kept before a bound existed, and refuses the ones the panel could not draw', async () => {
+    // A name of 81 characters, kept when nothing bounded it: its owner has to see it to shorten it.
+    const kept = { ...DEMO_RESTAURANT, name: 'x'.repeat(81) };
+    answering(200, kept);
+    await expect(readConfig('abc')).resolves.toMatchObject({ name: kept.name });
+    answering(200, { ...DEMO_RESTAURANT, slotMinutes: 7 });
+    expect(await problemOf(readConfig('abc'))).toBe('unexpected');
   });
 
   it('asks whether the demo is open at /v1/demo itself, with the restaurant’s time, and offers no calls while it is closed', async () => {
