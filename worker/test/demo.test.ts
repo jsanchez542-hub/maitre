@@ -19,7 +19,7 @@ afterEach(async () => {
 
 type Message = { role: string; content: string | null };
 /** A message of the model, or one worked out from the conversation so far. A function may also give the provider's whole answer, as it comes. */
-type Answer = object | ((messages: Message[]) => object | Response);
+type Answer = object | ((messages: Message[]) => object | Response | Promise<object>);
 
 /**
  * The network as the tests play it: Turnstile vouches (or not) for the visitor,
@@ -37,7 +37,7 @@ function fakeNetwork(options: { person?: boolean; answers?: Answer[]; usage?: ob
     requests.push({ authorization: new Headers(init?.headers).get('authorization'), body });
     const answer = answers.shift();
     if (answer === undefined) throw new Error('the model was called once too often');
-    const message = typeof answer === 'function' ? answer((JSON.parse(body) as { messages: Message[] }).messages) : answer;
+    const message = typeof answer === 'function' ? await answer((JSON.parse(body) as { messages: Message[] }).messages) : answer;
     if (message instanceof Response) return message;
     return Response.json({ choices: [{ message }], usage: options.usage ?? { prompt_tokens: 1500, completion_tokens: 40, cost: 0.0004 } });
   });
@@ -402,6 +402,32 @@ describe('what the public demo spends', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect((await send(sandbox, 'chat', hello)).status).toBe(500);
     expect(await spentToday()).toBeCloseTo(0.0004, 10);
+  });
+
+  it('counts a request for its restaurant before the answer comes: a restart in the middle of a turn does not lose it', async () => {
+    let storage: DurableObjectStorage | undefined;
+    let onItsWay: number | undefined;
+    const requests = fakeNetwork({
+      answers: [
+        async () => {
+          // The request has left and has no answer yet: what the restaurant has kept is read here.
+          onItsWay = await storage?.get<number>('demo:spent');
+          return say('Bonsoir. Que puis-je faire pour vous ?');
+        },
+      ],
+    });
+    const sandbox = await opened();
+    const restaurant = demoStub(env, sandbox);
+    if (!restaurant) throw new Error('the test config must set DATA_JURISDICTION');
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      storage = state.storage;
+    });
+    expect((await send(sandbox, 'chat', hello)).status).toBe(200);
+    // Kept at the most the request could cost while it was on its way, and at what the provider reported once it said.
+    expect(onItsWay).toBeCloseTo(atMost(requests[0] ?? { body: '' }), 10);
+    await runInDurableObject(restaurant, async (_instance, state) => {
+      expect(await state.storage.get('demo:spent')).toBeCloseTo(0.0004, 10);
+    });
   });
 
   it('stops a restaurant that has spent what one may, between two requests of the same turn too', async () => {

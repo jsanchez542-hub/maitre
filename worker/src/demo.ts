@@ -160,12 +160,17 @@ export class DemoRestaurant extends Restaurant {
     return !this.#hasSpentItsShare();
   }
 
+  /**
+   * Kept as it is counted, and not waited for: the object holds back what it sends until what it wrote before is
+   * kept, so a request to the model leaves only once it is counted for good. A restaurant restarted in the
+   * middle of a turn, as a deploy restarts them all, has still spent what that turn sent.
+   */
   protected override modelSpent(usd: number): void {
     this.#spentUsd += usd;
+    void this.ctx.storage.put(SPENT, this.#spentUsd);
   }
 
   protected override async turnCompleted(usd: number): Promise<void> {
-    await this.ctx.storage.put(SPENT, this.#spentUsd);
     if (usd > 0) await budgetStub(this.env)?.record(usd);
   }
 
