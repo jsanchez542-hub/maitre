@@ -130,8 +130,10 @@ export const SETTINGS_LIMITS = {
 const ALLOWED_SLOT_MINUTES = [5, 10, 15, 20, 30, 60];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /**
- * Characters that break a line or cannot be seen. A dish's name is a line of the assistant's instructions: with a
- * line break in it, whoever wrote the name would be writing instructions.
+ * Control characters, and every character that breaks a line. A dish's name is a line of the assistant's
+ * instructions: with a line break in it, whoever wrote the name would be writing instructions. Characters without
+ * width and marks of direction pass: they break no line, text pasted from a page can carry them unseen, and the
+ * length limit holds what they add.
  */
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 /** The same, except the line feed: a paragraph may have several lines. */

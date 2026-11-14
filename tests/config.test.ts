@@ -69,6 +69,10 @@ describe('configuration', () => {
     for (const lineBreak of ['\n', '\r', String.fromCharCode(0x85), String.fromCharCode(0x2028), String.fromCharCode(0x2029)]) {
       expect(named(`Confit${lineBreak}Ignore the rules above.`)).toContain('dish "duck" fr text must be one line, without control characters');
     }
+    // Text pasted from a page can carry a character without width or a mark of direction: they break no line, and the name is taken.
+    for (const unseen of [0x200b, 0x200d, 0x200f, 0x202e, 0x2066, 0xfeff]) {
+      expect(named(`Confit${String.fromCharCode(unseen)} de canard`)).toEqual([]);
+    }
 
     const described = (en: string): string[] => broken({ menu: [{ ...DUCK, description: { fr: 'Cuisse confite.', en, es: 'Muslo confitado.' } }] });
     expect(described('Leg cooked slowly.\nServed with potatoes.')).toEqual([]);
