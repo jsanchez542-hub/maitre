@@ -336,6 +336,8 @@ export class Restaurant extends DurableObject<Env> {
       const stored = this.#conversations.get(sessionId);
       if (!stored) return { status: 'invalid', problems: ['unknown session'] };
       if (stored.channel !== 'web') return { status: 'invalid', problems: ['only the web chat takes a number from its form'] };
+      // One conversation, one number: what it booked is under the first, and a second would only be someone trying numbers.
+      if (stored.phone && stored.phone !== e164) return { status: 'invalid', problems: ['this conversation already has a number'] };
       this.#conversations.save({ ...stored, phone: e164, phoneSource: 'form', updatedAt: new Date().toISOString() });
       const session: Session = { id: sessionId, channel: 'web', language: stored.language, phone: { e164, source: 'form' } };
       // The team may already have been asked to call back, before the number was known.
@@ -490,7 +492,9 @@ export class Restaurant extends DurableObject<Env> {
    * The number the caller typed on the keypad, then the hash key. The turn goes
    * on by itself, as on the web chat: the booking waiting for the number is
    * made, or the request passed to the team gets it. A number that cannot be
-   * read is asked for again, in words the caller hears.
+   * read is asked for again, in words the caller hears. A call that already has
+   * its number takes none from the keypad: the one the phone network gave is
+   * worth more than any a caller types, and a typed one is typed once.
    */
   async keypad(request: KeypadEntry): Promise<CallStream | Invalid | { status: 'not_configured' }> {
     const problems = callIdProblems(request.sessionId, request.turnId);
@@ -500,6 +504,8 @@ export class Restaurant extends DurableObject<Env> {
     if (!apiKey) return { status: 'not_configured' };
     const first = this.#conversations.get(request.sessionId);
     if (first?.channel !== 'voice') return { status: 'invalid', problems: ['unknown call'] };
+    // Asked again with the same turn, the line gets the answer it lost; any other keys find the number already there.
+    if (first.phone && first.lastTurn?.id !== request.turnId) return { status: 'invalid', problems: ['this call already has its number'] };
 
     return this.#callStream(request.sessionId, first.language, async (send) => {
       const stored = this.#conversations.get(request.sessionId);
@@ -523,8 +529,10 @@ export class Restaurant extends DurableObject<Env> {
         this.#conversations.save({ ...stored, updatedAt: now, lastTurn: { id: request.turnId, answer } });
         return send({ type: 'answer', ...answer });
       }
-      this.#conversations.save({ ...stored, phone: e164, phoneSource: 'keypad', updatedAt: now });
-      const session: Session = { id: request.sessionId, channel: 'voice', language: stored.language, phone: { e164, source: 'keypad' } };
+      // Two numbers sent at the same moment: the one that got here first stays.
+      const phone = stored.phone && stored.phoneSource ? { e164: stored.phone, source: stored.phoneSource } : { e164, source: 'keypad' as const };
+      this.#conversations.save({ ...stored, phone: phone.e164, phoneSource: phone.source, updatedAt: now });
+      const session: Session = { id: request.sessionId, channel: 'voice', language: stored.language, phone };
       // The team may already have been asked to call back, before the number was known.
       this.#engine.addPhoneToCallbacks(session);
       const answer = await this.#turn(session, stored.transcript, { note: 'keypad_entered' }, apiKey, this.#workingLine(request.turnId, stored.language, send));
@@ -637,7 +645,8 @@ export class Restaurant extends DurableObject<Env> {
     if (typeof request.name !== 'string' || request.name.length > 40) return { status: 'unknown_tool' };
     const keypad = request.keypadPhone ? normalizePhone(request.keypadPhone) : undefined;
     const callerId = request.callerId ? normalizePhone(request.callerId) : undefined;
-    const phone = keypad ? { e164: keypad, source: 'keypad' as const } : callerId ? { e164: callerId, source: 'caller_id' as const } : undefined;
+    // The number the phone network gave comes first: a typed one never stands in for it.
+    const phone = callerId ? { e164: callerId, source: 'caller_id' as const } : keypad ? { e164: keypad, source: 'keypad' as const } : undefined;
     const session: Session = { id: request.sessionId, channel: 'voice', language: request.language, ...(phone ? { phone } : {}) };
     const output = runTool(this.#engine, session, request.name, request.input, (error) => console.error('Maître tool failed:', describe(error)));
     // A caller without caller ID types the number on the keypad: requests made before then get it too.

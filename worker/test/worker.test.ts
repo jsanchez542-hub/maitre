@@ -247,6 +247,51 @@ describe('conversations', () => {
     expect(turns[0]).not.toHaveProperty('phoneEntered');
   });
 
+  it('shows a guest who typed somebody’s number none of that person’s bookings, and keeps the first number typed', async () => {
+    const friday = nextWeek('friday');
+    // The number's holder booked by phone, with the number the network vouches for.
+    const held = (await (await tool('call-holder-0001', 'find_table', { day: 'friday next week', time: '20:00', partySize: 2 }, '+33655555555')).json()) as {
+      holdId: string;
+    };
+    const theirs = await tool('call-holder-0001', 'book_table', { holdId: held.holdId, guestName: 'Lefèvre', allergies: ['nuts'], notes: 'Anniversaire' }, '+33655555555');
+    expect(await theirs.json()).toMatchObject({ status: 'booked' });
+
+    const requests = fakeOpenRouter([
+      say('Bonsoir.'),
+      call('my_bookings', {}),
+      say('Je ne vois aucune réservation depuis cette conversation. Souhaitez-vous que l’équipe vous rappelle ?'),
+    ]);
+    await chat({ sessionId: 'web-stranger-01', channel: 'web', language: 'fr', message: 'Bonsoir, je voudrais voir mes réservations.' });
+    const type = (phone: string) => SELF.fetch(`${BASE}/sessions/web-stranger-01/phone`, { method: 'POST', headers: AGENT, body: JSON.stringify({ phone }) });
+    expect((await type('06 55 55 55 55')).status).toBe(200);
+
+    // What the model was given of that number's bookings: nothing, and what to do about it.
+    const seen = requests.at(-1)?.body ?? '';
+    expect(seen).toContain('\\"bookings\\":[]');
+    expect(seen).toContain('\\"ownOnly\\":true');
+    expect(seen).toContain('offer hand_over');
+    // Their name and their note: the request names every allergen anyway, in its tools.
+    expect(seen).not.toMatch(/Lefèvre|Anniversaire/);
+    expect((await staffDay(friday)).bookings).toEqual([expect.objectContaining({ guestName: 'Lefèvre', status: 'booked' })]);
+
+    // One conversation, one number: a second one is someone trying numbers.
+    const other = await type('06 99 99 99 99');
+    expect([other.status, await other.json()]).toEqual([400, { status: 'invalid', problems: ['this conversation already has a number'] }]);
+  });
+
+  it('takes the phone network’s number before one typed, when an outside agent sends both', async () => {
+    const held = (await (await tool('call-both-000001', 'find_table', { day: 'friday next week', time: '20:00', partySize: 2 }, '+33655555555')).json()) as { holdId: string };
+    await tool('call-both-000001', 'book_table', { holdId: held.holdId, guestName: 'Lefèvre', allergies: [] }, '+33655555555');
+    const both = await SELF.fetch(`${BASE}/tools/my_bookings`, {
+      method: 'POST',
+      headers: AGENT,
+      body: JSON.stringify({ sessionId: 'call-both-000002', language: 'fr', callerId: '+33655555555', keypadPhone: '+33699999999', input: {} }),
+    });
+    const listed = (await both.json()) as { bookings: { guestName: string }[]; ownOnly?: boolean };
+    expect(listed.bookings.map((booking) => booking.guestName)).toEqual(['Lefèvre']);
+    expect(listed).not.toHaveProperty('ownOnly');
+  });
+
   it('takes a WhatsApp booking with the number WhatsApp vouches for, and keeps the session on that channel', async () => {
     const saturday = nextWeek('saturday');
     const requests = fakeOpenRouter([

@@ -163,6 +163,28 @@ describe('a call to the restaurant', () => {
     expect((await step('call-voice-0003', 'keypad', { turnId: 'turn-keypad-4', digits: '06-22' })).status).toBe(400);
   });
 
+  it('takes no number from the keypad once the call has one: not over the phone network’s, nor over one already typed', async () => {
+    fakeNetwork([say('Merci, j’ai bien votre numéro.'), say('Bonsoir.')]);
+    // The phone network gave this caller's number: keys typed during the call are no number.
+    await step('call-with-id-01', 'start', { language: 'fr', callerId: '+33611111111' });
+    const over = await step('call-with-id-01', 'keypad', { turnId: 'turn-keys-0001', digits: '0699999999#' });
+    expect([over.status, await over.json()]).toEqual([400, { status: 'invalid', problems: ['this call already has its number'] }]);
+
+    // A caller without one types theirs once.
+    await step('call-no-id-0001', 'start', { language: 'fr' });
+    const typed = await lines(await step('call-no-id-0001', 'keypad', { turnId: 'turn-keys-0002', digits: '0622222222#' }));
+    expect(typed.at(-1)).toMatchObject({ type: 'answer', reply: 'Merci, j’ai bien votre numéro.' });
+    expect((await step('call-no-id-0001', 'keypad', { turnId: 'turn-keys-0003', digits: '0699999999#' })).status).toBe(400);
+    // The line that lost that answer and asks again, with the same turn, still gets it.
+    expect(await lines(await step('call-no-id-0001', 'keypad', { turnId: 'turn-keys-0002', digits: '0622222222#' }))).toEqual(typed);
+
+    // Each call still has the number it began with, as the owner's log tells it.
+    await lines(await step('call-with-id-01', 'turns', { turnId: 'turn-keys-0004', message: 'Bonsoir', language: 'fr' }));
+    const turns = (await (await SELF.fetch(`${BASE}/conversations?limit=10`, { headers: STAFF })).json()) as { sessionId: string; phone?: string }[];
+    expect(turns.find((turn) => turn.sessionId === 'call-with-id-01')?.phone).toBe('+33 6 11 11 11 11');
+    expect(turns.find((turn) => turn.sessionId === 'call-no-id-0001')?.phone).toBe('+33 6 22 22 22 22');
+  });
+
   it('remembers a reply the caller cut short as far as they heard it, and follows a caller who switches language', async () => {
     const requests = fakeNetwork([
       say('Nous sommes ouverts du mardi au samedi, le midi de 12 h à 14 h et le soir de 19 h à 22 h 30.'),
