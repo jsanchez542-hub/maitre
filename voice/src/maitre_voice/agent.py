@@ -52,6 +52,7 @@ from .brain import TURN, UNREACHABLE, CallState, Goodbye, RestaurantBrain, Spoke
 from .config import LANGUAGES, Settings
 from .health import failure_reason, report, start_checking_in
 from .keypad import Keypad
+from .language import CallerLanguage
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
 from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
 
@@ -64,8 +65,6 @@ server = AgentServer(job_memory_warn_mb=400, job_memory_limit_mb=700)
 
 #: Seconds without a key before a number typed without the hash key is sent anyway.
 KEYPAD_PAUSE_SECONDS = 4.0
-#: Words a transcript needs before the conversation follows it into another language: "OK" is not a switch.
-WORDS_TO_SWITCH = 3
 #: Seconds after the caller's last word before the turn is theirs no more, when the turn detector hears that they have
 #: finished; on top of what Flux decides, when it decides.
 ENDPOINTING_SECONDS = 0.25
@@ -199,8 +198,15 @@ class PhoneCall:
         self._keypad_timer: asyncio.TimerHandle | None = None
         self._keypad_shown = "closed"
         self._tasks: set[asyncio.Task[None]] = set()
-        self._state = CallState(line=line, language=started.language, on_answer=self._on_answer, on_refusal=self._on_refusal)
         self._goodbye = Goodbye(lambda: self._spawn(self.end("goodbye")), GOODBYE_PAUSE_SECONDS)
+        self._state = CallState(
+            line=line,
+            language=started.language,
+            on_answer=self._on_answer,
+            on_refusal=self._on_refusal,
+            wants_answer=self._goodbye.caller_said,
+        )
+        self._language = CallerLanguage(started.language)
         self._tts = build_tts(settings.voice_for(started.language), started.language)
         self.session: AgentSession = AgentSession(
             stt=build_stt(settings.stt, started.language, settings.end_of_turn, started.keyterms),
@@ -255,15 +261,14 @@ class PhoneCall:
     # Events from the call.
 
     def _on_transcript(self, event: UserInputTranscribedEvent) -> None:
-        if event.is_final and event.transcript.strip():
-            self._goodbye.caller_said()
-        language = (event.language or "")[:2].lower()
-        if not event.is_final or language not in LANGUAGES or language == self._state.language:
+        if not event.is_final or not event.transcript.strip():
             return
-        if len(event.transcript.split()) < WORDS_TO_SWITCH:
+        # A goodbye said back to the line's own ends the call as it is: it opens no turn and moves no language.
+        if not self._goodbye.caller_said(event.transcript):
             return
-        self._state.language = language
-        switch_voice(self._tts, settings.voice_for(language), language)
+        if self._language.heard((event.language or "")[:2].lower(), event.transcript):
+            self._state.language = self._language.language
+            switch_voice(self._tts, settings.voice_for(self._state.language), self._state.language)
 
     def _on_user_state(self, event: UserStateChangedEvent) -> None:
         if event.new_state == "away":
@@ -346,7 +351,7 @@ class PhoneCall:
         text = " ".join(item.text_content or "" for item in items if item.type == "message" and item.role == "assistant").strip()
         if text:
             self._state.spoken[turn_id] = Spoken(text, cut_short=interrupted)
-        self._goodbye.played(turn_id, interrupted)
+        self._goodbye.played(turn_id, interrupted, heard=bool(text))
 
     async def _watch_the_clock(self) -> None:
         """A demo call tells the Worker how long it has lasted, which the demo's budget pays for; any call has a longest."""

@@ -1,11 +1,18 @@
 """The restaurant as LiveKit's language model: the caller's words go to the line, and what comes back is spoken."""
 
+import asyncio
+from types import SimpleNamespace
+
 from livekit.agents import llm
 
-from maitre_voice.agent import Dispatch
-from maitre_voice.brain import TURN, UNREACHABLE, CallState, RestaurantBrain, Spoken
+from maitre_voice import agent as voice_agent
+from maitre_voice.agent import Dispatch, PhoneCall
+from maitre_voice.brain import TURN, UNREACHABLE, CallState, Goodbye, RestaurantBrain, Spoken
 from maitre_voice.config import Settings
+from maitre_voice.language import CallerLanguage
 from maitre_voice.line import Answer, LineError, Working
+
+PAUSE = 0.05
 
 
 class FakeLine:
@@ -104,6 +111,69 @@ async def test_says_nothing_to_silence():
     state = CallState(line=line, language="fr")
     assert await spoken(RestaurantBrain(state), conversation(("user", "   ", False))) == ""
     assert line.calls == []
+
+
+def call_in(language: str, line: FakeLine, ending: bool) -> tuple[SimpleNamespace, CallState, list[str]]:
+    """What the agent keeps of a call for what recognition hears: with `ending`, its goodbye has just been heard."""
+    hung_up: list[str] = []
+    goodbye = Goodbye(lambda: hung_up.append("hung up"), PAUSE)
+    state = CallState(line=line, language=language, wants_answer=goodbye.caller_said)
+    if ending:
+        goodbye.answered("turn_bye", ends_call=True)
+        goodbye.played("turn_bye", interrupted=False)
+    return SimpleNamespace(_goodbye=goodbye, _state=state, _language=CallerLanguage(language), _tts=object()), state, hung_up
+
+
+def hears(call: SimpleNamespace, transcript: str, language: str) -> None:
+    """Recognition hands the agent the caller's words, with the language it heard them in."""
+    PhoneCall._on_transcript(call, SimpleNamespace(is_final=True, transcript=transcript, language=language))
+
+
+def voices_switched(monkeypatch) -> list[str]:
+    switched: list[str] = []
+    monkeypatch.setattr(voice_agent, "switch_voice", lambda _engine, _voice, language: switched.append(language))
+    return switched
+
+
+SPANISH_GOODBYE = (("user", "Nada más, gracias.", False), ("assistant", "Gracias por llamar. Hasta pronto.", False))
+
+
+async def test_a_goodbye_said_back_in_english_ends_a_call_in_spanish_without_another_word(monkeypatch):
+    # The call of 14 November: after its goodbye in Spanish the line spoke again, in English, before it hung up.
+    voices = voices_switched(monkeypatch)
+    line = FakeLine([Answer(reply="Goodbye!", outcome="answered", hang_up=True)])
+    call, state, hung_up = call_in("es", line, ending=True)
+    hears(call, "Okay, thank you, bye bye.", "en")
+    said = await spoken(RestaurantBrain(state), conversation(*SPANISH_GOODBYE, ("user", "Okay, thank you, bye bye.", False)))
+    assert (said, line.calls) == ("", [])
+    assert (state.language, voices) == ("es", [])
+    await asyncio.sleep(PAUSE * 3)
+    assert hung_up == ["hung up"]
+
+
+async def test_a_question_after_the_goodbye_is_answered_in_the_language_it_was_asked_in(monkeypatch):
+    voices = voices_switched(monkeypatch)
+    line = FakeLine([Answer(reply="Yes, there is a car park 200 m away.", outcome="answered")])
+    call, state, hung_up = call_in("es", line, ending=True)
+    question = "Sorry, one more thing: is there a car park nearby?"
+    hears(call, question, "en")
+    said = await spoken(RestaurantBrain(state), conversation(*SPANISH_GOODBYE, ("user", question, False)))
+    assert said == "Yes, there is a car park 200 m away."
+    assert line.calls[0][1:3] == (question, "en")
+    assert (state.language, voices) == ("en", ["en"])
+    await asyncio.sleep(PAUSE * 3)
+    assert hung_up == []
+
+
+async def test_a_few_words_heard_as_another_language_leave_the_call_in_its_own(monkeypatch):
+    voices = voices_switched(monkeypatch)
+    line = FakeLine([Answer(reply="¿A qué nombre?", outcome="answered")])
+    call, state, _hung_up = call_in("es", line, ending=False)
+    # A name, as recognition may hear it: three words were enough to move the whole call to English.
+    hears(call, "John Smith Junior", "en")
+    await spoken(RestaurantBrain(state), conversation(("user", "John Smith Junior", False)))
+    assert line.calls[0][1:3] == ("John Smith Junior", "es")
+    assert (state.language, voices) == ("es", [])
 
 
 def test_a_demo_pass_goes_to_the_visitors_restaurant_and_anything_else_to_the_restaurants_own_line():

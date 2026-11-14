@@ -19,6 +19,7 @@ from livekit.agents import APIConnectOptions, llm
 from livekit.agents.llm.tool_context import Tool
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 
+from .courtesy import only_courtesy
 from .line import Answer, Line, LineError, Working, new_turn_id
 
 logger = logging.getLogger("maitre.voice")
@@ -51,6 +52,8 @@ class CallState:
     on_answer: Callable[[Answer], None] = lambda _answer: None
     #: Called when the restaurant refuses a turn the call cannot go on after: the agent says goodbye.
     on_refusal: Callable[[LineError], None] = lambda _error: None
+    #: Asked with the caller's words before the restaurant is: false when they only said goodbye back to the line.
+    wants_answer: Callable[[str], bool] = lambda _said: True
     #: The short line said in each turn, by the reply it started, to take it out of what the caller heard.
     working_lines: list[str] = field(default_factory=list)
     #: The id of the last turn the restaurant was asked to answer.
@@ -79,9 +82,10 @@ class CallState:
 class Goodbye:
     """The line's own hang-up, after the reply that ends the call.
 
-    It waits for that reply to be heard to the end, then for a short pause. A caller who speaks over the goodbye, or
-    says words in the pause, keeps the line open: the restaurant answers them, and says goodbye again if that is what
-    they said. A noise in the pause, which recognition makes no words of, only delays the hang-up.
+    It waits for that reply to be heard to the end, then for a short pause. A caller who answers it with a thanks or
+    a goodbye of their own, as people do, gets no other answer: the line hangs up once they are quiet, even when they
+    said it over the line's goodbye. A caller who says anything else keeps the line open, and the restaurant answers
+    them. A noise in the pause, which recognition makes no words of, only delays the hang-up.
     """
 
     def __init__(self, hang_up: Callable[[], None], pause: float) -> None:
@@ -89,20 +93,27 @@ class Goodbye:
         self._pause = pause
         #: The turn whose reply is the last of the call, until it has played.
         self._turn: str | None = None
-        #: The goodbye was heard: the line hangs up once the caller is quiet for the pause.
+        #: Some of the goodbye was heard: the call is ending, unless the caller says more than a goodbye back.
+        self._said = False
+        #: All of it was, or the caller answered it with their own: the line hangs up once they are quiet for the pause.
         self._heard = False
         self._speaking = False
         self._timer: asyncio.TimerHandle | None = None
 
     def answered(self, turn_id: str | None, ends_call: bool) -> None:
-        """The restaurant answered a turn, with the last reply of the call or not."""
+        """The restaurant answered a turn, with the last reply of the call or not. Whatever was ending, this reply comes first."""
         self._turn = turn_id if ends_call else None
+        self._said = self._heard = False
+        self._disarm()
 
-    def played(self, turn_id: str, interrupted: bool) -> None:
-        """A reply has finished playing, to its end or cut short."""
+    def played(self, turn_id: str, interrupted: bool, heard: bool = True) -> None:
+        """A reply has finished playing, to its end or cut short; `heard` is false when it was cut before a word of it."""
         if turn_id != self._turn:
             return
         self._turn = None
+        if not heard:
+            return
+        self._said = True
         if interrupted:
             return
         self._heard = True
@@ -117,11 +128,21 @@ class Goodbye:
         elif self._heard:
             self._arm()
 
-    def caller_said(self) -> None:
-        """The caller said words: they are not done, and the restaurant answers them."""
+    def caller_said(self, said: str) -> bool:
+        """The caller said words. Whether the restaurant is to answer them: not a goodbye said back to the line's own."""
+        if only_courtesy(said):
+            if self._said:
+                self._heard = True
+                if not self._speaking:
+                    self._arm()
+                return False
+            if self._turn is not None:
+                # The goodbye has not played yet: whether these words answered it is known once it has.
+                return True
         self._turn = None
-        self._heard = False
+        self._said = self._heard = False
         self._disarm()
+        return True
 
     def _arm(self) -> None:
         self._disarm()
@@ -134,7 +155,7 @@ class Goodbye:
 
     def _fire(self) -> None:
         self._timer = None
-        self._heard = False
+        self._said = self._heard = False
         self._hang_up()
 
 
@@ -192,6 +213,9 @@ class TurnStream(llm.LLMStream):
             None,
         )
         if not message or not message.strip():
+            return
+        # A thanks or a goodbye said back to the line's own is not a turn: the line hangs up, and nobody answers it.
+        if not self._state.wants_answer(message):
             return
         heard, unheard = self._state.heard_of_last_reply()
         self._state.last_turn = self._turn_id
