@@ -37,6 +37,13 @@ from maitre_voice.courtesy import only_courtesy
         "Sí.",
         "Eso es todo, gracias.",
         "OK.",
+        # A goodbye until the day of the booking, as said when it is for tomorrow or tonight.
+        "À demain.",
+        "Merci, à ce soir.",
+        "See you tomorrow.",
+        "Thanks, see you tonight.",
+        "Hasta mañana.",
+        "Gracias, hasta esta noche.",
     ],
 )
 def test_a_thanks_an_agreement_or_a_goodbye_is_a_courtesy(said: str):
@@ -60,7 +67,7 @@ def test_a_thanks_an_agreement_or_a_goodbye_is_a_courtesy(said: str):
         "Wait, one more thing.",
         "Hello?",
         "Tomorrow.",
-        "See you tomorrow.",
+        "See you tomorrow at eight.",
         "Yes, for two.",
         "At nine.",
         "Gracias, ¿y tienen terraza?",
@@ -69,7 +76,9 @@ def test_a_thanks_an_agreement_or_a_goodbye_is_a_courtesy(said: str):
         "Sí, pero somos cinco.",
         "¿Hola?",
         "Es tarde.",
-        "Hasta mañana.",
+        "Mañana.",
+        "Hasta mañana no puedo.",
+        "À demain soir.",
         "Las nueve.",
         "4",
     ],

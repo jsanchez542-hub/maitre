@@ -2,8 +2,9 @@
 
 Nobody answers those, and they are said the same whatever language the call is in. The words are the usual
 ones in the three languages the line speaks, compared without accents or punctuation. The list is short on
-purpose: a day, an hour, a number, a "no" or a "but" are not in it. Said after the goodbye, they may be
-changing a booking, and the restaurant answers them.
+purpose: a day, an hour or a number on its own, a "no" or a "but" are not in it. Said after the goodbye, they
+may be changing a booking, and the restaurant answers them. "Tomorrow" and "tonight" count only inside a
+goodbye, "see you tomorrow": every word said has to be part of the courtesy.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from __future__ import annotations
 import unicodedata
 from itertools import product
 
-#: A thanks, a goodbye or an agreement in one word. One of these, or a pair below, makes a few words a courtesy.
+#: A thanks, a goodbye or an agreement in one word. One of these, or a phrase below, makes a few words a courtesy.
 _SAYS_IT = frozenset(
     """
     merci remercie ciao oui parfait entendu daccord super egalement pareillement
@@ -20,18 +21,24 @@ _SAYS_IT = frozenset(
     ok okay okey
     """.split()
 )
-#: The same in two words: a goodbye, an agreement, or a wish for the rest of the day and its answer.
-_SAYS_IT_IN_TWO = frozenset(
+#: The same in two or three words: a goodbye, an agreement, or a wish for the rest of the day and its answer.
+_SAYS_IT_IN_A_PHRASE = frozenset(
     {
         ("au", "revoir"),
         ("a", "bientot"),
+        ("a", "demain"),
+        ("a", "ce", "soir"),
         ("vous", "aussi"),
         ("see", "you"),
+        ("see", "you", "tomorrow"),
+        ("see", "you", "tonight"),
         ("take", "care"),
         ("you", "too"),
         ("all", "right"),
         ("hasta", "luego"),
         ("hasta", "pronto"),
+        ("hasta", "manana"),
+        ("hasta", "esta", "noche"),
         ("nos", "vemos"),
         ("de", "acuerdo"),
         *product(("bonne", "bon"), ("soiree", "journee", "nuit", "continuation")),
@@ -50,7 +57,7 @@ _GOES_WITH_IT = frozenset(
 )
 
 
-def _words(said: str) -> list[str]:
+def words_of(said: str) -> list[str]:
     """The words as they compare: lower case, without accents, apostrophes or punctuation ("D’accord !" is "daccord")."""
     plain = unicodedata.normalize("NFKD", said.lower())
     kept = "".join(char for char in plain if not unicodedata.combining(char) and char not in "'’")
@@ -59,13 +66,15 @@ def _words(said: str) -> list[str]:
 
 def only_courtesy(said: str) -> bool:
     """Whether these words are nothing but a thanks, an agreement or a goodbye."""
-    words = _words(said)
+    words = words_of(said)
     says_it = False
     at = 0
     while at < len(words):
-        if tuple(words[at : at + 2]) in _SAYS_IT_IN_TWO:
+        # The longest phrase first: "see you tomorrow" before "see you".
+        phrase = next((length for length in (3, 2) if tuple(words[at : at + length]) in _SAYS_IT_IN_A_PHRASE), 0)
+        if phrase:
             says_it = True
-            at += 2
+            at += phrase
         elif words[at] in _SAYS_IT:
             says_it = True
             at += 1

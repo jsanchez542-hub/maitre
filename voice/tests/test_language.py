@@ -40,6 +40,34 @@ def test_a_third_language_starts_from_nothing():
     assert call.language == "es"
 
 
+def test_a_caller_who_asks_for_a_language_by_name_gets_it_at_once():
+    # A tourist on a French line: the answer to "Do you speak English?" is in English, not one turn later.
+    for heard_in, said, asked in (
+        ("en", "Do you speak English?", "en"),
+        ("en", "English, please.", "en"),
+        ("en", "English?", "en"),
+        ("en", "Sorry, I don't speak French.", "en"),
+        ("es", "¿Hablan español?", "es"),
+        ("es", "En español, por favor.", "es"),
+        ("en", "Do you speak Spanish?", "es"),
+        ("es", "¿Habla inglés?", "en"),
+    ):
+        call = CallerLanguage("fr")
+        assert call.heard(heard_in, said) is True, said
+        assert call.language == asked, said
+
+
+def test_a_language_named_for_a_dish_or_in_the_calls_own_language_asks_for_nothing():
+    call = CallerLanguage("es")
+    assert call.heard("en", "French onion soup") is False
+    assert call.heard("fr", "une tarte anglaise") is False
+    assert call.language == "es"
+    # Asked in the call's own language, it is a question about the menu.
+    call = CallerLanguage("fr")
+    assert call.heard("fr", "Est-ce que la carte est en anglais ?") is False
+    assert call.language == "fr"
+
+
 def test_one_word_a_thanks_or_a_goodbye_tell_nothing_of_the_language():
     call = CallerLanguage("es")
     for said in ("OK", "Okay, thank you, bye bye.", "Thank you very much, goodbye.", "Perfect, thanks a lot, have a good one."):

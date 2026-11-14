@@ -165,6 +165,16 @@ async def test_a_question_after_the_goodbye_is_answered_in_the_language_it_was_a
     assert hung_up == []
 
 
+async def test_a_caller_who_asks_for_english_is_answered_in_english_at_once(monkeypatch):
+    voices = voices_switched(monkeypatch)
+    line = FakeLine([Answer(reply="Yes, of course. How can I help you?", outcome="answered")])
+    call, state, _hung_up = call_in("fr", line, ending=False)
+    hears(call, "Do you speak English?", "en")
+    await spoken(RestaurantBrain(state), conversation(("user", "Do you speak English?", False)))
+    assert line.calls[0][1:3] == ("Do you speak English?", "en")
+    assert (state.language, voices) == ("en", ["en"])
+
+
 async def test_a_few_words_heard_as_another_language_leave_the_call_in_its_own(monkeypatch):
     voices = voices_switched(monkeypatch)
     line = FakeLine([Answer(reply="¿A qué nombre?", outcome="answered")])
