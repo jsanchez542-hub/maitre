@@ -74,6 +74,7 @@ uv run ruff check .
 uv run python bench/line_check.py    # a French booking call against the local Worker and the real model, without LiveKit
 uv run python bench/caller.py es     # a real call through LiveKit, made by a program, in fr (default), en or es: it books the evening the demo suggests, types the number, says goodbye, thanks the restaurant for its own, and passes when the restaurant hangs up without another word
 uv run python bench/caller.py es en  # the same call in Spanish with that last thanks in English: the call must stay in Spanish
+uv run python bench/caller.py es en line   # a call to the restaurant's own line, taken by the agent MAITRE_AGENT_NAME names: it asks for the opening hours, books nothing, and ends with the same goodbye and thanks
 uv run python dev/serve.py           # a call page on http://127.0.0.1:8790, to call the local demo restaurant yourself
 uv run python bench/tts_languages.py es "<voice>" ...   # each voice reads the restaurant's lines; speech recognition says what it heard
 ```
@@ -94,6 +95,21 @@ ssh server "cp /opt/maitre-voice/releases/$commit/voice/deploy/compose.yaml /opt
 ```
 
 `/opt/maitre-voice/.env`, mode 600, holds the variables of `.env.example` with `MAITRE_API_URL` set to the Worker's public address, `MAITRE_VOICE_VERSION` set to the commit, and an agent token of its own that the Worker shares as `AGENT_TOKEN`. A developer's agent registers under another name (`MAITRE_AGENT_NAME`, and `LIVEKIT_AGENT_NAME` in the local Worker), so it never answers the public demo's calls.
+
+### Checking the deployed agent with a call
+
+`bench/caller.py es en line` calls the restaurant's own line through the agent that is running. It signs its own pass with the LiveKit keys kept on the server, so it runs there, in the image the agent runs in. The image leaves `bench/` out: the folder is copied from the repository, mounted for reading only, and removed afterwards.
+
+```bash
+commit=$(git rev-parse --short HEAD)
+git archive HEAD voice/bench | ssh server "mkdir -p /tmp/bench-$commit && tar -x -C /tmp/bench-$commit"
+ssh server "cd /opt/maitre-voice && docker compose run --rm --no-deps -T -v /tmp/bench-$commit/voice/bench:/app/bench:ro -e MAITRE_BENCH_OUT=/tmp -e MAITRE_AGENT_NAME=maitre-voice agent python bench/caller.py es en line; echo \"exit code: \$?\""
+ssh server "rm -rf /tmp/bench-$commit"
+```
+
+The caller asks for the opening hours on Saturdays, says goodbye and, once the restaurant has said its own goodbye, thanks it in English. The call passes, with exit code 0, when the restaurant answered both lines, said nothing after the thanks and hung up. The output shows what was said, with the second each line began, then PASS or FAIL. The line LiveKit's library writes after that, as the program closes, is not about the call.
+
+It is a real call, so no agent is called by default: `MAITRE_AGENT_NAME` says which one. The restaurant keeps it like any other, as one conversation of two turns, for 90 days. Its turns are answered with the Worker's own model key, outside the demo's limits, and the call costs about 3 cents. The deployed agent first passed it on 14 November 2026: it hung up 2.3 seconds after the thanks, without another word.
 
 ## Credits
 
