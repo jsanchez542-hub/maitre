@@ -18,6 +18,8 @@ export interface StoredSession {
   phone?: string;
   phoneSource?: PhoneSource;
   transcript: TranscriptEntry[];
+  /** How many turns the conversation has had, the ones the model failed too. None counted before 14 November 2026. */
+  turns?: number;
   updatedAt: string;
   /**
    * The last turn the phone line asked for, by its own id, and the answer it got:

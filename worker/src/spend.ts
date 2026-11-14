@@ -2,11 +2,30 @@ import { MAX_OUTPUT_TOKENS } from '../../src/agent/agent.js';
 import { runtimeFetch, type Fetch } from '../../src/agent/http.js';
 import { ModelError } from '../../src/agent/model.js';
 import { utf8Length } from '../../src/agent/size.js';
+import type { Env } from './env.js';
 
 /** What a million tokens cost at most, in US dollars, on the models a restaurant may answer with. */
 export interface TokenPrices {
   inputPerMillion: number;
   outputPerMillion: number;
+}
+
+/** A number at least 0 from a setting, or undefined when it cannot be read. */
+export function setting(value: string | undefined): number | undefined {
+  const number = Number(value);
+  return value !== undefined && value.trim() !== '' && Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+/**
+ * The most a million tokens cost on the models the assistant answers with: what a request is counted at when the
+ * provider does not say what it cost. Undefined when a price is missing or is not above zero, which would count
+ * nothing. The settings carry the demo's name, which was the first to count this way; a restaurant's own assistant
+ * answers with the same models and is counted at the same prices.
+ */
+export function modelPrices(env: Pick<Env, 'DEMO_INPUT_USD_PER_MILLION' | 'DEMO_OUTPUT_USD_PER_MILLION'>): TokenPrices | undefined {
+  const inputPerMillion = setting(env.DEMO_INPUT_USD_PER_MILLION);
+  const outputPerMillion = setting(env.DEMO_OUTPUT_USD_PER_MILLION);
+  return inputPerMillion && outputPerMillion ? { inputPerMillion, outputPerMillion } : undefined;
 }
 
 interface SpendOptions {

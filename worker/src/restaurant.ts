@@ -29,7 +29,7 @@ import type { PhoneSource } from '../../src/store.js';
 import { errandOf, runTool, type ToolOutput } from '../../src/tools.js';
 import { CALL_ENDINGS, Conversations, RETENTION_DAYS, type CallEndedBy, type CallLog, type TurnLog } from './conversations.js';
 import type { Env } from './env.js';
-import { ModelSpend, type TokenPrices } from './spend.js';
+import { modelPrices, ModelSpend, setting, type TokenPrices } from './spend.js';
 import { SqlStore } from './sql-store.js';
 
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -53,6 +53,23 @@ const MAX_CALL_SECONDS = 4 * 3600;
  * this, the provider has stalled and the caller would be waiting on nothing.
  */
 const VOICE_MODEL_TIMEOUT_MS = 8_000;
+const SPENT_TODAY = 'spent:day';
+/**
+ * The most turns the model answers in one conversation, chat or call. A booking takes four to ten: past a
+ * hundred and twenty, somebody is going round in circles, or something is.
+ */
+const MAX_CONVERSATION_TURNS = 120;
+/**
+ * The longest call the restaurant answers turns for, by its own clock: a minute past the line's own longest
+ * (VOICE_MAX_CALL_SECONDS in voice/), so that a line that works ends its call first, with its own words.
+ */
+const MAX_CALL_MS = 16 * 60_000;
+
+/** What a restaurant's assistant has spent on the model in one day, by the UTC date. */
+interface DaySpend {
+  day: string;
+  usd: number;
+}
 
 export interface ChatRequest {
   sessionId: string;
@@ -203,12 +220,17 @@ export class Restaurant extends DurableObject<Env> {
   readonly #conversations: Conversations;
   /** Turns of one conversation run in order, even when a guest sends two messages while the model is thinking. */
   readonly #queues = new Map<string, Promise<unknown>>();
+  /** Today's spending on the model, requests still on their way counted at the most they could cost. */
+  #spent: DaySpend = { day: '', usd: 0 };
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.store = new SqlStore(ctx.storage);
     this.#conversations = new Conversations(ctx.storage.sql);
     this.#engine = this.#engineFor(this.store.config() ?? DEMO_RESTAURANT);
+    void ctx.blockConcurrencyWhile(async () => {
+      this.#spent = (await ctx.storage.get<DaySpend>(SPENT_TODAY)) ?? this.#spent;
+    });
   }
 
   #engineFor(config: BusinessConfig): BookingEngine {
@@ -269,18 +291,31 @@ export class Restaurant extends DurableObject<Env> {
     return this.env.OPENROUTER_API_KEY;
   }
 
-  /** What a million tokens cost at most, to count a request the provider did not price. The public demo sets them. */
+  /** What a million tokens cost at most, to count a request the provider did not price. */
   protected tokenPrices(): TokenPrices | undefined {
-    return undefined;
+    return modelPrices(this.env);
   }
 
-  /** Asked before every request to the model. The public demo stops a restaurant that has spent what one may. */
+  /**
+   * Asked before every request to the model. A restaurant's assistant stops for the day once it has spent what
+   * one may in a day (RESTAURANT_DAILY_USD): a limit that cannot be read is nothing to spend. The public demo
+   * has limits of its own instead.
+   */
   protected mayCallModel(): boolean {
-    return true;
+    const today = new Date().toISOString().slice(0, 10);
+    return (this.#spent.day === today ? this.#spent.usd : 0) < (setting(this.env.RESTAURANT_DAILY_USD) ?? 0);
   }
 
-  /** Told what each request to the model costs as it happens: first the most it could, then the difference once known. */
-  protected modelSpent(_usd: number): void {}
+  /**
+   * Told what each request to the model costs as it happens: first the most it could, then the difference once
+   * known. Kept as it is counted, and not waited for: the object holds back what it sends until what it wrote
+   * before is kept, so a request leaves only once it is counted for good.
+   */
+  protected modelSpent(usd: number): void {
+    const day = new Date().toISOString().slice(0, 10);
+    this.#spent = { day, usd: (this.#spent.day === day ? this.#spent.usd : 0) + usd };
+    void this.ctx.storage.put(SPENT_TODAY, this.#spent);
+  }
 
   /**
    * Called once a turn's requests to the model are over, with what they cost, whatever became of the turn: one
@@ -361,7 +396,10 @@ export class Restaurant extends DurableObject<Env> {
       : fallbackId
         ? { maxRetries: 1 }
         : {};
-    const spend = new ModelSpend({ prices: this.tokenPrices(), mayCall: () => this.mayCallModel(), onSpend: (usd) => this.modelSpent(usd) });
+    // A conversation past its turns gets the answer of a model that failed: the team is asked to call when a number is known.
+    const turnsBefore = this.#conversations.get(session.id)?.turns ?? 0;
+    const turnsLeft = turnsBefore < MAX_CONVERSATION_TURNS;
+    const spend = new ModelSpend({ prices: this.tokenPrices(), mayCall: () => turnsLeft && this.mayCallModel(), onSpend: (usd) => this.modelSpent(usd) });
     const primary = openRouterModel({ apiKey, model: modelId, fetch: spend.fetch, ...limits });
     let fellBack = false;
     const model = fallbackId
@@ -391,6 +429,7 @@ export class Restaurant extends DurableObject<Env> {
       language: session.language,
       ...(session.phone ? { phone: session.phone.e164, phoneSource: session.phone.source } : {}),
       transcript: result.transcript,
+      turns: turnsBefore + 1,
       updatedAt: now,
       ...(hooks.turnId ? { lastTurn: { id: hooks.turnId, answer } } : {}),
     });
@@ -457,7 +496,7 @@ export class Restaurant extends DurableObject<Env> {
    * answer. The turn is kept under the line's id, so a line that lost the
    * connection and asks again gets the same answer instead of a second turn.
    */
-  async callTurn(request: CallTurn): Promise<CallStream | Invalid | { status: 'not_configured' }> {
+  async callTurn(request: CallTurn): Promise<CallStream | Invalid | { status: 'not_configured' } | { status: 'time_limit' }> {
     const problems = callIdProblems(request.sessionId, request.turnId);
     if (typeof request.message !== 'string' || request.message.length > MAX_SPOKEN) problems.push(`message must be text of at most ${MAX_SPOKEN} characters`);
     if (!isLanguage(request.language)) problems.push('language must be fr, en or es');
@@ -467,6 +506,7 @@ export class Restaurant extends DurableObject<Env> {
     const apiKey = this.modelKey();
     if (!apiKey) return { status: 'not_configured' };
     if (this.#conversations.get(request.sessionId)?.channel !== 'voice') return { status: 'invalid', problems: ['unknown call'] };
+    if (this.#callIsOver(request.sessionId)) return { status: 'time_limit' };
     const language = request.language as Language;
 
     return this.#callStream(request.sessionId, language, async (send) => {
@@ -496,7 +536,7 @@ export class Restaurant extends DurableObject<Env> {
    * its number takes none from the keypad: the one the phone network gave is
    * worth more than any a caller types, and a typed one is typed once.
    */
-  async keypad(request: KeypadEntry): Promise<CallStream | Invalid | { status: 'not_configured' }> {
+  async keypad(request: KeypadEntry): Promise<CallStream | Invalid | { status: 'not_configured' } | { status: 'time_limit' }> {
     const problems = callIdProblems(request.sessionId, request.turnId);
     if (typeof request.digits !== 'string' || !/^[0-9*#]{1,24}$/.test(request.digits)) problems.push('digits must be 1 to 24 keypad keys');
     if (problems.length > 0) return { status: 'invalid', problems };
@@ -506,6 +546,7 @@ export class Restaurant extends DurableObject<Env> {
     if (first?.channel !== 'voice') return { status: 'invalid', problems: ['unknown call'] };
     // Asked again with the same turn, the line gets the answer it lost; any other keys find the number already there.
     if (first.phone && first.lastTurn?.id !== request.turnId) return { status: 'invalid', problems: ['this call already has its number'] };
+    if (this.#callIsOver(request.sessionId)) return { status: 'time_limit' };
 
     return this.#callStream(request.sessionId, first.language, async (send) => {
       const stored = this.#conversations.get(request.sessionId);
@@ -561,6 +602,12 @@ export class Restaurant extends DurableObject<Env> {
     this.#conversations.endCall(request.sessionId, { endedAt: new Date().toISOString(), seconds: Math.round(request.seconds), endedBy, voiceToVoiceMs });
     const say = endedBy === 'silence' || endedBy === 'time_limit' || endedBy === 'paused' ? messages(stored.language).callEnding(endedBy) : '';
     return { status: 'ok', say };
+  }
+
+  /** Whether a call has lasted longer than any call may, by this restaurant's own clock: whatever the line's says. */
+  #callIsOver(sessionId: string): boolean {
+    const call = this.#conversations.call(sessionId);
+    return call !== undefined && Date.now() - Date.parse(call.startedAt) > MAX_CALL_MS;
   }
 
   async recentCalls(limit: number): Promise<CallLog[]> {

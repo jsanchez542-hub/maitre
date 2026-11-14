@@ -275,6 +275,26 @@ describe('a call to the restaurant', () => {
     expect((await step('call-never-started', 'end', { endedBy: 'caller', seconds: 3 })).status).toBe(400);
   });
 
+  it('stops answering a call that has lasted longer than any call may, by its own clock', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-16T19:00:00Z'));
+    const requests = fakeNetwork([say('Bonsoir.')]);
+    await step('call-too-long-01', 'start', { language: 'fr' });
+    // Fifteen minutes in, the line's own clock would have ended the call; the restaurant still answers.
+    vi.setSystemTime(new Date('2026-11-16T19:15:30Z'));
+    expect((await lines(await step('call-too-long-01', 'turns', { turnId: 'turn-long-0001', message: 'Vous êtes là ?', language: 'fr' }))).at(-1)).toMatchObject({ type: 'answer' });
+    // A line that kept the call going past that gets no more turns, whatever its own clock says.
+    vi.setSystemTime(new Date('2026-11-16T19:16:01Z'));
+    const late = await step('call-too-long-01', 'turns', { turnId: 'turn-long-0002', message: 'Allô ?', language: 'fr' });
+    expect([late.status, await late.json()]).toEqual([409, { error: 'call_time_limit' }]);
+    const keys = await step('call-too-long-01', 'keypad', { turnId: 'turn-long-0003', digits: '0622222222#' });
+    expect([keys.status, await keys.json()]).toEqual([409, { error: 'call_time_limit' }]);
+    expect(requests).toHaveLength(1);
+    // It can still say how it ended, and hears the words to say.
+    const ended = await step('call-too-long-01', 'end', { endedBy: 'time_limit', seconds: 961 });
+    expect(((await ended.json()) as { say: string }).say).toMatch(/durée maximale/);
+  });
+
   it('is the voice agent’s alone: no token, the staff’s token or a demo-only step get nothing', async () => {
     fakeNetwork();
     expect((await step('call-voice-0006', 'start', { language: 'fr' }, JSON_BODY)).status).toBe(401);

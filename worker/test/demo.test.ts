@@ -1,6 +1,6 @@
 import { env, listDurableObjectIds, reset, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { demoPrices } from '../src/demo.js';
+import { modelPrices } from '../src/spend.js';
 import { budgetStub, demoStub } from '../src/env.js';
 import worker from '../src/index.js';
 
@@ -475,10 +475,10 @@ describe('what the public demo spends', () => {
   });
 
   it('cannot count without the most a token costs: a price missing, unreadable or of zero is no price', () => {
-    expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toEqual({ inputPerMillion: 0.25, outputPerMillion: 1.2 });
+    expect(modelPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toEqual({ inputPerMillion: 0.25, outputPerMillion: 1.2 });
     for (const price of ['', '0', 'free', '-1']) {
-      expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: price, DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toBeUndefined();
-      expect(demoPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: price })).toBeUndefined();
+      expect(modelPrices({ DEMO_INPUT_USD_PER_MILLION: price, DEMO_OUTPUT_USD_PER_MILLION: '1.2' })).toBeUndefined();
+      expect(modelPrices({ DEMO_INPUT_USD_PER_MILLION: '0.25', DEMO_OUTPUT_USD_PER_MILLION: price })).toBeUndefined();
     }
   });
 });

@@ -13,7 +13,7 @@ import {
   type KeypadEntry,
   type PhoneResponse,
 } from './restaurant.js';
-import type { TokenPrices } from './spend.js';
+import { modelPrices, setting, type TokenPrices } from './spend.js';
 
 /**
  * The public demo, live: each visitor opens a restaurant of their own, in its
@@ -123,22 +123,6 @@ interface MessageCount {
   inMinute: number;
 }
 
-/** A number at least 0 from a setting, or undefined when it cannot be read. */
-function setting(value: string | undefined): number | undefined {
-  const number = Number(value);
-  return value !== undefined && value.trim() !== '' && Number.isFinite(number) && number >= 0 ? number : undefined;
-}
-
-/**
- * The most a million tokens cost on the models the demo answers with: what a request is counted at when the
- * provider does not say what it cost. Undefined when a price is missing or is not above zero, which would count nothing.
- */
-export function demoPrices(env: Pick<Env, 'DEMO_INPUT_USD_PER_MILLION' | 'DEMO_OUTPUT_USD_PER_MILLION'>): TokenPrices | undefined {
-  const inputPerMillion = setting(env.DEMO_INPUT_USD_PER_MILLION);
-  const outputPerMillion = setting(env.DEMO_OUTPUT_USD_PER_MILLION);
-  return inputPerMillion && outputPerMillion ? { inputPerMillion, outputPerMillion } : undefined;
-}
-
 export class DemoRestaurant extends Restaurant {
   #expiresAt = 0;
   /** What this restaurant has spent on the model, requests still on their way counted at the most they could cost. */
@@ -157,7 +141,7 @@ export class DemoRestaurant extends Restaurant {
   }
 
   protected override tokenPrices(): TokenPrices | undefined {
-    return demoPrices(this.env);
+    return modelPrices(this.env);
   }
 
   /** Between two requests of the same turn too: a turn that crosses the restaurant's limit stops at that request. */
@@ -546,7 +530,7 @@ export class DemoBudget extends DurableObject<Env> {
    * restaurant may spend or the prices an unpriced request is counted at: its spending could not be told.
    */
   async #paused(): Promise<boolean> {
-    if (setting(this.env.DEMO_USD_PER_SANDBOX) === undefined || !demoPrices(this.env)) return true;
+    if (setting(this.env.DEMO_USD_PER_SANDBOX) === undefined || !modelPrices(this.env)) return true;
     const { day, month, dailyLimit, monthlyLimit } = await this.spending();
     return dailyLimit === null || monthlyLimit === null || day.usd >= dailyLimit || month.usd >= monthlyLimit;
   }

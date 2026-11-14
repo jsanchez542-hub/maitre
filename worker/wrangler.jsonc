@@ -75,6 +75,11 @@
     // Calls the line answers at once, across the demo: what the voice agent's memory holds
     // (VOICE_MAX_CALLS in voice/). One more caller is told the line is busy before it rings.
     "DEMO_OPEN_CALLS": "2",
+    // A restaurant's own assistant, outside the demo: what it may spend on the model in a day.
+    // A busy day is some three hundred conversations of five turns, about sixty cents at what a
+    // turn costs; two dollars leave room for long ones and stop a line somebody found a way to
+    // keep busy. Past it the assistant says it cannot answer and the team calls back.
+    "RESTAURANT_DAILY_USD": "2",
     // The name the voice agent registers under at LiveKit (voice/).
     "LIVEKIT_AGENT_NAME": "maitre-voice"
   }

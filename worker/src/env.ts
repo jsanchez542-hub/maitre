@@ -40,6 +40,11 @@ export interface Env {
    */
   DEMO_INPUT_USD_PER_MILLION: string;
   DEMO_OUTPUT_USD_PER_MILLION: string;
+  /**
+   * What the assistant of one restaurant, outside the demo, may spend on the model in a day, in dollars. Past it,
+   * it answers that it cannot, and the team calls back. Missing or unreadable, it spends nothing.
+   */
+  RESTAURANT_DAILY_USD: string;
   /** Calls one demo restaurant may make, the longest a demo call lasts in seconds, and what a minute of voice costs the demo's budget. */
   DEMO_CALLS_PER_SANDBOX: string;
   DEMO_CALL_SECONDS: string;

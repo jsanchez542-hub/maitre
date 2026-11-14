@@ -502,6 +502,89 @@ describe('the floor', () => {
   });
 });
 
+describe('what a restaurant’s own assistant may spend, outside the demo', () => {
+  const whatsapp = (message: string, sessionId = 'whatsapp-spend-01') =>
+    chat({ sessionId, channel: 'whatsapp', language: 'fr', phone: '+33677777777', message });
+  /** As a deploy restarts every restaurant: the next request builds it again from what it kept. */
+  const restart = () =>
+    runInDurableObject(stub(), async (_instance, state) => {
+      state.abort('restarted by the test');
+    }).catch(() => undefined);
+
+  it('counts every request of the day, and stops for the day at its limit: the guest is told, and the team calls back', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-16T10:00:00Z'));
+    const requests = fakeOpenRouter([say('Bonsoir.'), say('Bonjour.')]);
+    await whatsapp('Bonsoir');
+    await runInDurableObject(stub(), async (_instance, state) => {
+      const spent = await state.storage.get<{ day: string; usd: number }>('spent:day');
+      expect(spent?.day).toBe('2026-11-16');
+      expect(spent?.usd).toBeCloseTo(0.0004, 10);
+      // The day's two dollars are spent: written as the restaurant keeps it.
+      await state.storage.put('spent:day', { day: '2026-11-16', usd: 2 });
+    });
+    await restart();
+
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { answer } = await whatsapp('Une table pour deux demain soir ?');
+    // No request left for the model: the code answered, and asked the team to call the number WhatsApp gave.
+    expect(requests).toHaveLength(1);
+    expect(answer).toMatchObject({ status: 'ok', outcome: 'failed_handed_over', booked: [] });
+    expect((await staffDay('2026-11-16')).callbacks.open).toBe(1);
+
+    // The next day, by the UTC date, the assistant answers again.
+    vi.setSystemTime(new Date('2026-11-17T00:00:05Z'));
+    expect((await whatsapp('Bonjour')).answer).toMatchObject({ outcome: 'answered', reply: 'Bonjour.' });
+    expect(requests).toHaveLength(2);
+  });
+
+  it('spends nothing when nothing says what a day may cost', async () => {
+    const requests = fakeOpenRouter([say('Bonsoir.')]);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new IncomingRequest(`${BASE}/chat`, {
+        method: 'POST',
+        headers: AGENT,
+        body: JSON.stringify({ sessionId: 'whatsapp-spend-02', channel: 'whatsapp', language: 'fr', phone: '+33677777777', message: 'Bonsoir' }),
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(requests).toHaveLength(1);
+    // The same restaurant with the setting gone, as a deploy that lost it would leave it; put back for the tests that follow.
+    const daily = (value: string) =>
+      runInDurableObject(stub(), async (instance) => {
+        (instance as unknown as { env: Record<string, string> }).env['RESTAURANT_DAILY_USD'] = value;
+      });
+    await daily('');
+    try {
+      expect((await whatsapp('Une table pour deux ?', 'whatsapp-spend-02')).answer).toMatchObject({ outcome: 'failed_handed_over' });
+      expect(requests).toHaveLength(1);
+    } finally {
+      await daily('2');
+    }
+  });
+
+  it('gives a conversation a hundred and twenty turns of the model, and then the answer of a model that failed', async () => {
+    const requests = fakeOpenRouter([say('Bonsoir.'), say('Encore ?')]);
+    await whatsapp('Bonsoir', 'whatsapp-turns-01');
+    await runInDurableObject(stub(), async (_instance, state) => {
+      const row = state.storage.sql.exec<{ data: string }>(`SELECT data FROM sessions WHERE id = 'whatsapp-turns-01'`).one();
+      const session = JSON.parse(row.data) as { turns: number };
+      expect(session.turns).toBe(1);
+      // A hundred and nineteen turns later.
+      state.storage.sql.exec(`UPDATE sessions SET data = ? WHERE id = 'whatsapp-turns-01'`, JSON.stringify({ ...session, turns: 119 }));
+    });
+    expect((await whatsapp('Et maintenant ?', 'whatsapp-turns-01')).answer).toMatchObject({ outcome: 'answered' });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect((await whatsapp('Et là ?', 'whatsapp-turns-01')).answer).toMatchObject({ outcome: 'failed_handed_over' });
+    expect(requests).toHaveLength(2);
+    // Another conversation is not held up by this one.
+    fakeOpenRouter([say('Bonsoir.')]);
+    expect((await whatsapp('Bonsoir', 'whatsapp-turns-02')).answer).toMatchObject({ outcome: 'answered' });
+  });
+});
+
 describe('the API limit', () => {
   const minute = (): number => Math.floor(Date.now() / 60_000);
   /** 125 requests in a row, each from the address given for it, and whether they all fell in the same minute of the clock. */
