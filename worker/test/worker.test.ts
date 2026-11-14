@@ -444,9 +444,24 @@ describe('the floor', () => {
 
 describe('the API limit', () => {
   it('lets one address spend only its share of a minute, and never counts the voice agent', async () => {
-    const from = { 'cf-connecting-ip': '198.51.100.7' };
-    const statuses: number[] = [];
-    for (let i = 0; i < 125; i += 1) statuses.push((await SELF.fetch('https://maitre.test/v1/demo', { headers: from })).status);
+    const minute = (): number => Math.floor(Date.now() / 60_000);
+    /** 125 requests in a row from one address, and whether they all fell in the same minute of the clock. */
+    const spend = async (address: Record<string, string>): Promise<{ statuses: number[]; inOneMinute: boolean }> => {
+      const started = minute();
+      const made: number[] = [];
+      for (let i = 0; i < 125; i += 1) made.push((await SELF.fetch('https://maitre.test/v1/demo', { headers: address })).status);
+      return { statuses: made, inOneMinute: minute() === started };
+    };
+    // The limit counts by the minute of the clock. Requests that straddle two minutes are counted in two halves and
+    // may never reach it, so they are made again from another address: two runs of a second do not both straddle one.
+    let from = { 'cf-connecting-ip': '198.51.100.7' };
+    let spent = await spend(from);
+    if (!spent.inOneMinute) {
+      from = { 'cf-connecting-ip': '198.51.100.9' };
+      spent = await spend(from);
+    }
+    const { statuses } = spent;
+    expect(spent.inOneMinute).toBe(true);
     expect(statuses.slice(0, 120).every((status) => status === 200)).toBe(true);
     expect(statuses.at(-1)).toBe(429);
     // Another address is not held up, nor the voice agent with its token, nor the health check.
