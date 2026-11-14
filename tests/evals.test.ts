@@ -3,7 +3,7 @@ import type { TurnResult } from '../src/agent/agent.js';
 import { NO_USAGE } from '../src/agent/model.js';
 import type { Booking } from '../src/store.js';
 import { checkScenario, detectLanguage, normalize, type Outcome } from '../evals/checks.js';
-import { SCENARIOS, type Scenario } from '../evals/scenarios.js';
+import { ON_THE_PHONE, SCENARIOS, type Scenario } from '../evals/scenarios.js';
 import { validateConfig } from '../src/config.js';
 import { DEMO_RESTAURANT } from '../src/demo/restaurant.js';
 
@@ -47,8 +47,26 @@ function outcome(change: Partial<Outcome>): Outcome {
 describe('the evaluation harness', () => {
   it('runs on a valid restaurant and scenarios with unique ids', () => {
     expect(validateConfig(DEMO_RESTAURANT)).toEqual([]);
-    const ids = SCENARIOS.map((candidate) => candidate.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    for (const set of [SCENARIOS, ON_THE_PHONE]) {
+      const ids = set.map((candidate) => candidate.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+    // The numbers the README gives: change them there with these.
+    expect([SCENARIOS.length, ON_THE_PHONE.length]).toEqual([49, 29]);
+    // A restaurant with a text of its own added must still be one the engine runs.
+    for (const candidate of SCENARIOS) {
+      if (candidate.extraFaq) expect(validateConfig({ ...DEMO_RESTAURANT, faq: [...DEMO_RESTAURANT.faq, ...candidate.extraFaq] }), candidate.id).toEqual([]);
+    }
+  });
+
+  it('tells a booking left as it was from one cancelled or moved', () => {
+    const kept: Scenario = { ...scenario, expect: [{ kind: 'kept', ref: 'theirs', date: '2026-10-16', time: '20:00' }] };
+    const after = (change: Partial<Booking>) => checkScenario(kept, outcome({ turns: [turn('ok')], allBookings: [booking(change)], refs: { theirs: 'ACDEFH' } }))[0];
+    expect(after({})).toMatchObject({ ok: true });
+    expect(after({ status: 'confirmed' })).toMatchObject({ ok: true });
+    expect(after({ status: 'cancelled' })).toMatchObject({ ok: false });
+    expect(after({ time: '21:00' })).toMatchObject({ ok: false });
+    expect(checkScenario(kept, outcome({ turns: [turn('ok')], refs: { theirs: 'ACDEFH' } }))[0]).toMatchObject({ ok: false, detail: 'missing' });
   });
 
   it('passes a conversation that did everything right', () => {

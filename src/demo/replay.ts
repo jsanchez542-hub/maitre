@@ -2,24 +2,56 @@ import type { BusinessConfig } from '../config.js';
 import { BookingEngine, normalizeReference, type Session, type StaffBookRequest } from '../engine.js';
 import type { Language } from '../i18n/index.js';
 import { randomIds } from '../ids.js';
+import { normalizePhone } from '../phone.js';
 import { MemoryStore, type Booking, type CallbackRequest, type PhoneSource } from '../store.js';
 import { runTool, type ToolOutput } from '../tools.js';
 import { DEMO_RESTAURANT } from './restaurant.js';
 
-/** A booking that exists before a conversation, made by the staff. `ref` names it, so a check or a replay can find it. */
+/** A booking that exists before a conversation, entered by the staff unless it says otherwise. `ref` names it, so a check or a replay can find it. */
 export interface SetupBooking extends StaffBookRequest {
   ref?: string;
+  /**
+   * Made by a guest in the site's chat, under a number typed there, instead of entered by the staff: its notes are
+   * that guest's own words, which the assistant reads back to whoever the number belongs to.
+   */
+  inChat?: true;
 }
 
 /** Makes the bookings a conversation starts with. Returns their references by name. */
 export function applySetup(engine: BookingEngine, setup: readonly SetupBooking[]): Record<string, string> {
   const refs: Record<string, string> = {};
-  for (const { ref, ...request } of setup) {
-    const result = engine.staffBook(request);
-    if (result.status !== 'booked') throw new Error(`A booking the conversation starts with could not be made: ${result.status}`);
-    if (ref) refs[ref] = result.booking.reference;
+  for (const [index, { ref, inChat, ...request }] of setup.entries()) {
+    const reference = inChat ? bookedInChat(engine, request, `setup-chat-${index}`) : enteredByStaff(engine, request);
+    if (ref) refs[ref] = reference;
   }
   return refs;
+}
+
+function enteredByStaff(engine: BookingEngine, request: StaffBookRequest): string {
+  const result = engine.staffBook(request);
+  if (result.status !== 'booked') throw new Error(`A booking the conversation starts with could not be made: ${result.status}`);
+  return result.booking.reference;
+}
+
+function bookedInChat(engine: BookingEngine, request: StaffBookRequest, sessionId: string): string {
+  const e164 = normalizePhone(request.phone ?? '');
+  if (!e164 || !request.time) throw new Error('A booking made in the chat needs a time and a number');
+  const session: Session = {
+    id: sessionId,
+    channel: 'web',
+    language: request.guestLanguage ?? engine.config.defaultLanguage,
+    phone: { e164, source: 'form' },
+  };
+  const held = engine.findTable(session, { date: { kind: 'date', date: request.date }, time: request.time, partySize: request.partySize });
+  if (held.status !== 'available') throw new Error(`A booking the conversation starts with could not be made: ${held.status}`);
+  const made = engine.book(session, {
+    holdId: held.holdId,
+    guestName: request.guestName ?? '',
+    ...(request.notes ? { notes: request.notes } : {}),
+    ...(request.allergies ? { allergies: request.allergies } : {}),
+  });
+  if (made.status !== 'booked') throw new Error(`A booking the conversation starts with could not be made: ${made.status}`);
+  return made.booking.reference;
 }
 
 export interface RecordedTurn {

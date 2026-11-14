@@ -179,6 +179,11 @@ export function expectationCheck(expectation: Expectation, outcome: Outcome): Ch
       const ok = booking?.date === expectation.date && booking.time === expectation.time && booking.status !== 'cancelled';
       return { name: `moved ${expectation.ref} to ${expectation.date} ${expectation.time}`, ok, ...(booking ? { detail: describeBooking(booking) } : { detail: 'missing' }) };
     }
+    case 'kept': {
+      const booking = outcome.allBookings.find((candidate) => candidate.reference === outcome.refs[expectation.ref]);
+      const ok = booking !== undefined && booking.status !== 'cancelled' && booking.date === expectation.date && booking.time === expectation.time;
+      return { name: `kept ${expectation.ref} as it was`, ok, detail: booking ? describeBooking(booking) : 'missing' };
+    }
     case 'tool': {
       const called = outcome.turns.some((turn) => turn.tools.some((tool) => tool.name === expectation.name && tool.output.status === 'ok'));
       return { name: `used ${expectation.name}`, ok: called };

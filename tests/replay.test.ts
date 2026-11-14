@@ -132,6 +132,20 @@ describe('replaying a recorded conversation', () => {
     expect(Object.keys(applySetup(engine, [{ ref: 'one', date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Leroy' }]))).toEqual(['one']);
     expect(() => applySetup(engine, [{ date: '2026-10-19', time: '20:00', partySize: 2, guestName: 'Lundi' }])).toThrow(/could not be made: unavailable/);
   });
+
+  it('makes a setup booking as a guest in the site’s chat when asked to: under a typed number, with the guest’s own notes', () => {
+    const store = new MemoryStore();
+    const engine = new BookingEngine(DEMO_RESTAURANT, store, { now: () => new Date('2026-10-14T08:00:00Z'), ids: sequentialIds() });
+    const refs = applySetup(engine, [
+      { ref: 'chat', inChat: true, date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Leroy', phone: '+33639980040', notes: 'Chaise haute' },
+    ]);
+    expect(store.snapshot().bookings).toMatchObject([{ reference: refs['chat'], channel: 'web', phoneSource: 'form', phone: '+33639980040', notes: 'Chaise haute' }]);
+    expect(store.snapshot().bookings[0]?.staffNotes).toBeUndefined();
+    // The number's holder, on a channel that vouches for it, reads that note; the staff's would not reach them.
+    const holder = { id: 'holder', channel: 'whatsapp', language: 'fr', phone: { e164: '+33639980040', source: 'whatsapp' } } as const;
+    expect(engine.myBookings(holder)).toMatchObject({ bookings: [{ notes: 'Chaise haute' }] });
+    expect(() => applySetup(engine, [{ inChat: true, date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Sans numéro' }])).toThrow(/needs a time and a number/);
+  });
 });
 
 describe('the recorded conversations of the demo', () => {

@@ -52,7 +52,8 @@ function setting(name: string, fallback: string): string {
 
 async function runScenario(model: LanguageModel, scenario: Scenario, run: number): Promise<RunRecord> {
   const store = new MemoryStore();
-  const engine = new BookingEngine(DEMO_RESTAURANT, store, { now: () => NOW, ids: randomIds });
+  const restaurant = scenario.extraFaq ? { ...DEMO_RESTAURANT, faq: [...DEMO_RESTAURANT.faq, ...scenario.extraFaq] } : DEMO_RESTAURANT;
+  const engine = new BookingEngine(restaurant, store, { now: () => NOW, ids: randomIds });
   const refs = applySetup(engine, scenario.setup ?? []);
   const before = new Set(store.snapshot().bookings.map((booking) => booking.id));
   let session: Session = {

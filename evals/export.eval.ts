@@ -52,7 +52,8 @@ it('exports recorded conversations for the demo', () => {
     const passing = records.filter((candidate) => candidate.scenario === scenario.id && candidate.passed);
     const record = passing.find((candidate) => candidate.turns.every((turn) => turn.corrections.length === 0)) ?? passing[0];
     // Calls are not played again in the demo: hanging up and the keypad belong to the line, not to the engine a replay runs on.
-    if (!record?.state || scenario.channel === 'staff' || scenario.channel === 'voice') {
+    // Nor a conversation about a restaurant with other texts than the demo's: a replay runs on the demo's restaurant.
+    if (!record?.state || scenario.channel === 'staff' || scenario.channel === 'voice' || scenario.extraFaq) {
       missing.push(scenario.id);
       continue;
     }
