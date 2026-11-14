@@ -126,6 +126,7 @@ Each group has its own bearer token. A route whose secret is not set answers 503
 The public demo has its own routes under `/v1/demo`. A visitor opens a restaurant of their own, a Durable Object deleted after a day, and chats with it, calls it and runs its dashboard. What keeps it up and within budget when anyone can reach it:
 
 - **Turnstile** before a restaurant is opened, and **five restaurants per visitor a day**, counted by a keyed hash of the address that changes daily, never by the address itself.
+- **Ids signed by the Worker:** a restaurant's id carries its signature, checked before any Durable Object is reached, so an id the Worker never gave opens nothing and leaves nothing behind.
 - **120 requests a minute per address** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
 - **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.
@@ -134,7 +135,7 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 
 To run it locally, copy `worker/.dev.vars.example` to `worker/.dev.vars`, fill it in and run `npm run dev` in `worker/`. The Worker also serves the pages built in `web/`: run `npm run build` there first, locally as before a deploy.
 
-To deploy, from `worker/` with Wrangler logged in to the account that holds the domain: build `web/` first, with the films in `web/public/media/`; the first deploy carries the secrets, `npx wrangler deploy --secrets-file <file>` from a file kept out of git and deleted afterwards (`OPENROUTER_API_KEY`, `DEMO_OPENROUTER_API_KEY`, `AGENT_TOKEN` shared with the voice agent, `STAFF_TOKEN`, `TURNSTILE_SECRET` and the LiveKit project's three); later deploys keep them, with `npm run deploy`. A new Cloudflare account must open Workers once in the dashboard, which creates the workers.dev subdomain every deploy needs, even one that does not use it. The Worker answers at https://maitre.live only: its workers.dev address and preview URLs are off.
+To deploy, from `worker/` with Wrangler logged in to the account that holds the domain: build `web/` first, with the films in `web/public/media/`; the first deploy carries the secrets, `npx wrangler deploy --secrets-file <file>` from a file kept out of git and deleted afterwards (`OPENROUTER_API_KEY`, `DEMO_OPENROUTER_API_KEY`, `AGENT_TOKEN` shared with the voice agent, `STAFF_TOKEN`, `TURNSTILE_SECRET`, `DEMO_SANDBOX_SECRET` of 32 characters or more, and the LiveKit project's three); later deploys keep them, with `npm run deploy`, and a secret added later goes in with `npx wrangler secret put` before the code that reads it. A new Cloudflare account must open Workers once in the dashboard, which creates the workers.dev subdomain every deploy needs, even one that does not use it. The Worker answers at https://maitre.live only: its workers.dev address and preview URLs are off.
 
 ## The site and the dashboard
 

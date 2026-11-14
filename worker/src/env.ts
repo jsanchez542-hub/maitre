@@ -49,6 +49,8 @@ export interface Env {
   DEMO_OPENROUTER_API_KEY?: string;
   /** Cloudflare Turnstile's secret, which tells a person opening a demo restaurant from a script. */
   TURNSTILE_SECRET?: string;
+  /** Signs the ids of the demo's restaurants, so an id this Worker never gave reaches no Durable Object. 32 characters or more. */
+  DEMO_SANDBOX_SECRET?: string;
   /** The LiveKit project's key and secret, which sign the pass a browser needs to call. */
   LIVEKIT_API_KEY?: string;
   LIVEKIT_API_SECRET?: string;

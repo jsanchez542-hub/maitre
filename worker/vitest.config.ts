@@ -18,6 +18,7 @@ export default defineConfig({
           OPENROUTER_API_KEY: 'test-openrouter-key',
           DEMO_OPENROUTER_API_KEY: 'test-demo-openrouter-key',
           TURNSTILE_SECRET: 'test-turnstile-secret',
+          DEMO_SANDBOX_SECRET: 'test-sandbox-secret-of-32-characters-or-more',
           LIVEKIT_URL: 'wss://maitre-test.livekit.cloud',
           LIVEKIT_API_KEY: 'test-livekit-key',
           LIVEKIT_API_SECRET: 'test-livekit-secret',

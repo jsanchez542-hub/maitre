@@ -1,9 +1,11 @@
-import { env, reset, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
+import { env, listDurableObjectIds, reset, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { budgetStub, demoStub } from '../src/env.js';
+import worker from '../src/index.js';
 
 const DEMO = 'https://maitre.test/v1/demo';
 const JSON_BODY = { 'content-type': 'application/json' };
+const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const EVENING = '2026-10-16';
 /** Friday 16 October 2026 at 20:05 in Bordeaux: the restaurant lives at the real time, and the tests fix it there. */
 const FRIDAY_EVENING = '2026-10-16T18:05:00.000Z';
@@ -87,7 +89,8 @@ describe('the public demo', () => {
     fakeNetwork();
     const { code, body } = await open();
     expect(code).toBe(201);
-    expect(body['sandbox']).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    // 16 random bytes and their 32-byte signature.
+    expect(body['sandbox']).toMatch(/^[A-Za-z0-9_-]{64}$/);
     expect(body).toMatchObject({ clock: FRIDAY_EVENING, day: EVENING });
     expect(Date.parse(String(body['expiresAt'])) - Date.now()).toBeGreaterThan(23 * 3_600_000);
 
@@ -289,4 +292,53 @@ describe('the public demo', () => {
     const sandbox = await opened();
     expect((await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/chat`, { method: 'PUT' })).status).toBe(405);
   });
+
+  it('opens no restaurant for an id it never gave, however well formed', async () => {
+    fakeNetwork();
+    const before = (await listDurableObjectIds(env.DEMO_RESTAURANTS)).length;
+    // Shaped like an unsigned id (16 bytes) and like a signed one (48): building a restaurant for either
+    // would write its schema, and no alarm would ever delete it.
+    for (const id of [shapedId(16), shapedId(48)]) {
+      expect((await SELF.fetch(`${DEMO}/sandboxes/${id}/clock`)).status).toBe(404);
+      expect((await SELF.fetch(`${DEMO}/sandboxes/${id}/day?date=${EVENING}`)).status).toBe(404);
+      expect((await SELF.fetch(`${DEMO}/sandboxes/${id}/config`, { method: 'PUT', headers: JSON_BODY, body: '{}' })).status).toBe(404);
+    }
+    expect(await listDurableObjectIds(env.DEMO_RESTAURANTS)).toHaveLength(before);
+  });
+
+  it('takes one changed character of a signed id for an id it never gave', async () => {
+    fakeNetwork();
+    const before = (await listDurableObjectIds(env.DEMO_RESTAURANTS)).length;
+    const sandbox = await opened();
+    const last = sandbox.at(-1) === 'A' ? 'B' : 'A';
+    for (const id of [`${sandbox.slice(0, -1)}${last}`, `${sandbox[0] === 'A' ? 'B' : 'A'}${sandbox.slice(1)}`]) {
+      expect((await SELF.fetch(`${DEMO}/sandboxes/${id}/clock`)).status).toBe(404);
+    }
+    expect((await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).status).toBe(200);
+    expect(await listDurableObjectIds(env.DEMO_RESTAURANTS)).toHaveLength(before + 1);
+  });
+
+  it('stays closed without a signing secret long enough to be one', async () => {
+    fakeNetwork();
+    const sandbox = await opened();
+    for (const secret of ['', 'short-secret']) {
+      const settings = { ...env, DEMO_SANDBOX_SECRET: secret };
+      const opening = new IncomingRequest(`${DEMO}/sandboxes`, {
+        method: 'POST',
+        headers: { ...JSON_BODY, 'cf-connecting-ip': '203.0.113.9' },
+        body: JSON.stringify({ turnstile: 'a-token-from-the-widget' }),
+      });
+      const refused = await worker.fetch(opening, settings);
+      expect([refused.status, await refused.json()]).toEqual([503, { error: 'not_configured' }]);
+      expect((await worker.fetch(new IncomingRequest(`${DEMO}/sandboxes/${sandbox}/clock`), settings)).status).toBe(503);
+    }
+  });
 });
+
+/** A random id in the Worker's alphabet, from that many random bytes. */
+function shapedId(bytes: number): string {
+  return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(bytes))))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}

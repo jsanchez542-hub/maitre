@@ -36,11 +36,41 @@ export const MAX_DEMO_MESSAGE = 500;
 /** Messages a restaurant takes in one minute: a person types slower than this. */
 const MESSAGES_PER_MINUTE = 8;
 
-/** A demo restaurant's id: 128 random bits, base64url. Knowing it is what opens the restaurant. */
-export const SANDBOX_ID = /^[A-Za-z0-9_-]{22}$/;
+/**
+ * A demo restaurant's id: 128 random bits and their HMAC under DEMO_SANDBOX_SECRET, base64url. Knowing it is
+ * what opens the restaurant. The signature is checked before any Durable Object is reached, because building
+ * one writes its schema even for an id that was never opened, and only an opened restaurant has the alarm that
+ * deletes it.
+ */
+const SANDBOX_ID = /^[A-Za-z0-9_-]{64}$/;
+/** As long as `openssl rand -base64 32` gives, or longer: a shorter secret is a mistake, not a key. */
+const MIN_SANDBOX_SECRET = 32;
 
-export function newSandboxId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
+/** The key that signs the demo restaurants' ids, or undefined when the secret is missing or too short. */
+export async function sandboxKey(secret: string | undefined): Promise<CryptoKey | undefined> {
+  if (!secret || secret.length < MIN_SANDBOX_SECRET) return undefined;
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
+
+export async function newSandboxId(key: CryptoKey): Promise<string> {
+  const nonce = crypto.getRandomValues(new Uint8Array(16));
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, nonce));
+  return base64url(Uint8Array.of(...nonce, ...signature));
+}
+
+/** Whether this Worker gave this id. WebCrypto compares the signature in constant time. */
+export async function isSandboxId(key: CryptoKey, id: string): Promise<boolean> {
+  if (!SANDBOX_ID.test(id)) return false;
+  const bytes = Uint8Array.from(atob(id.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0));
+  return crypto.subtle.verify('HMAC', key, bytes.subarray(16), bytes.subarray(0, 16));
+}
+
+/** 128 random bits, base64url: a call's session id, which only its own restaurant ever looks up. */
+export function randomToken(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -187,7 +217,7 @@ export class DemoRestaurant extends Restaurant {
     if (left === 0) return { status: 'call_limit' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
-    const sessionId = `call_${newSandboxId()}`;
+    const sessionId = `call_${randomToken()}`;
     await this.ctx.storage.put(`${CALL}${sessionId}`, { issuedAt: Date.now(), billedSeconds: 0 } satisfies DemoCall);
     return { status: 'ok', sessionId, maxSeconds, callsLeft: left - 1 };
   }

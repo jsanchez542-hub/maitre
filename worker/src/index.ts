@@ -3,7 +3,7 @@ import { demoSuggestion, serviceDayAt } from '../../src/demo/evening.js';
 import { DEMO_RESTAURANT } from '../../src/demo/restaurant.js';
 import type { StaffChangeRequest } from '../../src/engine.js';
 import { isLanguage } from '../../src/i18n/index.js';
-import { newSandboxId, SANDBOX_ID, verifyTurnstile, visitorKey, type DemoBudget, type DemoCallTurn, type DemoRestaurant } from './demo.js';
+import { isSandboxId, newSandboxId, sandboxKey, verifyTurnstile, visitorKey, type DemoBudget, type DemoCallTurn, type DemoRestaurant } from './demo.js';
 import { budgetStub, demoStub, restaurantStub, type Env } from './env.js';
 import { serveFilm } from './films.js';
 import { hasBearer, json, jsonLines, problem, readJson } from './http.js';
@@ -395,7 +395,9 @@ async function demo(request: Request, env: Env, url: URL, rest: readonly string[
   if (rest[0] !== 'sandboxes' || rest.length < 3) return problem(404, 'not_found');
 
   const sandboxId = rest[1] ?? '';
-  if (!SANDBOX_ID.test(sandboxId)) return problem(404, 'not_found');
+  const key = await sandboxKey(env.DEMO_SANDBOX_SECRET);
+  if (!key) return problem(503, 'not_configured');
+  if (!(await isSandboxId(key, sandboxId))) return problem(404, 'not_found');
   const inner = rest.slice(2);
   const at = matcher(request, inner);
   const callStep = DEMO_CALL_STEPS.find((step) => at('POST', 'calls', null, step));
@@ -523,7 +525,8 @@ async function demoCall(request: Request, env: Env, step: DemoCallStep, sessionI
 /** Opens a visitor's restaurant: for a person, not a script, within the visitor's daily count and the demo's budget. */
 async function openSandbox(request: Request, env: Env): Promise<Response> {
   const budget = budgetStub(env);
-  if (!env.TURNSTILE_SECRET || !env.DEMO_OPENROUTER_API_KEY || !budget) return problem(503, 'not_configured');
+  const key = await sandboxKey(env.DEMO_SANDBOX_SECRET);
+  if (!env.TURNSTILE_SECRET || !env.DEMO_OPENROUTER_API_KEY || !budget || !key) return problem(503, 'not_configured');
   const body = await readJson(request);
   if (!body.ok) return body.response;
   const ip = request.headers.get('cf-connecting-ip');
@@ -531,7 +534,7 @@ async function openSandbox(request: Request, env: Env): Promise<Response> {
   const allowed = await budget.allowSandbox(await visitorKey(ip ?? 'unknown', env.TURNSTILE_SECRET));
   if (allowed === 'too_many_sandboxes') return problem(429, 'too_many_sandboxes');
   if (allowed === 'live_paused') return problem(503, 'live_paused');
-  const sandboxId = newSandboxId();
+  const sandboxId = await newSandboxId(key);
   const sandbox = demoStub(env, sandboxId);
   if (!sandbox) return problem(503, 'not_configured');
   // The page's language: the evening's requests and notes are written in it.

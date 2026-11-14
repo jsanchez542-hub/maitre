@@ -7,3 +7,16 @@ DATA_JURISDICTION=none
 OPENROUTER_API_KEY=
 AGENT_TOKEN=
 STAFF_TOKEN=
+
+# The public demo: its own OpenRouter key, Turnstile's secret, and the key that signs its restaurants' ids,
+# 32 characters or more, as `openssl rand -base64 32` gives.
+DEMO_OPENROUTER_API_KEY=
+TURNSTILE_SECRET=
+DEMO_SANDBOX_SECRET=
+
+# The LiveKit project that carries the demo's calls. A developer's agent registers under a name of its own,
+# so it never answers the public demo's calls.
+LIVEKIT_URL=
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+LIVEKIT_AGENT_NAME=maitre-voice-dev
