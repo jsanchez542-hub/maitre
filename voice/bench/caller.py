@@ -2,6 +2,7 @@
 
     uv run python bench/caller.py          # in French; "en" or "es" for the other languages the line speaks
     uv run python bench/caller.py es en    # in Spanish, with the thanks after the goodbye said in English
+    python bench/caller.py es en line      # the same thanks, on the restaurant's own line: a deployed agent, nothing booked
 
 It does what a visitor's browser does. It opens a demo restaurant on the local
 Worker, asks for the pass to call, and joins the LiveKit room as the caller; the
@@ -15,6 +16,17 @@ says thanks back, as people do: the restaurant must hang up without another word
 and stay in the call's language whatever language the thanks was in. At the end
 it checks the restaurant's evening: the booking must be there, with the number
 from the keypad.
+
+With "line", the call goes to the restaurant's own line instead, as a call to
+its number does: no demo restaurant is opened and nothing is booked. The caller
+asks for the opening hours, says goodbye and thanks the restaurant back. That is
+how an agent is checked where it is deployed. Run on its server, the caller signs
+its own pass with the LiveKit keys of that environment, which it never prints,
+and LiveKit sends the call to the agent MAITRE_AGENT_NAME names: none is called
+by default. The call stays in the restaurant's log like any other, as one
+conversation of two turns. With MAITRE_STAFF_TOKEN set, the caller reads that log
+back and checks the language of each turn. MAITRE_BENCH_OUT names the folder for
+the recording and the result, where the one beside this file cannot be written.
 """
 
 from __future__ import annotations
@@ -23,8 +35,10 @@ import asyncio
 import datetime as dt
 import json
 import os
+import secrets
 import statistics
 import sys
+import tempfile
 import time
 import wave
 from pathlib import Path
@@ -32,7 +46,7 @@ from pathlib import Path
 import aiohttp
 import numpy as np
 from dotenv import load_dotenv
-from livekit import rtc
+from livekit import api, rtc
 from livekit.agents.utils import http_context
 
 from maitre_voice.speech import build_tts
@@ -83,6 +97,16 @@ LANGUAGE = sys.argv[1] if len(sys.argv) > 1 else "fr"
 #: The language of that thanks: the call's own, or another, which must not move the call into it.
 THANKS_IN = sys.argv[2] if len(sys.argv) > 2 else LANGUAGE
 SCRIPT, GUEST, CALLER_VOICE = CALLS[LANGUAGE]
+#: With "line" as third argument, the call goes to the restaurant's own line and books nothing (see `line_pass`).
+ON_THE_LINE = len(sys.argv) > 3 and sys.argv[3] == "line"
+#: What that caller says: a question the restaurant answers from its opening hours, then goodbye.
+QUESTIONS: dict[str, list[str | None]] = {
+    "fr": ["Bonsoir, quels sont vos horaires d'ouverture le samedi ?", "Merci beaucoup, au revoir."],
+    "es": ["Buenas noches, ¿qué horario tienen los sábados?", "Muchas gracias, adiós."],
+    "en": ["Good evening, what are your opening hours on Saturdays?", "Thank you very much, goodbye."],
+}
+#: What the environment must name to call the line. The agent has no default: a call to a deployed agent is asked for.
+LINE_SETTINGS = ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "MAITRE_AGENT_NAME")
 WEEKDAYS = {
     "fr": ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
     "es": ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
@@ -116,7 +140,23 @@ PART_GAP_SECONDS = 0.6
 AGENT_STATE = "lk.agent.state"
 #: The attribute where the agent says the restaurant needs the caller's number: "open", then "closed".
 KEYPAD = "maitre.keypad"
-OUT = Path(__file__).with_name("runs")
+#: Where the call's recording and its result are written: beside this file, or where MAITRE_BENCH_OUT says, for a
+#: container that can only read its own files.
+OUT = Path(os.environ.get("MAITRE_BENCH_OUT") or Path(__file__).with_name("runs"))
+#: The topic on which the agent sends what is said as text, the call page's captions, and the attribute that marks
+#: the last hearing of the caller's words.
+CAPTIONS = "lk.transcription"
+CAPTION_IS_FINAL = "lk.transcription_final"
+
+
+def ready_to_write() -> None:
+    """Makes the folder for the recording and the result before the call: a call whose result cannot be written is lost."""
+    try:
+        OUT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=OUT):
+            pass
+    except OSError as error:
+        raise SystemExit(f"{OUT} cannot be written ({type(error).__name__}): name another folder in MAITRE_BENCH_OUT") from error
 
 
 def caller_voice(voice: str, language: str) -> str:
@@ -228,6 +268,61 @@ async def speak(source: rtc.AudioSource, samples: np.ndarray) -> float:
     return time.monotonic() - trailing_silence(samples)
 
 
+def line_pass() -> dict[str, str]:
+    """A pass to call the restaurant's own line, signed here as the Worker signs a visitor's.
+
+    LiveKit sends the agent the environment names to the room and tells it the caller's language, nothing else:
+    with no demo restaurant in the pass, the agent takes the call for the restaurant itself.
+    """
+    session = secrets.token_urlsafe(9)
+    agent = api.RoomAgentDispatch(agent_name=os.environ["MAITRE_AGENT_NAME"], metadata=json.dumps({"language": LANGUAGE}))
+    token = (
+        # The key and the secret are read from LIVEKIT_API_KEY and LIVEKIT_API_SECRET.
+        api.AccessToken()
+        .with_identity(f"bench-{session}")
+        .with_ttl(dt.timedelta(minutes=10))
+        .with_grants(
+            api.VideoGrants(
+                room_join=True,
+                room=f"bench-{session}",
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True,
+                can_publish_sources=["microphone"],
+            )
+        )
+        .with_room_config(api.RoomConfiguration(agents=[agent]))
+        .to_jwt()
+    )
+    return {"url": os.environ["LIVEKIT_URL"], "token": token}
+
+
+async def line_log(http: aiohttp.ClientSession, job: str) -> tuple[dict, list[dict]] | None:
+    """The call and its turns as the restaurant logged them, read with the staff's token, or None when they cannot be.
+
+    The agent names a call to the restaurant's line after its LiveKit job, the one it is in the room as: "agent-<job>".
+    """
+    restaurant = f"{os.environ.get('MAITRE_API_URL', API).rstrip('/')}/v1/restaurants/{os.environ.get('MAITRE_RESTAURANT_ID', 'demo')}"
+    headers = {"authorization": f"Bearer {os.environ['MAITRE_STAFF_TOKEN']}"}
+    timeout = aiohttp.ClientTimeout(total=10)
+    try:
+        async with http.get(f"{restaurant}/calls?limit=20", headers=headers, timeout=timeout) as response:
+            if response.status != 200:
+                print(f"The restaurant's log was not read: it answered {response.status}.")
+                return None
+            calls = await response.json()
+        call = next((call for call in calls if call.get("sessionId") == f"call_{job}"), None)
+        if call is None:
+            print("The restaurant's log was read, and this call is not in it.")
+            return None
+        async with http.get(f"{restaurant}/conversations?limit=50", headers=headers, timeout=timeout) as response:
+            turns = await response.json() if response.status == 200 else []
+    except (aiohttp.ClientError, TimeoutError) as error:
+        print(f"The restaurant's log was not read: {type(error).__name__}.")
+        return None
+    return call, [turn for turn in reversed(turns) if turn.get("sessionId") == call["sessionId"]]
+
+
 def keep_awake() -> None:
     """Asks Windows not to go to standby while the call runs, until this program ends.
 
@@ -244,12 +339,21 @@ def keep_awake() -> None:
 async def main() -> None:
     keep_awake()
     load_dotenv(".env.local")
-    # The evening a guest could still book now, as the demo suggests it: the caller asks for that one.
-    async with aiohttp.ClientSession() as http, http.get(f"{API}/v1/demo") as response:
-        demo = await response.json()
-    evening = str(demo["suggestion"]["date"])
-    script = [line.format(when=evening_of(str(demo["today"]), evening)) if line else None for line in SCRIPT]
-    print(f"The restaurant's today is {demo['today']}; the caller asks for {evening}.")
+    # Only a call to the demo has an evening to book and a restaurant of the visitor's own.
+    evening = sandbox = ""
+    if ON_THE_LINE:
+        missing = [name for name in LINE_SETTINGS if not os.environ.get(name)]
+        if missing:
+            raise SystemExit(f"to call the restaurant's line, the environment must set {', '.join(missing)}")
+        script = QUESTIONS[LANGUAGE]
+        print(f"A call to the restaurant's own line, for the agent {os.environ['MAITRE_AGENT_NAME']} to take: nothing is booked.")
+    else:
+        # The evening a guest could still book now, as the demo suggests it: the caller asks for that one.
+        async with aiohttp.ClientSession() as http, http.get(f"{API}/v1/demo") as response:
+            demo = await response.json()
+        evening = str(demo["suggestion"]["date"])
+        script = [line.format(when=evening_of(str(demo["today"]), evening)) if line else None for line in SCRIPT]
+        print(f"The restaurant's today is {demo['today']}; the caller asks for {evening}.")
     lines = [line for line in script if line]
     print("Synthesizing the caller's lines…")
     synthesized = await synthesize_lines(lines)
@@ -258,16 +362,42 @@ async def main() -> None:
     thanks = (await synthesize_lines([THANKS[THANKS_IN]], THANKS_IN, CALLS[THANKS_IN][2]))[0]
 
     async with aiohttp.ClientSession() as http:
-        async with http.post(f"{API}/v1/demo/sandboxes", json={"turnstile": "local-test-token"}) as response:
-            sandbox = (await response.json())["sandbox"]
-        async with http.post(f"{API}/v1/demo/sandboxes/{sandbox}/calls", json={"language": LANGUAGE}) as response:
-            call_pass = await response.json()
-            if response.status != 201:
-                raise SystemExit(f"no pass to call: {call_pass}")
+        if ON_THE_LINE:
+            call_pass = line_pass()
+        else:
+            async with http.post(f"{API}/v1/demo/sandboxes", json={"turnstile": "local-test-token"}) as response:
+                sandbox = (await response.json())["sandbox"]
+            async with http.post(f"{API}/v1/demo/sandboxes/{sandbox}/calls", json={"language": LANGUAGE}) as response:
+                call_pass = await response.json()
+                if response.status != 201:
+                    raise SystemExit(f"no pass to call: {call_pass}")
 
         room = rtc.Room()
         ear = Ear()
         listening: list[asyncio.Task[None]] = []
+        # What is said, as the agent's captions give it: its own words, and the caller's as recognition heard them.
+        # Each with when it began and who said it.
+        captions: list[tuple[float, str, str]] = []
+
+        def _on_caption(reader: rtc.TextStreamReader, speaker: str) -> None:
+            began = time.monotonic()
+
+            async def read() -> None:
+                text = ""
+                try:
+                    async for chunk in reader:
+                        text += chunk
+                except rtc.StreamError:
+                    # The line hung up in the middle of a sentence: what came of it is kept.
+                    pass
+                by_caller = speaker == room.local_participant.identity
+                # The caller's words come once for each hearing of them: the last one, marked final, is the one kept.
+                if text.strip() and (not by_caller or (reader.info.attributes or {}).get(CAPTION_IS_FINAL) == "true"):
+                    captions.append((began, "caller" if by_caller else "restaurant", text.strip()))
+
+            listening.append(asyncio.ensure_future(read()))
+
+        room.register_text_stream_handler(CAPTIONS, _on_caption)
 
         @room.on("track_subscribed")
         def _on_track(track: rtc.Track, publication: rtc.RemoteTrackPublication, *_args: object) -> None:
@@ -302,6 +432,15 @@ async def main() -> None:
         ear.expect_answer(rang)
         greeting_after = await ear.answer(rang, limit=40)
         print(f"  greeting started {greeting_after - rang:.2f} s after joining" if greeting_after else "  no greeting heard")
+        if greeting_after is None:
+            # Nobody took the call: saying the lines to an empty room would only cost their minutes.
+            await room.disconnect()
+            await source.aclose()
+            for task in listening:
+                task.cancel()
+            raise SystemExit("FAIL: no agent answered the call")
+        # The agent is in the room as "agent-<its LiveKit job>": the restaurant's log names the line's calls after that job.
+        agent_job = next((identity.removeprefix("agent-") for identity in room.remote_participants), "")
 
         waits = []
         turns = []
@@ -373,7 +512,6 @@ async def main() -> None:
         for task in listening:
             task.cancel()
 
-        OUT.mkdir(exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         if ear.recording:
             with wave.open(str(OUT / f"call-{stamp}.wav"), "wb") as out:
@@ -383,6 +521,22 @@ async def main() -> None:
                 out.writeframes(np.concatenate(ear.recording).tobytes())
 
         await asyncio.sleep(3)  # the agent logs the call's end
+        caller_side = {
+            "callerSideWaitsSeconds": [round(wait, 2) for wait in waits],
+            "turns": turns,
+            "captions": [{"from": who, "text": text, "atSeconds": round(began - rang, 1)} for began, who, text in sorted(captions)],
+            "thanksAfterTheGoodbye": {
+                "said": THANKS[THANKS_IN] if thanked is not None else None,
+                "language": THANKS_IN,
+                "restaurantSpokeAgainAtSeconds": spoke_again,
+            },
+            "restaurantHungUpAfterSeconds": round(hung_up_after, 2) if hung_up_after is not None else None,
+        }
+        if ON_THE_LINE:
+            # Every line was answered, the restaurant ended the call after the goodbye, and the thanks got no answer.
+            ended_well = len(waits) == len(lines) and hung_up_after is not None and thanked is not None and not spoke_again
+            logged = await line_log(http, agent_job) if os.environ.get("MAITRE_STAFF_TOKEN") else None
+            return report_line_call(stamp, {"greetingAfterSeconds": round(greeting_after - rang, 2), **caller_side}, ended_well, logged)
         async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/day?date={evening}&language=fr") as response:
             day = await response.json()
         async with http.get(f"{API}/v1/demo/sandboxes/{sandbox}/calls") as response:
@@ -395,17 +549,10 @@ async def main() -> None:
     booked = [b for b in day["bookings"] if "".join(char for char in str(b.get("phone", "")) if char.isdigit()).endswith(NUMBER[1:])]
     result = {
         "booking": booked[0] if booked else None,
-        "callerSideWaitsSeconds": [round(wait, 2) for wait in waits],
-        "turns": turns,
+        **caller_side,
         "callLog": calls,
         "restaurantTurns": heard_by_the_restaurant,
         "keypadAttribute": keypad,
-        "thanksAfterTheGoodbye": {
-            "said": THANKS[THANKS_IN] if thanked is not None else None,
-            "language": THANKS_IN,
-            "restaurantSpokeAgainAtSeconds": spoke_again,
-        },
-        "restaurantHungUpAfterSeconds": round(hung_up_after, 2) if hung_up_after is not None else None,
     }
     (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print("\nBooking:", json.dumps(result["booking"], ensure_ascii=False) if booked else "NONE")
@@ -440,5 +587,36 @@ async def main() -> None:
     raise SystemExit(0 if ok else 1)
 
 
+def report_line_call(stamp: str, caller_side: dict, ended_well: bool, logged: tuple[dict, list[dict]] | None) -> None:
+    """Writes and prints what the call to the restaurant's own line showed, and passes or fails it."""
+    call, restaurant_turns = logged or (None, [])
+    result = {
+        "line": {"language": LANGUAGE, "agent": os.environ["MAITRE_AGENT_NAME"]},
+        **caller_side,
+        "callLog": call,
+        "restaurantTurns": restaurant_turns,
+    }
+    (OUT / f"call-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Printed whole as well: on a server the file goes with the container that wrote it.
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print("\nWhat was said, as the line's captions gave it:")
+    for caption in caller_side["captions"]:
+        print(f"  {caption['atSeconds']:>6} s  {caption['from']}: {caption['text']}")
+    if call is None:
+        print("The restaurant's own log is not part of this result: the languages are the ones heard above.")
+    else:
+        print(f"The restaurant's log says the call ended by {call.get('endedBy')!r} after {call.get('seconds')} s, with these turns:")
+        for turn in restaurant_turns:
+            print(f"  [{turn.get('language')}] {turn.get('guest')!r} -> {turn.get('working', '')} {str(turn.get('reply', ''))[:90]!r}")
+    # By the restaurant's own log, when it was read, the call stayed in its language and ended on the goodbye.
+    logged_well = call is None or (
+        bool(restaurant_turns) and all(turn.get("language") == LANGUAGE for turn in restaurant_turns) and call.get("endedBy") == "goodbye"
+    )
+    ok = ended_well and logged_well
+    print("PASS" if ok else "FAIL")
+    raise SystemExit(0 if ok else 1)
+
+
 if __name__ == "__main__":
+    ready_to_write()
     asyncio.run(main())
