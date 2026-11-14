@@ -324,6 +324,10 @@ class PhoneCall:
             self._remember(turn, [item], item.interrupted)
 
     def _on_key(self, dtmf: rtc.SipDTMF) -> None:
+        # Keys are a number only while the restaurant waits for one. At any other moment they change nothing: the
+        # number the phone network gave is never typed over, nor one already typed.
+        if self._keypad_shown != "open":
+            return
         if self._keypad_timer:
             self._keypad_timer.cancel()
         digits = self._keypad.press(dtmf.digit)
