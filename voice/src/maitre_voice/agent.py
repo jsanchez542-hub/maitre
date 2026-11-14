@@ -128,6 +128,23 @@ class Dispatch:
         return cls(Call.restaurant(settings.api_url, settings.restaurant_id, session_id), language)
 
 
+def call_room(caller: rtc.RemoteParticipant) -> room_io.RoomOptions:
+    """How the agent sits in a call's room: it hears the caller's voice, with the noise taken out, and nothing else.
+
+    Left to itself LiveKit also takes text typed into the room for the caller's words. A call is spoken, and the
+    number comes from the keypad: text is no way in.
+    """
+    telephone = caller.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+    return room_io.RoomOptions(
+        audio_input=room_io.AudioInputOptions(
+            noise_cancellation=noise_cancellation.BVCTelephony() if telephone else noise_cancellation.BVC(),
+        ),
+        text_input=False,
+        participant_identity=caller.identity,
+        close_on_disconnect=True,
+    )
+
+
 class RestaurantLine(Agent):
     """The agent of the call: the restaurant's line answers every turn, through the brain."""
 
@@ -245,17 +262,10 @@ class PhoneCall:
         self._greeting = started.greeting
 
     async def run(self, caller: rtc.RemoteParticipant) -> None:
-        telephone = caller.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
         await self.session.start(
             RestaurantLine(self._state, self._tts),
             room=self._ctx.room,
-            room_options=room_io.RoomOptions(
-                audio_input=room_io.AudioInputOptions(
-                    noise_cancellation=noise_cancellation.BVCTelephony() if telephone else noise_cancellation.BVC(),
-                ),
-                participant_identity=caller.identity,
-                close_on_disconnect=True,
-            ),
+            room_options=call_room(caller),
             # Audio is not kept: the conversation's text is, in the restaurant's own log.
             record=False,
         )
