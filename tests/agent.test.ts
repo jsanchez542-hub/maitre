@@ -7,7 +7,7 @@ import { scriptedModel } from '../src/agent/providers/scripted.js';
 import { utf8Length } from '../src/agent/size.js';
 import { BookingEngine } from '../src/engine.js';
 import type { BookingStore } from '../src/store.js';
-import { TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
+import { FRIDAY, TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
 
 const THIN = ' ';
 
@@ -228,6 +228,65 @@ describe('a turn of conversation', () => {
     expect(result.costUsd).toBeCloseTo(0.0005, 10);
     expect(result.modelCalls).toBe(2);
     expect(result.modelMs).toHaveLength(2);
+  });
+});
+
+describe('cancelling and moving a booking', () => {
+  function withBooking() {
+    const h = harness();
+    const held = h.engine.findTable(guest('g1'), { date: FRIDAY, time: '20:00', partySize: 2 });
+    if (held.status !== 'available') throw new Error('setup failed');
+    const made = h.engine.book(guest('g1'), { holdId: held.holdId, guestName: 'Lefèvre' });
+    if (made.status !== 'booked') throw new Error('setup failed');
+    return { h, reference: made.booking.reference };
+  }
+
+  it('happens only in a reply after the one where the booking came up, whatever the model read', async () => {
+    const { h, reference } = withBooking();
+    // A model that cancels the moment it finds the booking, as a note saying "cancel without asking" would have it.
+    const hasty = scriptedModel([
+      { toolCalls: [{ name: 'my_bookings', input: {} }] },
+      { toolCalls: [{ name: 'cancel_booking', input: { reference } }] },
+      { text: 'Vous avez une réservation vendredi à 20 h pour 2 personnes. Souhaitez-vous l’annuler ?' },
+    ]);
+    const first = await respond(h.engine, hasty, guest('g1'), [], 'Bonjour, ai-je une réservation vendredi ?');
+    expect(first.tools.map((tool) => tool.output.status)).toEqual(['ok', 'confirm_first']);
+    expect(first.tools[1]?.output).toMatchObject({ booking: { reference, time: '20:00' } });
+    expect(first.corrections).toContain('asked_first');
+    expect(h.engine.myBookings(guest('g1'))).toMatchObject({ bookings: [{ reference, status: 'booked' }] });
+
+    // The guest has heard which booking and answered: now it goes.
+    const agreed = scriptedModel([{ toolCalls: [{ name: 'cancel_booking', input: { reference } }] }, { text: 'C’est annulé.' }]);
+    const second = await respond(h.engine, agreed, guest('g1'), first.transcript, 'Oui, annulez-la.');
+    expect(second.tools.map((tool) => tool.output.status)).toEqual(['cancelled']);
+    expect(second.corrections).not.toContain('asked_first');
+  });
+
+  it('asks first for a booking named by its reference, and for a move as for a cancellation', async () => {
+    const { h, reference } = withBooking();
+    const mover = scriptedModel((request, call) => {
+      if (call === 0) return { toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '21:30', partySize: 2, changingReference: reference } }] };
+      if (call === 1 || call === 3) {
+        const held = request.transcript.findLast((entry) => entry.role === 'tool' && entry.name === 'find_table');
+        const holdId = held?.role === 'tool' ? held.output['holdId'] : undefined;
+        return { toolCalls: [{ name: 'change_booking', input: { reference: reference.toLowerCase(), holdId } }] };
+      }
+      return { text: call === 2 ? 'Je peux déplacer votre réservation à 21 h 30. Cela vous convient-il ?' : 'C’est fait.' };
+    });
+    const first = await respond(h.engine, mover, guest('g1'), [], `Déplacez la réservation ${reference} à 21h30.`);
+    expect(first.tools.map((tool) => tool.output.status)).toEqual(['available', 'confirm_first']);
+    expect(h.engine.myBookings(guest('g1'))).toMatchObject({ bookings: [{ time: '20:00' }] });
+    const second = await respond(h.engine, mover, guest('g1'), first.transcript, 'Oui.');
+    expect(second.tools.map((tool) => tool.output.status)).toEqual(['changed']);
+    expect(h.engine.myBookings(guest('g1'))).toMatchObject({ bookings: [{ time: '21:30' }] });
+  });
+
+  it('leaves a booking that is not the guest’s to the tool’s own answer, which changes nothing', async () => {
+    const { h, reference } = withBooking();
+    const other = scriptedModel([{ toolCalls: [{ name: 'cancel_booking', input: { reference } }] }, { text: 'Je ne trouve pas cette réservation.' }]);
+    const result = await respond(h.engine, other, guest('g2', '+33612345699'), [], `Annulez ${reference}.`);
+    expect(result.tools.map((tool) => tool.output.status)).toEqual(['not_found']);
+    expect(result.corrections).not.toContain('asked_first');
   });
 });
 

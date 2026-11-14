@@ -1,4 +1,4 @@
-import type { BookingEngine, Session } from '../engine.js';
+import { normalizeReference, type BookingEngine, type Session } from '../engine.js';
 import { messages } from '../i18n/index.js';
 import { bookingWaitsForPhone, isLookup, runTool, toolDefinitions, type ToolOutput } from '../tools.js';
 import { dropGuessedTitles, dropNameVocatives, dropSpokenReferences, enforceAllergenRelay, promisesTeam, referencesIn } from './guards.js';
@@ -119,7 +119,8 @@ export type Correction =
   | 'spoken_reference'
   | 'kept_promise'
   | 'needless_hand_over'
-  | 'question_at_goodbye';
+  | 'question_at_goodbye'
+  | 'asked_first';
 
 /** Whether the last booking the conversation tried waits only for the guest's number. */
 export function waitsForNumber(transcript: readonly TranscriptEntry[]): boolean {
@@ -138,6 +139,31 @@ export function waitsForNumber(transcript: readonly TranscriptEntry[]): boolean 
  */
 function needlessHandOver(name: string, input: unknown, transcript: readonly TranscriptEntry[]): boolean {
   return name === 'hand_over' && (input as { reason?: unknown } | null)?.reason === 'other' && waitsForNumber(transcript);
+}
+
+/**
+ * A booking is cancelled or moved only in a reply after the one where the
+ * conversation first saw it, so the guest always has a turn in between,
+ * whatever the model read or was told. The prompt asks for a clear yes; what
+ * the code can hold to is that the guest has heard which booking and answered.
+ * A booking that is not theirs to change gets the tool's own answer, which
+ * changes nothing either.
+ */
+function askFirst(engine: BookingEngine, session: Session, name: string, input: unknown, earlier: readonly TranscriptEntry[]): ToolOutput | undefined {
+  if (name !== 'cancel_booking' && name !== 'change_booking') return undefined;
+  const reference = normalizeReference((input as { reference?: unknown } | null)?.reference);
+  if (!reference) return undefined;
+  const seen = referencesIn(earlier.flatMap((entry) => (entry.role === 'tool' ? [entry.output] : [])));
+  if (seen.includes(reference)) return undefined;
+  const mine = engine.myBookings(session);
+  const booking = mine.status === 'ok' ? mine.bookings.find((candidate) => candidate.reference === reference) : undefined;
+  if (!booking) return undefined;
+  return {
+    status: 'confirm_first',
+    booking,
+    instruction:
+      'Nothing was cancelled or changed. This booking has only just come up in the conversation: repeat it to the guest and ask for a clear yes. Call the tool again in a later reply, once they have answered yes.',
+  };
 }
 
 /** Whether the conversation has already passed something to the team: by hand_over, or by an allergen question the sheet could not answer. */
@@ -431,10 +457,14 @@ export async function respond(
       const toolStarted = clock();
       const needless = needlessHandOver(toolCall.name, toolCall.input, working);
       if (needless) guarded.push('needless_hand_over');
+      // The turns before this one: what the guest has had the chance to answer.
+      const unasked = askFirst(engine, session, toolCall.name, toolCall.input, working.slice(0, turnStart));
+      if (unasked) guarded.push('asked_first');
       let output: ToolOutput;
       if (toolCall.name === 'end_call' && session.channel === 'voice') output = ENDING;
       else if (needless) output = { status: 'not_needed', instruction: bookingWaitsForPhone(session.channel) };
       else if (toolBytes >= maxToolBytes) output = NOT_RUN;
+      else if (unasked) output = unasked;
       else {
         output = runTool(engine, session, toolCall.name, toolCall.input, options.onError);
         const bytes = utf8Length(JSON.stringify(output));

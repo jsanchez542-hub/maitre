@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FindTableResult } from '../src/engine.js';
+import type { FindTableResult, Session } from '../src/engine.js';
 import { FRIDAY, guest, harness, referenceFor } from './fixtures.js';
 
 const NBSP = ' ';
@@ -375,6 +375,112 @@ describe('the guest’s own bookings', () => {
     expect(h.engine.confirm(guest('g2', '+33612345699'), { reference: booked.booking.reference })).toEqual({
       status: 'not_found',
     });
+  });
+});
+
+describe('a number the guest typed', () => {
+  const NUMBER = '+33612345678';
+  /** A conversation whose number was typed, in the web chat's field or on the phone's keypad: nothing vouches for it. */
+  const typed = (id: string, source: 'form' | 'keypad' = 'form'): Session => ({
+    id,
+    channel: source === 'form' ? 'web' : 'voice',
+    language: 'fr',
+    phone: { e164: NUMBER, source },
+  });
+  /** The number's real holder, on a channel that vouches for it, with a booking on Friday at eight. */
+  function theirs(h: ReturnType<typeof harness>) {
+    const held = holdTable(h, 'holder', '20:00', 2, NUMBER);
+    const result = h.engine.book(guest('holder', NUMBER), { holdId: held.holdId, guestName: 'Lefèvre', notes: 'Anniversaire', allergies: ['nuts'] });
+    if (result.status !== 'booked') throw new Error('setup failed');
+    return result.booking;
+  }
+
+  it('reaches no booking but those its own conversation made: not to read, cancel, move or confirm', () => {
+    const h = harness();
+    const booking = theirs(h);
+    for (const stranger of [typed('stranger-web'), typed('stranger-phone', 'keypad')]) {
+      expect(h.engine.myBookings(stranger)).toEqual({ status: 'ok', bookings: [], ownOnly: true });
+      expect(h.engine.cancel(stranger, { reference: booking.reference })).toEqual({ status: 'not_found' });
+      expect(h.engine.confirm(stranger, { reference: booking.reference })).toEqual({ status: 'not_found' });
+      expect(h.engine.confirm(stranger)).toEqual({ status: 'not_found' });
+      const later = h.engine.findTable(stranger, { date: FRIDAY, time: '21:30', partySize: 2, changing: booking.reference });
+      if (later.status !== 'available') throw new Error('setup failed');
+      expect(h.engine.change(stranger, { reference: booking.reference, holdId: later.holdId })).toEqual({ status: 'not_found' });
+    }
+    const still = h.engine.myBookings(guest('holder', NUMBER));
+    expect(still.status === 'ok' && still.bookings).toEqual([expect.objectContaining({ reference: booking.reference, time: '20:00', status: 'booked' })]);
+    expect(still).not.toHaveProperty('ownOnly');
+  });
+
+  it('is told that the number already has a booking then, and nothing of that booking', () => {
+    const h = harness();
+    const booking = theirs(h);
+    const stranger = typed('stranger-web');
+    const held = h.engine.findTable(stranger, { date: FRIDAY, time: '20:30', partySize: 2 });
+    if (held.status !== 'available') throw new Error('setup failed');
+    const refused = h.engine.book(stranger, { holdId: held.holdId, guestName: 'Martin' });
+    expect(refused).toEqual({ status: 'duplicate' });
+    expect(JSON.stringify(refused)).not.toMatch(/Lefèvre|Anniversaire|nuts/);
+    // The holder, asking for the same evening again, is shown the booking they have.
+    const again = holdTable(h, 'holder', '20:30', 2, NUMBER);
+    expect(h.engine.book(guest('holder', NUMBER), { holdId: again.holdId, guestName: 'Lefèvre' })).toMatchObject({
+      status: 'duplicate',
+      booking: { reference: booking.reference },
+    });
+  });
+
+  it('keeps what its conversation booked: that conversation lists it, moves it and cancels it, and no other typed one does', () => {
+    const h = harness();
+    const onSite = typed('site-1');
+    const held = h.engine.findTable(onSite, { date: FRIDAY, time: '12:00', partySize: 2 });
+    if (held.status !== 'available') throw new Error('setup failed');
+    const made = h.engine.book(onSite, { holdId: held.holdId, guestName: 'Martin' });
+    if (made.status !== 'booked') throw new Error('setup failed');
+    // Asked twice with the same hold, the conversation gets its booking again.
+    expect(h.engine.book(onSite, { holdId: held.holdId, guestName: 'Martin' })).toMatchObject({ status: 'booked', booking: { reference: made.booking.reference } });
+    expect(h.engine.myBookings(onSite)).toMatchObject({ status: 'ok', ownOnly: true, bookings: [{ reference: made.booking.reference }] });
+
+    // The same number typed in another conversation is somebody else, for all the code can tell.
+    expect(h.engine.myBookings(typed('site-2'))).toEqual({ status: 'ok', bookings: [], ownOnly: true });
+    expect(h.engine.cancel(typed('site-2'), { reference: made.booking.reference })).toEqual({ status: 'not_found' });
+    // Whoever the number vouches for sees every booking under it, this one too.
+    expect(h.engine.myBookings(guest('holder', NUMBER))).toMatchObject({ bookings: [{ reference: made.booking.reference }] });
+
+    const later = h.engine.findTable(onSite, { date: FRIDAY, time: '13:00', partySize: 2, changing: made.booking.reference });
+    if (later.status !== 'available') throw new Error('setup failed');
+    expect(h.engine.change(onSite, { reference: made.booking.reference, holdId: later.holdId })).toMatchObject({ status: 'changed', booking: { time: '13:00' } });
+    expect(h.engine.cancel(onSite, { reference: made.booking.reference })).toMatchObject({ status: 'cancelled' });
+  });
+});
+
+describe('the staff’s notes', () => {
+  it('stay with the team: the guest hears their own notes, never the ones the staff wrote', () => {
+    const h = harness();
+    const entered = h.engine.staffBook({ date: '2026-10-16', time: '20:00', partySize: 2, guestName: 'Garnier', phone: '06 12 34 56 78', notes: 'Mauvais payeur' });
+    if (entered.status !== 'booked') throw new Error('setup failed');
+    const held = holdTable(h, 'g1', '12:00', 2, '+33612345678');
+    const own = h.engine.book(guest('g1'), { holdId: held.holdId, guestName: 'Garnier', notes: 'Chaise haute' });
+    if (own.status !== 'booked') throw new Error('setup failed');
+
+    const mine = h.engine.myBookings(guest('g1'));
+    if (mine.status !== 'ok') throw new Error('setup failed');
+    expect(mine.bookings.map((booking) => booking.notes)).toEqual(['Chaise haute', undefined]);
+    expect(JSON.stringify(mine)).not.toContain('Mauvais payeur');
+    // The dashboard shows both.
+    expect(
+      h.engine
+        .serviceDay('2026-10-16', 'fr')
+        .bookings.map((booking) => booking.notes)
+        .sort(),
+    ).toEqual(['Chaise haute', 'Mauvais payeur']);
+
+    // A change that leaves the notes alone keeps them the guest's; notes the staff rewrite become the team's.
+    expect(h.engine.staffChange(own.booking.reference, { partySize: 3 })).toMatchObject({ status: 'booked' });
+    expect(h.engine.myBookings(guest('g1'))).toMatchObject({ bookings: [{ notes: 'Chaise haute' }, {}] });
+    expect(h.engine.staffChange(own.booking.reference, { notes: 'Chaise haute, table 4 promise' })).toMatchObject({ status: 'booked' });
+    const after = JSON.stringify(h.engine.myBookings(guest('g1')));
+    expect(after).not.toContain('table 4 promise');
+    expect(after).not.toContain('Chaise haute');
   });
 });
 

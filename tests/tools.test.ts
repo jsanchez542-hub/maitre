@@ -1,12 +1,48 @@
 import { describe, expect, it } from 'vitest';
-import { BookingEngine } from '../src/engine.js';
+import { BookingEngine, type Session } from '../src/engine.js';
 import { formatPrice } from '../src/menu.js';
 import type { BookingStore } from '../src/store.js';
 import { TOOL_DEFINITIONS, errandOf, runTool } from '../src/tools.js';
-import { TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
+import { FRIDAY, TEST_CONFIG, guest, harness, sequentialIds } from './fixtures.js';
 
 const THIN = ' ';
 const NBSP = ' ';
+
+describe('a number the guest typed', () => {
+  const NUMBER = '+33612345678';
+  const stranger: Session = { id: 'stranger', channel: 'web', language: 'fr', phone: { e164: NUMBER, source: 'form' } };
+
+  it('tells the assistant what it cannot reach from this conversation, and to offer the team', () => {
+    const h = harness();
+    const held = h.engine.findTable(guest('holder', NUMBER), { date: FRIDAY, time: '20:00', partySize: 2 });
+    if (held.status !== 'available') throw new Error('setup failed');
+    const theirs = h.engine.book(guest('holder', NUMBER), { holdId: held.holdId, guestName: 'Lefèvre', notes: 'Anniversaire' });
+    if (theirs.status !== 'booked') throw new Error('setup failed');
+
+    const listed = runTool(h.engine, stranger, 'my_bookings', {});
+    expect(listed).toMatchObject({ status: 'ok', bookings: [], ownOnly: true });
+    expect(String(listed['instruction'])).toMatch(/only bookings made in this conversation .* offer hand_over/);
+    for (const [name, input] of [
+      ['cancel_booking', { reference: theirs.booking.reference }],
+      ['confirm_booking', { reference: theirs.booking.reference }],
+      ['confirm_booking', {}],
+    ] as const) {
+      const refused = runTool(h.engine, stranger, name, input);
+      expect(refused.status, name).toBe('not_found');
+      expect(String(refused['instruction']), name).toContain('offer hand_over');
+      expect(JSON.stringify(refused), name).not.toMatch(/Lefèvre|Anniversaire/);
+    }
+
+    const again = h.engine.findTable(stranger, { date: FRIDAY, time: '20:30', partySize: 2 });
+    if (again.status !== 'available') throw new Error('setup failed');
+    const double = runTool(h.engine, stranger, 'book_table', { holdId: again.holdId, guestName: 'Martin', allergies: [] });
+    expect(double).toEqual({ status: 'duplicate', instruction: expect.stringContaining('already has a booking around that time') });
+
+    // A number the channel vouches for gets no such hint: what it does not find is not there.
+    expect(runTool(h.engine, guest('holder', NUMBER), 'cancel_booking', { reference: 'ZZZZZZ' })).toEqual({ status: 'not_found' });
+    expect(runTool(h.engine, guest('holder', NUMBER), 'my_bookings', {})).not.toHaveProperty('instruction');
+  });
+});
 
 describe('tool definitions', () => {
   it('have unique names and strict object schemas', () => {

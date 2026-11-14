@@ -15,6 +15,8 @@ Maître starts from the other end. These are guarantees of the engine, each cove
 - **Every booking has a real table, and no booking is lost to the order bookings came in.** Capacity is counted by table size, which is exact; the plan of real tables comes after it and rearranges bookings not yet seated when a new one only fits that way. A table the staff fixed by hand never moves.
 - **The model never works out a date.** It says how the guest put it ("vendredi", "le 11", "après-demain") and the code turns that into a day in the restaurant's time zone. Every answer reads the full date back.
 - **The phone number comes from the channel**: caller ID, WhatsApp, a keypad or a form, never from what speech recognition heard. The model never sees it.
+- **A typed number is where to reach a guest, not who they are.** A number the phone network or WhatsApp vouches for sees and changes every booking under it. One typed on a keypad or in the chat's field reaches only what its own conversation booked: the rest goes to the team, who call that number back. A conversation keeps the first number it has, and a typed one never replaces the phone network's.
+- **A booking is never cancelled or moved in the reply where it first comes up.** The guest hears which booking and answers before anything changes, whatever the model read in a note or was told in a message.
 - **Allergen answers come from the kitchen's sheet,** as sentences to repeat word for word. The code puts them in the reply when the model does not, and drops any sentence of the model's own about that dish and that allergen. When the sheet does not cover an allergen the answer is "we do not know", never "it is fine".
 - **A promise made to a guest is kept by code.** When the sheet cannot answer, the question goes to the team without waiting for the model to pass it on, and a guest the team has no number for is asked for one.
 - **Asking twice books once.** A model that calls the same tool twice does not create two bookings.
@@ -184,6 +186,9 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 - The engine does not join tables: parties larger than the biggest table are passed to a person.
 - A party that arrives late keeps the stay it was booked for: the plan does not lengthen it. A party that leaves early frees its table at once.
 - Phone numbers are read in French national format or in international format.
+- A guest who booked in one conversation and comes back in another with a typed number cannot see, move or cancel that booking there: the assistant offers that the team call them. Only caller ID and WhatsApp carry a guest's bookings from one conversation to the next.
+- The turn that comes between a booking and its cancellation is kept by the assistant's own loop. An outside agent that calls the tools itself (`POST tools/:name`) has to keep it on its side.
+- The dashboard shows the number to call back without saying where it came from. A request made in the web chat always carries a typed one, so the call itself is what tells the team who asked.
 - Opening hours that span the night the clocks change (between 2 and 3 am) are not supported.
 - The evaluation is forty-one written conversations, twenty-six of them also on the phone, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors are measured separately, with real calls made by a program.
 - Data cannot be pinned to the EU when running locally, because workerd does not implement jurisdictions; the local configuration has to say so explicitly.

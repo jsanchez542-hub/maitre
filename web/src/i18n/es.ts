@@ -310,6 +310,7 @@ export const es: Messages = {
         kept_promise: 'Promesa cumplida: el código trasladó la solicitud',
         needless_hand_over: 'Traspaso innecesario evitado',
         question_at_goodbye: 'Línea abierta tras una pregunta',
+        asked_first: 'Confirmación pedida antes de cancelar o cambiar',
       },
       outcomes: {
         failed_handed_over: 'Respuesta interrumpida: pasado al equipo',

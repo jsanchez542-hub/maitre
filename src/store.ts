@@ -11,6 +11,16 @@ export type Channel = 'web' | 'whatsapp' | 'voice' | 'staff';
  */
 export type PhoneSource = 'caller_id' | 'whatsapp' | 'keypad' | 'form' | 'staff';
 
+/**
+ * Whether a number says who the guest is. The phone network and WhatsApp vouch
+ * for the numbers they give, and the staff for the ones they enter. A number
+ * the guest typed, in the web chat's field or on the phone's keypad, is only
+ * where to reach them: anyone can type anyone's.
+ */
+export function isVouched(source: PhoneSource): boolean {
+  return source !== 'form' && source !== 'keypad';
+}
+
 export type BookingStatus = 'booked' | 'confirmed' | 'cancelled' | 'no_show';
 
 /** One move of a booking, kept so "20 h 30 (avant 20 h)" can be shown and a dispute settled. */
@@ -46,10 +56,18 @@ export interface Booking {
    */
   phone?: string;
   phoneSource?: PhoneSource;
+  /**
+   * The conversation that made the booking; none when the staff entered it. A
+   * guest whose number was typed sees and changes, from a conversation, only
+   * the bookings that conversation made.
+   */
+  sessionId?: string;
   status: BookingStatus;
   channel: Channel;
   language: Language;
   notes?: string;
+  /** The notes are the staff's own: the assistant never reads them back to a guest. */
+  staffNotes?: true;
   allergies: readonly Allergen[];
   /** Entered by the staff for a party already in the restaurant. */
   walkIn?: boolean;

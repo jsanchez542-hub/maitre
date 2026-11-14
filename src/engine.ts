@@ -21,6 +21,7 @@ import { isOnGrid, isOpenOn, sittingAt, sittingsOn, slotsOf, slotsOn } from './s
 import { physicalTables, planGroup, type PhysicalTable, type Stay } from './seating.js';
 import {
   isActive,
+  isVouched,
   type Booking,
   type BookingStatus,
   type BookingStore,
@@ -115,7 +116,8 @@ export interface BookRequest {
 
 export type BookResult =
   | { status: 'booked'; booking: BookingView }
-  | { status: 'duplicate'; booking: BookingView }
+  /** The number already has a booking that overlaps: shown only to a conversation it belongs to (see `#owns`). */
+  | { status: 'duplicate'; booking?: BookingView }
   | { status: 'hold_expired' }
   | { status: 'phone_required' }
   | { status: 'invalid'; problems: string[] };
@@ -135,7 +137,8 @@ export type ChangeResult =
   | { status: 'not_found' }
   | { status: 'phone_required' };
 
-export type MyBookingsResult = { status: 'ok'; bookings: BookingView[] } | { status: 'phone_required' };
+/** `ownOnly`: the guest typed their number, so these are only the bookings made in this conversation. */
+export type MyBookingsResult = { status: 'ok'; bookings: BookingView[]; ownOnly?: true } | { status: 'phone_required' };
 
 export type ConfirmResult =
   | { status: 'confirmed'; booking: BookingView }
@@ -498,9 +501,9 @@ export class BookingEngine {
       tx.deleteExpiredHolds(clock.nowMs);
       const exclusions: Exclusions = { sessionId: session.id };
       const changing = normalizeReference(request.changing);
-      if (changing && session.phone) {
+      if (changing) {
         const booking = tx.bookingByReference(changing);
-        if (booking && booking.phone === session.phone.e164) exclusions.bookingId = booking.id;
+        if (booking && this.#owns(session, booking)) exclusions.bookingId = booking.id;
       }
 
       const check = this.#check(tx, date, time, partySize, clock, exclusions, newCache());
@@ -582,9 +585,7 @@ export class BookingEngine {
     return this.#store.transaction((tx): BookResult => {
       const already = tx.bookingByHold(request.holdId);
       if (already) {
-        return already.phone === phone.e164
-          ? { status: 'booked', booking: this.#view(already, session.language, clock) }
-          : { status: 'hold_expired' };
+        return this.#owns(session, already) ? { status: 'booked', booking: this.#view(already, session.language, clock) } : { status: 'hold_expired' };
       }
       const hold = tx.hold(request.holdId);
       if (!hold || hold.sessionId !== session.id || hold.expiresAt <= clock.nowMs) return { status: 'hold_expired' };
@@ -592,7 +593,8 @@ export class BookingEngine {
       const clash = tx
         .bookingsForPhone(phone.e164, hold.date)
         .find((booking) => isActive(booking) && booking.date === hold.date && overlaps(booking, hold));
-      if (clash) return { status: 'duplicate', booking: this.#view(clash, session.language, clock) };
+      // A booking of someone else's conversation under a typed number: that it exists is said, and nothing of it.
+      if (clash) return { status: 'duplicate', ...(this.#owns(session, clash) ? { booking: this.#view(clash, session.language, clock) } : {}) };
 
       const stamp = new Date(clock.nowMs).toISOString();
       const booking: Booking = {
@@ -608,6 +610,7 @@ export class BookingEngine {
         guestName,
         phone: phone.e164,
         phoneSource: phone.source,
+        sessionId: session.id,
         status: 'booked',
         channel: session.channel,
         language: session.language,
@@ -627,15 +630,14 @@ export class BookingEngine {
 
   /** Cancels one of the guest's own bookings. Another guest's booking is "not found", never "not yours". */
   cancel(session: Session, request: { reference: string }): CancelResult {
-    const phone = session.phone;
-    if (!phone) return { status: 'phone_required' };
+    if (!session.phone) return { status: 'phone_required' };
     const reference = normalizeReference(request.reference);
     if (!reference) return { status: 'not_found' };
     const clock = this.#clock();
 
     return this.#store.transaction((tx): CancelResult => {
       const booking = tx.bookingByReference(reference);
-      if (!booking || booking.phone !== phone.e164) return { status: 'not_found' };
+      if (!booking || !this.#owns(session, booking)) return { status: 'not_found' };
       if (booking.status === 'cancelled') return { status: 'already_cancelled', booking: this.#view(booking, session.language, clock) };
       if (!isActive(booking)) return { status: 'not_found' };
       if (this.#hasStarted(booking, clock)) return { status: 'already_started', booking: this.#view(booking, session.language, clock) };
@@ -651,15 +653,14 @@ export class BookingEngine {
    * guest never ends up with both or with neither.
    */
   change(session: Session, request: { reference: string; holdId: string }): ChangeResult {
-    const phone = session.phone;
-    if (!phone) return { status: 'phone_required' };
+    if (!session.phone) return { status: 'phone_required' };
     const reference = normalizeReference(request.reference);
     if (!reference) return { status: 'not_found' };
     const clock = this.#clock();
 
     return this.#store.transaction((tx): ChangeResult => {
       const booking = tx.bookingByReference(reference);
-      if (!booking || booking.phone !== phone.e164 || !isActive(booking)) return { status: 'not_found' };
+      if (!booking || !this.#owns(session, booking) || !isActive(booking)) return { status: 'not_found' };
       if (booking.holdId === request.holdId) return { status: 'changed', booking: this.#view(booking, session.language, clock) };
       if (this.#hasStarted(booking, clock)) return { status: 'already_started', booking: this.#view(booking, session.language, clock) };
       const hold = tx.hold(request.holdId);
@@ -692,7 +693,11 @@ export class BookingEngine {
     });
   }
 
-  /** The guest's own bookings still to come, from the number the channel vouches for. */
+  /**
+   * The guest's own bookings still to come: every one under a number the
+   * channel vouches for, and only those made in this conversation under a
+   * number the guest typed.
+   */
   myBookings(session: Session): MyBookingsResult {
     const phone = session.phone;
     if (!phone) return { status: 'phone_required' };
@@ -701,9 +706,22 @@ export class BookingEngine {
       status: 'ok',
       bookings: tx
         .bookingsForPhone(phone.e164, clock.today)
-        .filter((booking) => isActive(booking) && !this.#hasStarted(booking, clock))
+        .filter((booking) => this.#owns(session, booking) && isActive(booking) && !this.#hasStarted(booking, clock))
         .map((booking) => this.#view(booking, session.language, clock)),
+      ...(isVouched(phone.source) ? {} : { ownOnly: true as const }),
     }));
+  }
+
+  /**
+   * Whether a booking is this conversation's to see and to change. A number
+   * the channel vouches for owns every booking under it. A number somebody
+   * typed proves nothing about who they are: their conversation owns only
+   * what it booked itself.
+   */
+  #owns(session: Session, booking: Booking): boolean {
+    const phone = session.phone;
+    if (!phone || booking.phone !== phone.e164) return false;
+    return isVouched(phone.source) || booking.sessionId === session.id;
   }
 
   /** The guest confirms they are coming, usually by answering the WhatsApp reminder. */
@@ -719,11 +737,13 @@ export class BookingEngine {
       // when the guest answers "yes" a second time, the one they already confirmed.
       const upcoming = reference
         ? []
-        : tx.bookingsForPhone(phone.e164, clock.today).filter((booking) => isActive(booking) && !this.#hasStarted(booking, clock));
+        : tx
+            .bookingsForPhone(phone.e164, clock.today)
+            .filter((booking) => this.#owns(session, booking) && isActive(booking) && !this.#hasStarted(booking, clock));
       const target = reference
         ? tx.bookingByReference(reference)
         : (upcoming.find((booking) => booking.status === 'booked') ?? upcoming[0]);
-      if (!target || target.phone !== phone.e164 || !isActive(target) || this.#hasStarted(target, clock)) {
+      if (!target || !this.#owns(session, target) || !isActive(target) || this.#hasStarted(target, clock)) {
         return { status: 'not_found' };
       }
       if (target.status === 'confirmed') return { status: 'confirmed', booking: this.#view(target, session.language, clock) };
@@ -1004,7 +1024,7 @@ export class BookingEngine {
         status: walkIn ? 'confirmed' : 'booked',
         channel: 'staff',
         language: request.guestLanguage ?? language,
-        ...(notes ? { notes } : {}),
+        ...(notes ? { notes, staffNotes: true as const } : {}),
         allergies,
         ...(walkIn ? { walkIn: true, arrivedAt: stamp, seatedAt: stamp } : {}),
         history: [],
@@ -1069,8 +1089,14 @@ export class BookingEngine {
         changed.phone = phone;
         changed.phoneSource = 'staff';
       }
-      if (notes === '') delete changed.notes;
-      else changed.notes = notes;
+      if (notes === '') {
+        delete changed.notes;
+        delete changed.staffNotes;
+      } else if (notes !== booking.notes) {
+        // Notes the staff wrote or rewrote are the team's from then on; the guest's own, left as they were, stay the guest's.
+        changed.notes = notes;
+        changed.staffNotes = true;
+      }
       if (!moving && !resizing && !chosen) {
         tx.saveBooking(changed);
         return { status: 'booked', booking: this.#staffView(changed, language, clock) };
@@ -1738,7 +1764,8 @@ export class BookingEngine {
       partySize: booking.partySize,
       guestName: this.#guestName(booking, language),
       status: booking.status,
-      ...(booking.notes ? { notes: booking.notes } : {}),
+      // What the guest asked for when booking. Notes the staff wrote are the team's, and stay on the dashboard.
+      ...(booking.notes && !booking.staffNotes ? { notes: booking.notes } : {}),
       allergies: [...booking.allergies],
       readBack: formatBooking(booking.partySize, booking.date, booking.time, language, clock.today),
     };

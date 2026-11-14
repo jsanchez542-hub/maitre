@@ -3,7 +3,7 @@ import { DAY_FORMS, parseDay, type DateSpec } from './dates.js';
 import { HANDOFF_REASONS, type BookingEngine, type CallbackResult, type Session } from './engine.js';
 import { localize, messages, type Errand } from './i18n/index.js';
 import { checkDish, menuView, safeDishes } from './menu.js';
-import type { Channel } from './store.js';
+import { isVouched, type Channel } from './store.js';
 
 /**
  * The tools the language model can call, and the code that runs them.
@@ -103,12 +103,13 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'my_bookings',
     description:
-      'Lists the guest’s upcoming bookings, found from the phone number of this conversation. Use it before cancelling or changing when the guest has no reference.',
+      'Lists the guest’s upcoming bookings, found from the phone number of this conversation. Use it before cancelling or changing when the guest has no reference. When the guest typed that number, it lists only what was booked in this conversation, and its `instruction` says what to do about the rest.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'cancel_booking',
-    description: 'Cancels one of the guest’s bookings. Repeat the booking to the guest and get a clear yes before calling.',
+    description:
+      'Cancels one of the guest’s bookings. Repeat the booking to the guest and get a clear yes before calling. A booking that has only just come up in the conversation is not cancelled in the same reply: the tool answers "confirm_first", and you ask.',
     inputSchema: {
       type: 'object',
       properties: { reference: { type: 'string', description: 'Six characters, from my_bookings or the confirmation.' } },
@@ -119,7 +120,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: 'change_booking',
     description:
-      'Moves a booking to another time, day or party size. First call find_table with `changingReference`, then call this with the reference and the new holdId. The old table is freed in the same step.',
+      'Moves a booking to another time, day or party size. First call find_table with `changingReference`, then call this with the reference and the new holdId. The old table is freed in the same step. A booking that has only just come up in the conversation is not moved in the same reply: the tool answers "confirm_first", and you ask.',
     inputSchema: {
       type: 'object',
       properties: { reference: { type: 'string' }, holdId: { type: 'string' } },
@@ -274,6 +275,23 @@ function phoneRequest(result: CallbackResult, channel: Channel): { needsPhone?: 
   return { needsPhone: true, instruction: `The team needs a number to call the guest back. ${PHONE_INSTRUCTIONS[channel]}` };
 }
 
+/**
+ * A typed number is where to reach the guest, not proof of who they are: the
+ * conversation reaches only what it booked itself. The rest may well be theirs,
+ * and the team, who call that number, can tell.
+ */
+const TYPED_NUMBER =
+  'The guest gave their number by typing it in this conversation, which does not show it is theirs: only bookings made in this conversation can be seen or changed here. For any other booking, say that you cannot reach it from this conversation and offer hand_over: the team will call them back on that number.';
+
+/** The number already has a booking around that time, made in another conversation: nothing of it is shown. */
+const BOOKED_ELSEWHERE =
+  'This number already has a booking around that time, made outside this conversation, so no second one was made and it cannot be shown here. Say so, and offer hand_over so the team calls the guest back.';
+
+/** What a typed number could not reach, with what to do about it. */
+function unreached<Result extends { status: string }>(session: Session, result: Result): Result | (Result & { instruction: string }) {
+  return result.status === 'not_found' && session.phone && !isVouched(session.phone.source) ? { ...result, instruction: TYPED_NUMBER } : result;
+}
+
 type Input = Record<string, unknown>;
 
 class InputProblems {
@@ -373,27 +391,29 @@ function run(engine: BookingEngine, session: Session, name: string, input: Input
         ...(notes === undefined ? {} : { notes }),
         ...(allergies === undefined ? {} : { allergies }),
       });
-      return result.status === 'phone_required' ? { ...result, instruction: bookingWaitsForPhone(session.channel) } : result;
+      if (result.status === 'phone_required') return { ...result, instruction: bookingWaitsForPhone(session.channel) };
+      return result.status === 'duplicate' && !result.booking ? { ...result, instruction: BOOKED_ELSEWHERE } : result;
     }
     case 'my_bookings': {
       const result = engine.myBookings(session);
-      return result.status === 'phone_required' ? { ...result, instruction: PHONE_INSTRUCTIONS[session.channel] } : result;
+      if (result.status === 'phone_required') return { ...result, instruction: PHONE_INSTRUCTIONS[session.channel] };
+      return result.ownOnly ? { ...result, instruction: TYPED_NUMBER } : result;
     }
     case 'cancel_booking': {
       const reference = check.text(input, 'reference', true);
       if (reference === undefined) return invalid(check.list);
-      return engine.cancel(session, { reference });
+      return unreached(session, engine.cancel(session, { reference }));
     }
     case 'change_booking': {
       const reference = check.text(input, 'reference', true);
       const holdId = check.text(input, 'holdId', true);
       if (reference === undefined || holdId === undefined) return invalid(check.list);
-      return engine.change(session, { reference, holdId });
+      return unreached(session, engine.change(session, { reference, holdId }));
     }
     case 'confirm_booking': {
       const reference = check.text(input, 'reference', false);
       if (check.list.length > 0) return invalid(check.list);
-      return engine.confirm(session, reference === undefined ? {} : { reference });
+      return unreached(session, engine.confirm(session, reference === undefined ? {} : { reference }));
     }
     case 'get_menu': {
       const category = input['category'];
