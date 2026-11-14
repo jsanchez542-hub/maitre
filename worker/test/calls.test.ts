@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { localNow } from '../../src/calendar.js';
 import { parseDay, resolveDate } from '../../src/dates.js';
 import { budgetStub } from '../src/env.js';
+import worker from '../src/index.js';
 import { callPass, liveKitProject } from '../src/livekit.js';
 
 const BASE = 'https://maitre.test/v1/restaurants/demo';
 const DEMO = 'https://maitre.test/v1/demo';
+const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 const AGENT = { authorization: 'Bearer test-agent-token', 'content-type': 'application/json' };
 const STAFF = { authorization: 'Bearer test-staff-token', 'content-type': 'application/json' };
 const JSON_BODY = { 'content-type': 'application/json' };
@@ -462,6 +464,67 @@ describe('calling the demo restaurant from the browser', () => {
     const clock = (await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()) as Record<string, unknown>;
     expect(clock['callsLeft']).toBe(2);
     expect((await pass(sandbox)).callsLeft).toBe(1);
+  });
+
+  /** A visitor asking to call, and what they are told. */
+  const ask = async (sandbox: string): Promise<[number, unknown]> => {
+    const response = await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/calls`, { method: 'POST', headers: JSON_BODY, body: JSON.stringify({ language: 'fr' }) });
+    return [response.status, await response.json()];
+  };
+  const callsLeft = async (sandbox: string): Promise<unknown> =>
+    ((await (await SELF.fetch(`${DEMO}/sandboxes/${sandbox}/clock`)).json()) as Record<string, unknown>)['callsLeft'];
+
+  it('answers two calls at once across the demo: one more caller is told the line is busy, and loses no call for it', async () => {
+    fakeNetwork();
+    const [first, second, third] = [await openSandbox(), await openSandbox(), await openSandbox()];
+    // One call rings and one is answered: the line has both its places taken, in two other restaurants.
+    await pass(first);
+    const answered = await pass(second);
+    await demoStep(second, answered.sessionId, 'start', { language: 'fr' });
+    expect(await ask(third)).toEqual([429, { error: 'line_busy' }]);
+    expect(await callsLeft(third)).toBe(3);
+
+    // A call that ends leaves its place to the next caller.
+    await demoStep(second, answered.sessionId, 'end', { endedBy: 'caller', seconds: 20 });
+    expect((await pass(third)).callsLeft).toBe(2);
+    expect(await ask(second)).toEqual([429, { error: 'line_busy' }]);
+  });
+
+  it('frees the place of a call nobody joined after its minute, and of one whose end the line never reported a little after its longest', async () => {
+    fakeNetwork();
+    const [first, second, third] = [await openSandbox(), await openSandbox(), await openSandbox()];
+    await pass(first);
+    const answered = await pass(second);
+    await demoStep(second, answered.sessionId, 'start', { language: 'fr' });
+    expect(await ask(third)).toEqual([429, { error: 'line_busy' }]);
+
+    // Nobody joined the first call: its minute over, its place goes to the third caller.
+    vi.setSystemTime(new Date(Date.now() + 61_000));
+    await checkIn();
+    await pass(third);
+    expect(await ask(first)).toEqual([429, { error: 'line_busy' }]);
+
+    // The line vanished during the second call and never said it ended: its place is free once the call's four
+    // minutes and half a minute more have passed. The third caller's call, never joined, went long before.
+    vi.setSystemTime(new Date(Date.now() + 210_000));
+    await checkIn();
+    await pass(first);
+    await pass(third);
+    expect(await ask(second)).toEqual([429, { error: 'line_busy' }]);
+  });
+
+  it('offers no call, and allows none, when nothing says how many the line answers at once', async () => {
+    fakeNetwork();
+    const sandbox = await openSandbox();
+    const without = { ...env, DEMO_OPEN_CALLS: '' };
+    const offered = (await (await worker.fetch(new IncomingRequest(DEMO), without)).json()) as Record<string, unknown>;
+    expect(offered['calls']).toBeNull();
+    const refused = await worker.fetch(
+      new IncomingRequest(`${DEMO}/sandboxes/${sandbox}/calls`, { method: 'POST', headers: JSON_BODY, body: JSON.stringify({ language: 'fr' }) }),
+      without,
+    );
+    expect([refused.status, await refused.json()]).toEqual([409, { error: 'calls_unavailable' }]);
+    expect(await callsLeft(sandbox)).toBe(3);
   });
 
   it('pays for the voice by the minute, once, and stops the call at its longest', async () => {

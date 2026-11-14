@@ -468,9 +468,9 @@ async function openCall(request: Request, env: Env, sandboxId: string, sandbox: 
   const body = await readJson(request);
   if (!body.ok) return body.response;
   const language = isLanguage(body.value['language']) ? body.value['language'] : 'fr';
-  // A page that still shows the button after the voice went down: the call would ring with nobody to answer.
+  // A page that still shows the button after calls went off: the call would ring with nobody to answer.
   const budget = budgetStub(env);
-  if (!budget || !(await budget.voiceReady())) return problem(409, 'calls_unavailable');
+  if (!(await callOffer(env, budget))) return problem(409, 'calls_unavailable');
   const allowed = await sandbox.allowCall();
   switch (allowed.status) {
     case 'ok':
@@ -478,6 +478,7 @@ async function openCall(request: Request, env: Env, sandboxId: string, sandbox: 
     case 'call_limit':
     case 'rate_limited':
     case 'sandbox_limit':
+    case 'line_busy':
       return problem(429, allowed.status);
     case 'not_found':
       return problem(404, 'not_found');
@@ -573,7 +574,7 @@ async function demoStatus(env: Env): Promise<Response> {
 async function callOffer(env: Env, budget: DurableObjectStub<DemoBudget> | undefined): Promise<{ perRestaurant: number; maxSeconds: number } | null> {
   const perRestaurant = Number(env.DEMO_CALLS_PER_SANDBOX);
   const maxSeconds = Number(env.DEMO_CALL_SECONDS);
-  if (!liveKitProject(env) || !env.AGENT_TOKEN || !(perRestaurant > 0) || !(maxSeconds > 0)) return null;
+  if (!liveKitProject(env) || !env.AGENT_TOKEN || !(perRestaurant > 0) || !(maxSeconds > 0) || !(Number(env.DEMO_OPEN_CALLS) > 0)) return null;
   if (!budget || !(await budget.voiceReady())) return null;
   return { perRestaurant, maxSeconds };
 }

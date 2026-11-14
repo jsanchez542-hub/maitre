@@ -72,6 +72,9 @@
     "DEMO_CALLS_PER_SANDBOX": "3",
     "DEMO_CALL_SECONDS": "240",
     "DEMO_VOICE_USD_PER_MINUTE": "0.03",
+    // Calls the line answers at once, across the demo: what the voice agent's memory holds
+    // (VOICE_MAX_CALLS in voice/). One more caller is told the line is busy before it rings.
+    "DEMO_OPEN_CALLS": "2",
     // The name the voice agent registers under at LiveKit (voice/).
     "LIVEKIT_AGENT_NAME": "maitre-voice"
   }

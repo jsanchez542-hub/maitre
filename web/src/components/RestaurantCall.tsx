@@ -39,6 +39,7 @@ const FROM_LIVE: Record<LiveProblem, Problem> = {
   // Its messages or what it may spend, not its calls: the visitor may never have called.
   sandbox_limit: 'full',
   calls_unavailable: 'unavailable',
+  line_busy: 'busy',
   rate_limited: 'rateLimited',
   live_paused: 'paused',
   not_configured: 'unavailable',

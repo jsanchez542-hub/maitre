@@ -38,6 +38,8 @@ export type LiveProblem =
   | 'call_limit'
   /** The restaurant takes no calls now: no voice agent has checked in, or its speech fails. */
   | 'calls_unavailable'
+  /** The line already has all the calls it answers at once: this one did not ring, and is not counted. */
+  | 'line_busy'
   | 'invalid'
   | 'offline'
   | 'unexpected';
@@ -63,6 +65,7 @@ const PROBLEMS: Record<string, LiveProblem> = {
   sandbox_limit: 'sandbox_limit',
   call_limit: 'call_limit',
   calls_unavailable: 'calls_unavailable',
+  line_busy: 'line_busy',
   invalid: 'invalid',
   body_too_large: 'invalid',
   body_is_not_json: 'invalid',

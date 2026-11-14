@@ -160,6 +160,8 @@ export interface Messages {
       line: string;
       /** The line rang and no restaurant picked up. */
       noAnswer: string;
+      /** The line had all the calls it answers at once: this one did not ring. */
+      busy: string;
     };
   };
   panel: {

@@ -138,6 +138,7 @@ export const es: Messages = {
       unavailable: 'Las llamadas no están disponibles ahora mismo.',
       line: 'No se pudo establecer la línea: compruebe su conexión y vuelva a llamar.',
       noAnswer: 'El restaurante no contesta: vuelva a llamar dentro de un momento.',
+      busy: 'La línea está ocupada con otras llamadas: vuelva a llamar dentro de un momento.',
     },
   },
   panel: {

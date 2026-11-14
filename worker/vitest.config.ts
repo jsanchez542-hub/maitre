@@ -34,6 +34,7 @@ export default defineConfig({
           DEMO_CALLS_PER_SANDBOX: '3',
           DEMO_CALL_SECONDS: '240',
           DEMO_VOICE_USD_PER_MINUTE: '0.03',
+          DEMO_OPEN_CALLS: '2',
         },
         outboundService: () => new Response('The network is off in tests.', { status: 503 }),
       },

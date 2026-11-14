@@ -71,6 +71,8 @@ describe('the live demo’s API', () => {
     await expect(openLine('abc', 'fr')).resolves.toMatchObject({ callsLeft: null });
     answering(429, { error: 'call_limit' });
     expect(await problemOf(openLine('abc', 'fr'))).toBe('call_limit');
+    answering(429, { error: 'line_busy' });
+    expect(await problemOf(openLine('abc', 'fr'))).toBe('line_busy');
     answering(201, { url: 'wss://example.livekit.cloud' });
     expect(await problemOf(openLine('abc', 'fr'))).toBe('unexpected');
   });

@@ -283,8 +283,9 @@ export function LiveChat({ language, t, greeting, siteKey, open, prefill, onReco
     rate_limited: t.live.tooFast,
     sandbox_limit: t.live.full,
     call_limit: t.live.full,
-    // A call's refusal: the chat never meets it, and would say the live demo is paused.
+    // A call's refusals: the chat never meets them, and would say the live demo is paused.
     calls_unavailable: t.live.paused,
+    line_busy: t.live.paused,
     not_found: t.live.expired,
     invalid: t.live.notSent,
   };

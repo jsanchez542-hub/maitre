@@ -138,6 +138,7 @@ export const fr: Messages = {
       unavailable: 'Les appels ne sont pas disponibles pour le moment.',
       line: `La ligne n’a pas pu s’établir${NNBSP}: vérifiez votre connexion, puis rappelez.`,
       noAnswer: `Le restaurant ne répond pas${NNBSP}: rappelez dans un instant.`,
+      busy: `La ligne est occupée par d’autres appels${NNBSP}: rappelez dans un instant.`,
     },
   },
   panel: {

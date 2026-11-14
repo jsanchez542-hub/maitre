@@ -129,6 +129,7 @@ The public demo has its own routes under `/v1/demo`. A visitor opens a restauran
 - **Ids signed by the Worker:** a restaurant's id carries its signature, checked before any Durable Object is reached, so an id the Worker never gave opens nothing and leaves nothing behind.
 - **120 requests a minute per visitor** across the API, so one script cannot spend the requests every visitor shares; the voice agent shows its token instead.
 - **Eight messages a minute and sixty in all** per restaurant, and **three calls of four minutes**.
+- **Two calls at once across the demo,** as many as the voice agent's memory holds: the agent tells LiveKit when it is full, and the Worker tells one more caller the line is busy before it rings, without counting that call.
 - **Settings held to what a restaurant writes:** a name is one line of 80 characters, an answer a paragraph of 400, a menu sixty dishes. Their texts reach the assistant, so whoever edits a restaurant would otherwise decide what every turn costs. What a conversation carries from its past and what the tools add to one turn are bounded by weight as well.
 - **Five cents of model spending per restaurant,** checked before each request to the model, and **every request counted:** at what the provider reports; at its tokens at the highest list price when the provider gives no cost; in full when no answer came, since the provider may have run it all the same.
 - **A spending cap that pauses the demo** at a dollar a day or ten a month, voice included, with a second ceiling on the model provider's key.

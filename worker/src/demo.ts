@@ -107,7 +107,12 @@ interface DemoCall {
   billedSeconds: number;
 }
 
-export type CallAllowance = { status: 'ok'; sessionId: string; maxSeconds: number; callsLeft: number } | Refusal | { status: 'call_limit' };
+/** A call allowed, or why not: the restaurant has made its calls, or the line already has all the calls it answers at once. */
+export type CallAllowance =
+  | { status: 'ok'; sessionId: string; maxSeconds: number; callsLeft: number }
+  | Refusal
+  | { status: 'call_limit' }
+  | { status: 'line_busy' };
 export type DemoCallTurn = CallStream | Invalid | Refusal | { status: 'not_configured' } | { status: 'time_limit' };
 /** What the line hears each time it says how long the call has lasted: carry on, or say goodbye and why. */
 export type CallUsage = { status: 'ok'; carryOn: true } | { status: 'ok'; carryOn: false; reason: 'time_limit' | 'paused' };
@@ -251,16 +256,24 @@ export class DemoRestaurant extends Restaurant {
   async allowCall(): Promise<CallAllowance> {
     if (!this.#open()) return { status: 'not_found' };
     const maxSeconds = setting(this.env.DEMO_CALL_SECONDS);
-    // Without a price for the voice or a longest call, nobody could say what a call costs: the demo stays paused.
-    if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined) return { status: 'live_paused' };
+    // Without a price for the voice, a longest call or the calls the line answers at once, nobody could say what
+    // a call costs or whether it would be answered: the demo stays paused.
+    if (!maxSeconds || setting(this.env.DEMO_VOICE_USD_PER_MINUTE) === undefined || !setting(this.env.DEMO_OPEN_CALLS)) return { status: 'live_paused' };
     const left = await this.#callsLeft();
     if (left === 0) return { status: 'call_limit' };
     // A call's turns are messages too, and the model's: a restaurant with none left would ring and never be answered.
     if (this.#canAnswerNoMore(await this.#messages())) return { status: 'sandbox_limit' };
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
+    const now = Date.now();
+    // A visitor makes one call at a time: asking for another gives up the one of theirs still ringing.
+    for (const [key, call] of await this.ctx.storage.list<DemoCall>({ prefix: CALL })) {
+      if (call.startedAt === undefined && now - call.issuedAt < JOIN_SECONDS * 1000) await budget.callEnded(key.slice(CALL.length));
+    }
     const sessionId = `call_${randomToken()}`;
-    await this.ctx.storage.put(`${CALL}${sessionId}`, { issuedAt: Date.now(), billedSeconds: 0 } satisfies DemoCall);
+    // Asked last, so that a call refused for another reason holds no place on the line.
+    if ((await budget.callAsked(sessionId, JOIN_SECONDS)) !== 'ok') return { status: 'line_busy' };
+    await this.ctx.storage.put(`${CALL}${sessionId}`, { issuedAt: now, billedSeconds: 0 } satisfies DemoCall);
     return { status: 'ok', sessionId, maxSeconds, callsLeft: left - 1 };
   }
 
@@ -269,7 +282,10 @@ export class DemoRestaurant extends Restaurant {
     if (!this.#open()) return { status: 'not_found' };
     const call = await this.#call(sessionId);
     if (!call) return { status: 'invalid', problems: ['unknown call'] };
-    if (call.startedAt === undefined) await this.ctx.storage.put(`${CALL}${sessionId}`, { ...call, startedAt: Date.now() } satisfies DemoCall);
+    if (call.startedAt === undefined) {
+      await this.ctx.storage.put(`${CALL}${sessionId}`, { ...call, startedAt: Date.now() } satisfies DemoCall);
+      await budgetStub(this.env)?.callStarted(sessionId, setting(this.env.DEMO_CALL_SECONDS) ?? 0);
+    }
     return this.startCall({ sessionId, language });
   }
 
@@ -325,6 +341,7 @@ export class DemoRestaurant extends Restaurant {
     if (typeof request.seconds === 'number' && Number.isFinite(request.seconds) && request.seconds >= 0 && request.seconds <= 4 * 3600) {
       await this.#bill(request.sessionId, call, request.seconds);
     }
+    await budgetStub(this.env)?.callEnded(request.sessionId);
     return this.endCall(request);
   }
 
@@ -406,6 +423,11 @@ const VOICE_CHECK_IN_MS = 150_000;
 const VOICE_PAUSE_MS = 15 * 60_000;
 /** Why the voice is down, as the agent names it: a word, never a provider's message. */
 const VOICE_REASON = /^[a-z_]{1,40}$/;
+const OPEN_CALLS = 'calls:open';
+/** How long past its longest a call still counts as open when the line never said it ended. */
+const UNREPORTED_END_MS = 30_000;
+/** A call that counts as open, by its id, and when it stops counting whatever happens to it, in ms. */
+type OpenCall = [id: string, until: number];
 
 /**
  * What the public demo has spent and who opened what, in one place. The day and
@@ -441,6 +463,34 @@ export class DemoBudget extends DurableObject<Env> {
     const status = await this.ctx.storage.get<VoiceStatus>('voice');
     const now = Date.now();
     return status !== undefined && status.ready && now - status.at < VOICE_CHECK_IN_MS && !(status.offUntil !== undefined && status.offUntil > now);
+  }
+
+  /**
+   * A call about to ring, across the whole demo: refused when the line already has the calls it answers at once
+   * (DEMO_OPEN_CALLS, what the voice agent's memory holds). A call counts from its pass to its end. One nobody
+   * joins stops counting after its time to join, and one whose end the line never reports, a little after its longest.
+   */
+  async callAsked(id: string, joinSeconds: number): Promise<'ok' | 'line_busy'> {
+    const now = Date.now();
+    const open = await this.#openCalls(now);
+    if (open.length >= (setting(this.env.DEMO_OPEN_CALLS) ?? 0)) return 'line_busy';
+    await this.ctx.storage.put(OPEN_CALLS, [...open, [id, now + joinSeconds * 1000]] satisfies OpenCall[]);
+    return 'ok';
+  }
+
+  /** The line answered the call: from now it counts until its end. */
+  async callStarted(id: string, maxSeconds: number): Promise<void> {
+    const now = Date.now();
+    const others = (await this.#openCalls(now)).filter(([open]) => open !== id);
+    await this.ctx.storage.put(OPEN_CALLS, [...others, [id, now + maxSeconds * 1000 + UNREPORTED_END_MS]] satisfies OpenCall[]);
+  }
+
+  async callEnded(id: string): Promise<void> {
+    await this.ctx.storage.put(OPEN_CALLS, (await this.#openCalls(Date.now())).filter(([open]) => open !== id));
+  }
+
+  async #openCalls(now: number): Promise<OpenCall[]> {
+    return ((await this.ctx.storage.get<OpenCall[]>(OPEN_CALLS)) ?? []).filter(([, until]) => until > now);
   }
 
   async allowSandbox(visitor: string): Promise<'ok' | 'too_many_sandboxes' | 'live_paused'> {

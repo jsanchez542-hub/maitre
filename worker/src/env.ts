@@ -44,6 +44,8 @@ export interface Env {
   DEMO_CALLS_PER_SANDBOX: string;
   DEMO_CALL_SECONDS: string;
   DEMO_VOICE_USD_PER_MINUTE: string;
+  /** Calls the line answers at once, across the demo: as many as the voice agent takes. */
+  DEMO_OPEN_CALLS: string;
   /** The LiveKit project that carries calls from the browser (wss://…), and the name its voice agent registers under. */
   LIVEKIT_URL?: string;
   LIVEKIT_AGENT_NAME: string;
