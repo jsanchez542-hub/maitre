@@ -68,7 +68,7 @@ export { Restaurant } from './restaurant.js';
  *   GET and PUT sandboxes/:sandbox/config            as above: the visitor changes their own restaurant's settings
  *   GET  sandboxes/:sandbox/activity?days=            as above
  *
- * A sandbox's id is the only key to it: 128 random bits, given once, to the browser that opened it.
+ * A sandbox's id is the only key to it: 128 random bits signed by the Worker, given once, to the browser that opened it.
  *
  * And GET /media/:film, the demo's films, in the byte ranges a video player asks for (films.ts).
  */
