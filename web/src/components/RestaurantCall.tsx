@@ -17,7 +17,7 @@ import { useNewestInView } from './ChatLog';
 
 type Phase = 'ready' | 'connecting' | 'ringing' | 'live' | 'ended';
 type AgentState = 'listening' | 'thinking' | 'speaking';
-type Problem = keyof Messages['call']['problems'] | 'expired' | 'offline' | 'verify' | 'tooMany';
+type Problem = keyof Messages['call']['problems'] | 'expired' | 'full' | 'offline' | 'verify' | 'tooMany';
 
 interface Caption {
   id: string;
@@ -36,7 +36,8 @@ class Stop extends Error {
 
 const FROM_LIVE: Record<LiveProblem, Problem> = {
   call_limit: 'callLimit',
-  sandbox_limit: 'callLimit',
+  // Its messages or what it may spend, not its calls: the visitor may never have called.
+  sandbox_limit: 'full',
   calls_unavailable: 'unavailable',
   rate_limited: 'rateLimited',
   live_paused: 'paused',
@@ -500,7 +501,7 @@ export function RestaurantCall({ language }: { language: Language }) {
     setOpen(false);
   };
 
-  /** A new restaurant, when this one has taken all its calls or expired: three more calls. */
+  /** A new restaurant, when this one has taken all its calls or its messages, or expired: three more calls. */
   const fresh = () => {
     forgetSandbox();
     setCallsLeft(null);
@@ -511,6 +512,7 @@ export function RestaurantCall({ language }: { language: Language }) {
     ...t.call.problems,
     callLimit: t.call.problems.callLimit(offer?.perRestaurant ?? 3),
     expired: t.live.expired,
+    full: t.live.full,
     offline: t.live.offline,
     verify: t.live.verifyFailed,
     tooMany: t.live.tooMany,
@@ -558,7 +560,7 @@ export function RestaurantCall({ language }: { language: Language }) {
         {shown && (
           <div class="chat__problem call__problem" role="status">
             <p>{typeset(explanation[shown])}</p>
-            {(shown === 'callLimit' || shown === 'expired') && (
+            {(shown === 'callLimit' || shown === 'full' || shown === 'expired') && (
               <button type="button" class="chat__secondary" onClick={fresh}>
                 {t.live.fresh}
               </button>

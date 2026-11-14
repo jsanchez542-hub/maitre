@@ -470,6 +470,24 @@ test.describe('the call to the restaurant, from the browser', () => {
       await expect(call.locator('.chat__problem')).toHaveText(/^Vous avez déjà passé vos 3\sappels à ce restaurant\./);
       await expect(call.getByRole('button', { name: 'Ouvrir un nouveau restaurant' })).toBeVisible();
     });
+
+    for (const [path, title, button, said, fresh] of [
+      ['/', 'Appeler Merrain', 'Appeler', 'Vous avez envoyé à ce restaurant tous les messages qu’il peut recevoir.', 'Ouvrir un nouveau restaurant'],
+      ['/en/', 'Call Merrain', 'Call', 'You have sent this restaurant all the messages it can take.', 'Open a new restaurant'],
+      ['/es/', 'Llamar a Merrain', 'Llamar', 'Ya ha enviado a este restaurante todos los mensajes que admite.', 'Abrir un restaurante nuevo'],
+    ] as const) {
+      test(`${path}: a restaurant that can take no more messages says so, and not that the visitor has made its calls`, async ({ page }) => {
+        // The restaurant's messages or its spending are used up, by the chat alone perhaps: the visitor may never have called.
+        demo.failNext.call = { status: 429, error: 'sandbox_limit' };
+        await open(page, path);
+        await page.locator('#reserver [data-call]').click();
+        const call = page.getByRole('dialog', { name: title });
+        await call.getByRole('button', { name: button, exact: true }).click();
+        await expect(call.locator('.chat__problem p')).toHaveText(said);
+        await expect(call.getByRole('button', { name: fresh })).toBeVisible();
+        await expectAccessible(page);
+      });
+    }
   });
 });
 
