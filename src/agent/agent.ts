@@ -183,10 +183,17 @@ export interface TurnResult {
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_TRANSCRIPT_ENTRIES = 60;
 /**
- * The most a conversation's past may weigh when it is sent again, in UTF-8 bytes: some twelve thousand
- * tokens of ordinary text. A count of entries alone let sixty long tool answers ride along with every call.
+ * The most a conversation's past may weigh when it is sent again, in UTF-8 bytes: some twenty thousand tokens,
+ * going by the rules and the tools, whose twelve thousand bytes are about five thousand (evals/RESULTS.md,
+ * run J). A count of entries alone let sixty long tool answers ride along with every call.
  */
 export const MAX_TRANSCRIPT_BYTES = 48_000;
+/**
+ * A past over a limit is cut down to this share of it, not just back under it. Cut to the limit, a long
+ * conversation lost its oldest turn at every turn: it began at another message each time, and the provider's
+ * cache of the conversation, which only serves a beginning it has already read, was written again every turn.
+ */
+const KEPT_WHEN_CUT = 2 / 3;
 /**
  * The most the tools may add to one turn, in UTF-8 bytes. The longest menu a restaurant may write fits
  * (SETTINGS_LIMITS in config.ts): only a turn that looks everything up over and over meets this.
@@ -195,10 +202,23 @@ export const MAX_TURN_TOOL_BYTES = 40_000;
 /** The most the model writes in one call, in tokens, unless whoever calls `respond` says otherwise. */
 export const MAX_OUTPUT_TOKENS = 700;
 
+/** Where the earliest guest message is from which the conversation fits, read from its end backwards; its length when not even the last turn does. */
+function earliestThatFits(transcript: readonly TranscriptEntry[], sizes: readonly number[], maxEntries: number, maxBytes: number): number {
+  let start = transcript.length;
+  let bytes = 0;
+  for (let index = transcript.length - 1; index >= 0 && transcript.length - index <= maxEntries; index -= 1) {
+    bytes += sizes[index] ?? 0;
+    if (bytes > maxBytes) break;
+    if (transcript[index]?.role === 'user') start = index;
+  }
+  return start;
+}
+
 /**
  * Keeps a long conversation within bounds, in entries and in bytes, by dropping
  * its oldest part, always cutting before a guest message so no tool result is
- * left without its call.
+ * left without its call. Once over a bound it is cut well under it
+ * (KEPT_WHEN_CUT), so the turns that follow begin at the same message.
  */
 export function trimTranscript(
   transcript: readonly TranscriptEntry[],
@@ -207,15 +227,9 @@ export function trimTranscript(
 ): TranscriptEntry[] {
   const sizes = transcript.map((entry) => utf8Length(JSON.stringify(entry)));
   if (transcript.length <= maxEntries && sizes.reduce((sum, size) => sum + size, 0) <= maxBytes) return [...transcript];
-  // From the end backwards: the conversation is kept from the earliest guest message that still fits.
-  let start = transcript.length;
-  let bytes = 0;
-  for (let index = transcript.length - 1; index >= 0 && transcript.length - index <= maxEntries; index -= 1) {
-    bytes += sizes[index] ?? 0;
-    if (bytes > maxBytes) break;
-    if (transcript[index]?.role === 'user') start = index;
-  }
-  return transcript.slice(start);
+  const roomy = earliestThatFits(transcript, sizes, Math.floor(maxEntries * KEPT_WHEN_CUT), Math.floor(maxBytes * KEPT_WHEN_CUT));
+  // A last turn too heavy for that share is still kept when it fits the bounds themselves: the guest's next words follow from it.
+  return transcript.slice(roomy < transcript.length ? roomy : earliestThatFits(transcript, sizes, maxEntries, maxBytes));
 }
 
 /**

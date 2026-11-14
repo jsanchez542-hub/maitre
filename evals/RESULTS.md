@@ -239,6 +239,22 @@ The demo restaurant's sheets now declare all 14 allergens of every dish, as a Fr
 | All channels | Claude Haiku 5.5, Vertex Europe first | **41/41** | **123/123** | 1.6 s | 4.3 s | 0.9 s | 2.0 s | $0.102 |
 | Phone | Claude Haiku 5.5, Vertex Europe first | **26/26** | **78/78** | 1.6 s | 3.6 s | 0.9 s | 2.1 s | $0.058 |
 
+### What sixty messages cost, worked out without a model (14 November)
+
+The demo gives each restaurant sixty messages and five cents of model spending. Would a visitor who uses all sixty meet the five cents first? No model was called to find out. The web conversations of run O were played one after the other as one chat of sixty messages, and each model call was priced as the provider's cache bills it: what it has read before at the price of a read, what is new at the price of a write, the rest in full.
+
+- **The sizes and the prices are the provider's own.** In the timing of providers of 13 October (`npm run eval:providers`), the rules and the tools, 11,616 bytes, were 4,359 tokens, and a `find_table` call came back as 94. Vertex in Europe and Bedrock in the EU, which the demo asks first, billed a tenth over the list price.
+- **The sum comes out low by about a sixth.** Over run O's own conversations it gives 0.82 to 0.85 of what the run cost, so the figures below are divided by 0.82.
+
+| The conversation's past | Sixty messages | Five cents are met |
+|---|---|---|
+| Cut back to its limits at every turn, as it was | 6.7 cents | at message 46 |
+| Cut in blocks, as it is now | 3.5 cents | not in the sixty |
+
+**At its sixty entries, the conversation lost its oldest turn at every turn.** It began at another message each time, 31 times in the sixty messages, and a provider's cache only serves a beginning it has already read: the whole conversation was written to it again at every turn. It is now cut to two thirds of a limit once it passes it, and begins at a new message 5 times.
+
+The same sixty messages spent as three calls of sixteen turns and twelve messages in the chat come to 2.7 cents. A visitor who lets five minutes pass before every message loses the cache each time, and meets the five cents at about message 27.
+
 ## The choice: Claude Haiku 5.5
 
 The rule:
@@ -261,6 +277,7 @@ The model is set in `worker/wrangler.jsonc`. It can be changed there without tou
 - Text only. Speech recognition errors will be measured with the voice channel.
 - Latency was measured from France through OpenRouter, on an ordinary connection; it will differ in production.
 - Models and prices change. These results are from 10 October 2026.
+- What sixty messages cost was worked out from recorded conversations, not measured. A run with real calls has yet to play a long conversation and check it.
 
 ## Reproducing it
 

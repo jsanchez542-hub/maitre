@@ -342,15 +342,42 @@ describe('the transcript', () => {
       { role: 'tool', callId: `c${index}`, name: 'get_menu', output: { status: 'ok', dishes: answer } },
       { role: 'assistant', text: 'ok', toolCalls: [] },
     ];
-    // Sixteen entries, far from sixty, of 20,000 bytes a turn: two turns fit in 48,000, and the two before them go whole.
+    // Sixteen entries, far from sixty, of 20,000 bytes a turn. Two turns are within 48,000 and stay as they are.
     const heavy = [0, 1, 2, 3].flatMap((index) => turn(index, 'x'.repeat(20_000)));
-    expect(trimTranscript(heavy)).toEqual(heavy.slice(8));
+    expect(trimTranscript(heavy.slice(8))).toEqual(heavy.slice(8));
+    // Four are over it, and are cut to what fits in two thirds of it, 32,000: one turn, and the three before it go whole.
+    expect(trimTranscript(heavy)).toEqual(heavy.slice(12));
     // 7,000 wine glasses are 14,000 characters to a string and 28,000 bytes to a model: only the last turn fits.
     const glasses = [0, 1].flatMap((index) => turn(index, String.fromCodePoint(0x1f377).repeat(7_000)));
     expect(trimTranscript(glasses)).toEqual(glasses.slice(4));
+    // A last turn heavier than 32,000 is kept all the same while it fits in 48,000: the guest's next words follow from it.
+    const menus = [0, 1].flatMap((index) => turn(index, 'x'.repeat(40_000)));
+    expect(trimTranscript(menus)).toEqual(menus.slice(4));
     // A last turn too heavy on its own leaves nothing of the past.
     expect(trimTranscript(turn(0, 'x'.repeat(60_000)))).toEqual([]);
     expect(trimTranscript(heavy, 60, 100_000)).toEqual(heavy);
+  });
+
+  it('is cut in blocks: a long conversation begins at the same message for several turns, so the provider’s cache of it still serves', async () => {
+    const h = harness();
+    const caller = guest('g1');
+    let transcript: TranscriptEntry[] = [];
+    const beginnings: string[] = [];
+    const sent: number[] = [];
+    for (let turn = 0; turn < 60; turn += 1) {
+      const model = scriptedModel([{ text: `Réponse ${turn}.` }]);
+      transcript = (await respond(h.engine, model, caller, transcript, `Message ${turn}`)).transcript;
+      const first = model.requests[0]?.transcript[0];
+      beginnings.push(first?.role === 'user' ? first.text : '');
+      sent.push(model.requests[0]?.transcript.length ?? 0);
+    }
+    // Two entries a turn: the sixty are met at turn 31. Cut back to sixty at every turn, the conversation would begin
+    // at another message in each of the thirty turns that follow. Cut to forty, it does so three times.
+    const moves = beginnings.filter((beginning, turn) => turn > 0 && beginning !== beginnings[turn - 1]).length;
+    expect(moves).toBe(3);
+    expect(Math.max(...sent)).toBeLessThanOrEqual(61);
+    // The guest's last twenty turns at least are always there.
+    expect(Math.min(...sent.slice(31))).toBeGreaterThanOrEqual(41);
   });
 });
 
