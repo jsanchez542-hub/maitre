@@ -310,6 +310,7 @@ export const fr: Messages = {
         kept_promise: `Promesse tenue${NNBSP}: demande transmise par le code`,
         needless_hand_over: 'Transmission inutile évitée',
         question_at_goodbye: 'Ligne gardée ouverte après une question',
+        booking_at_goodbye: 'Ligne gardée ouverte après une réservation',
         asked_first: 'Confirmation demandée avant d’annuler ou de déplacer',
       },
       outcomes: {

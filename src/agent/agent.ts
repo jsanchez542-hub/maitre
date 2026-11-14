@@ -87,6 +87,12 @@ export function turnEvents(tools: readonly { name: string; output: ToolOutput }[
   return events;
 }
 
+/** Whether a turn made, moved or cancelled a booking. */
+function changedABooking(tools: readonly { name: string; output: ToolOutput }[]): boolean {
+  const events = turnEvents(tools);
+  return events.booked.length + events.changed.length + events.cancelled.length > 0;
+}
+
 /** What end_call answers on the phone: the reply the model writes is the last of the call. */
 const ENDING: ToolOutput = { status: 'ending', instruction: 'Write your goodbye now: the line hangs up once it has been heard.' };
 
@@ -120,6 +126,7 @@ export type Correction =
   | 'kept_promise'
   | 'needless_hand_over'
   | 'question_at_goodbye'
+  | 'booking_at_goodbye'
   | 'asked_first';
 
 /** Whether the last booking the conversation tried waits only for the guest's number. */
@@ -441,6 +448,10 @@ export async function respond(
       }
       // The line hangs up after a goodbye, never after a question: the caller would be cut off before answering.
       if (ASKS.test(reply) && keepLineOpen()) corrections.push('question_at_goodbye');
+      // Nor on the reply that says what was just booked, moved or cancelled: the caller hears it first, and may have
+      // something to put right. A model that booked from one sentence said goodbye and hung up in the same breath
+      // (evaluation of 14 November, on the phone).
+      else if (changedABooking(tools) && keepLineOpen()) corrections.push('booking_at_goodbye');
       return finish(reply, 'answered', corrections);
     }
 

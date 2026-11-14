@@ -392,6 +392,31 @@ describe('the end of a phone call', () => {
   });
 });
 
+describe('a goodbye in the reply that books', () => {
+  it('does not hang up: the caller hears what was booked first, and the next goodbye ends the call', async () => {
+    const h = harness();
+    const caller = guest('v1', '+33612345678', 'fr', 'voice');
+    // As a model did on 14 November: the booking made from one sentence, a goodbye and end_call in the same reply.
+    const hasty = scriptedModel((request, call) => {
+      if (call === 0) return { toolCalls: [{ name: 'find_table', input: { day: 'friday', time: '19:30', partySize: 2 } }] };
+      if (call === 1) {
+        const held = request.transcript.at(-1);
+        return { toolCalls: [{ name: 'book_table', input: { holdId: held?.role === 'tool' ? held.output['holdId'] : '', guestName: 'Martin', allergies: [] } }] };
+      }
+      return { text: 'Votre table est réservée vendredi 16 octobre à 19 h 30. Au revoir et à bientôt.', toolCalls: [{ name: 'end_call', input: {} }] };
+    });
+    const booked = await respond(h.engine, hasty, caller, [], 'Une table pour deux vendredi à 19 h 30, au nom de Martin.');
+    expect(booked.tools.map((tool) => tool.output.status)).toEqual(['available', 'booked', 'kept_open']);
+    expect(turnEffects(booked.tools).hangUp).toBe(false);
+    expect(booked.corrections).toContain('booking_at_goodbye');
+
+    const goodbye = scriptedModel([{ text: 'Merci, à vendredi.', toolCalls: [{ name: 'end_call', input: {} }] }]);
+    const ended = await respond(h.engine, goodbye, caller, booked.transcript, 'Merci, au revoir.');
+    expect(turnEffects(ended.tools).hangUp).toBe(true);
+    expect(ended.corrections).not.toContain('booking_at_goodbye');
+  });
+});
+
 describe('the transcript', () => {
   it('keeps long conversations in bounds without cutting a tool call from its result', () => {
     const entries: TranscriptEntry[] = [];

@@ -310,6 +310,7 @@ export const en: Messages = {
         kept_promise: 'Promise kept: the code passed the request on',
         needless_hand_over: 'Needless handover avoided',
         question_at_goodbye: 'Line kept open after a question',
+        booking_at_goodbye: 'Line kept open after a booking',
         asked_first: 'Asked before cancelling or moving',
       },
       outcomes: {
