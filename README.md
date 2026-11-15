@@ -46,7 +46,7 @@ The engine has no dependency on Node or on a browser: the same code runs on a se
 
 ## The assistant, measured
 
-Conversations written in advance, in French, English and Spanish, are played against real models: forty-one today, twenty-six of them also on the phone. What must happen is written as checks on the outcome: the booking made, with its day, time, party size, name and phone number; nothing booked; the team asked to call back; replies that must or must not say something. Every reply is also checked for the allergen sentences word for word, internal names, formatting, language, and the guest's number. Each conversation runs three times and passes only if all three pass.
+Conversations written in advance, in French, English and Spanish, are played against real models: forty-nine today, twenty-nine of them also on the phone. What must happen is written as checks on the outcome: the booking made, with its day, time, party size, name and phone number; nothing booked; the team asked to call back; replies that must or must not say something. Every reply is also checked for the allergen sentences word for word, internal names, formatting, language, and the guest's number. Each conversation runs three times and passes only if all three pass.
 
 The comparison that chose the model, on commit ac58952, when there were nineteen:
 
@@ -58,7 +58,7 @@ The comparison that chose the model, on commit ac58952, when there were nineteen
 | Mistral Medium 3.1 | 18/19 | 1.6 s | 2.7 s | $0.0010 |
 | Gemini 3.1 Flash Lite | 17/19 | 1.8 s | 2.8 s | $0.0025 |
 
-In the latest run, on 16 October, Claude Haiku 5.5 was right in all forty-one conversations three times each, and in all twenty-six on the phone.
+In the latest run, on 14 November, Claude Haiku 5.5 was right in all forty-nine conversations three times each, and in all twenty-nine on the phone. Eight of them, new that day, are attacks: orders hidden in a booking's notes or in an answer the restaurant wrote, the website's own note typed by the guest, and another person's number typed into the chat.
 
 Fifteen runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Five of the failures they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
 
@@ -193,7 +193,7 @@ French by default, English and Spanish. Dates, times and prices follow each lang
 - A restaurant's own line has a ceiling on what its assistant spends in a day, and none per caller yet: one caller who kept at it could use the day's. That is to settle before a real number or WhatsApp is connected, with what a restaurant's traffic looks like.
 - The dashboard shows the number to call back without saying where it came from. A request made in the web chat always carries a typed one, so the call itself is what tells the team who asked.
 - Opening hours that span the night the clocks change (between 2 and 3 am) are not supported.
-- The evaluation is forty-one written conversations, twenty-six of them also on the phone, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors are measured separately, with real calls made by a program.
+- The evaluation is forty-nine written conversations, twenty-nine of them also on the phone, in text. It catches regressions and compares models; it does not prove the assistant right in every conversation, and speech recognition errors are measured separately, with real calls made by a program.
 - Data cannot be pinned to the EU when running locally, because workerd does not implement jurisdictions; the local configuration has to say so explicitly.
 - A restaurant's settings hold sixty dishes, thirty answers and a hundred special days at most. The dashboard says that a change was not kept, not which limit it met. Settings kept before a limit existed still run, and are held to it at their next change.
 - The dashboard does not reply to guests on their channel: the staff call them.
