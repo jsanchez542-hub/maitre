@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import logging
 import os
 import secrets
 import statistics
@@ -50,6 +51,7 @@ from livekit import api, rtc
 from livekit.agents.utils import http_context
 
 from maitre_voice.speech import build_tts
+from maitre_voice.teardown import HungUpChannels
 
 API = "http://127.0.0.1:8787"
 #: Per language: the caller's lines, said in turn once the agent has finished speaking (None means: type the number),
@@ -147,6 +149,10 @@ OUT = Path(os.environ.get("MAITRE_BENCH_OUT") or Path(__file__).with_name("runs"
 #: the last hearing of the caller's words.
 CAPTIONS = "lk.transcription"
 CAPTION_IS_FINAL = "lk.transcription_final"
+#: The restaurant hangs up by deleting the room, and LiveKit's native SDK logs the caller's data channels it takes with
+#: it as errors. Once the caller has said its last words that is the hang-up the call waits for, and the lines are kept
+#: out: the result stays the last line of the output.
+hung_up_channels = HungUpChannels()
 
 
 def ready_to_write() -> None:
@@ -203,17 +209,23 @@ class Ear:
             self.states.append((self.state_since, state))
 
     async def listen(self, track: rtc.Track) -> None:
-        async for event in rtc.AudioStream.from_track(track=track, sample_rate=SAMPLE_RATE, num_channels=1):
-            samples = np.frombuffer(bytes(event.frame.data), dtype=np.int16)
-            self.recording.append(samples)
-            if np.sqrt(np.mean(samples.astype(np.float64) ** 2)) > SPEECH_RMS:
-                now = time.monotonic()
-                if now - self.last_sound > PART_GAP_SECONDS:
-                    self.parts.append(now)
-                self.last_sound = now
-                for since in self._waiting:
-                    self.first_sound_after.setdefault(since, now)
-                self._waiting.clear()
+        stream = rtc.AudioStream.from_track(track=track, sample_rate=SAMPLE_RATE, num_channels=1)
+        try:
+            async for event in stream:
+                samples = np.frombuffer(bytes(event.frame.data), dtype=np.int16)
+                self.recording.append(samples)
+                if np.sqrt(np.mean(samples.astype(np.float64) ** 2)) > SPEECH_RMS:
+                    now = time.monotonic()
+                    if now - self.last_sound > PART_GAP_SECONDS:
+                        self.parts.append(now)
+                    self.last_sound = now
+                    for since in self._waiting:
+                        self.first_sound_after.setdefault(since, now)
+                    self._waiting.clear()
+        finally:
+            # Closed while the program's loop runs. A stream still open when the loop closes is handed one more event,
+            # and LiveKit's library logs "error putting to queue: Event loop is closed".
+            await stream.aclose()
 
     def expect_answer(self, since: float) -> None:
         self._waiting.append(since)
@@ -266,6 +278,19 @@ async def speak(source: rtc.AudioSource, samples: np.ndarray) -> float:
         await source.capture_frame(frame)
     await source.wait_for_playout()
     return time.monotonic() - trailing_silence(samples)
+
+
+async def leave(room: rtc.Room, source: rtc.AudioSource, listening: list[asyncio.Task[None]]) -> None:
+    """Leaves the call and stops listening, whoever hung up, before the program ends.
+
+    Released by hand: left to the garbage collector, LiveKit's handles fail their checks at exit.
+    """
+    await room.disconnect()
+    await source.aclose()
+    for task in listening:
+        task.cancel()
+    # Each listener closes its audio stream on its way out: waited for here, not at the program's exit.
+    await asyncio.gather(*listening, return_exceptions=True)
 
 
 def line_pass() -> dict[str, str]:
@@ -421,6 +446,8 @@ async def main() -> None:
                 keypad.append(changed[KEYPAD])
 
         await room.connect(call_pass["url"], call_pass["token"])
+        logging.getLogger("livekit").addFilter(hung_up_channels)
+        hung_up_channels.call_started(room.name)
         for participant in room.remote_participants.values():
             if AGENT_STATE in participant.attributes:
                 ear.agent_is(participant.attributes[AGENT_STATE])
@@ -434,10 +461,7 @@ async def main() -> None:
         print(f"  greeting started {greeting_after - rang:.2f} s after joining" if greeting_after else "  no greeting heard")
         if greeting_after is None:
             # Nobody took the call: saying the lines to an empty room would only cost their minutes.
-            await room.disconnect()
-            await source.aclose()
-            for task in listening:
-                task.cancel()
+            await leave(room, source, listening)
             raise SystemExit("FAIL: no agent answered the call")
         # The agent is in the room as "agent-<its LiveKit job>": the restaurant's log names the line's calls after that job.
         agent_job = next((identity.removeprefix("agent-") for identity in room.remote_participants), "")
@@ -489,6 +513,7 @@ async def main() -> None:
                 # The line may hang up while the caller is still speaking: the room is gone, and the microphone with it.
                 print(f"  the caller's thanks was cut: {type(error).__name__}")
         last_word = said if thanked is None else thanked
+        hung_up_channels.call_over(room.name)
         try:
             await asyncio.wait_for(hung_up.wait(), timeout=20)
             hung_up_after: float | None = time.monotonic() - last_word
@@ -506,11 +531,7 @@ async def main() -> None:
                 if spoke_again
                 else "  the restaurant said nothing after the thanks"
             )
-        # Released by hand, whoever hung up: left to the garbage collector, LiveKit's handles fail their checks at exit.
-        await room.disconnect()
-        await source.aclose()
-        for task in listening:
-            task.cancel()
+        await leave(room, source, listening)
 
         stamp = time.strftime("%Y%m%d-%H%M%S")
         if ear.recording:
