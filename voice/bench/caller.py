@@ -57,6 +57,9 @@ API = "http://127.0.0.1:8787"
 #: Per language: the caller's lines, said in turn once the agent has finished speaking (None means: type the number),
 #: the name the booking must be under, and the caller's voice, native and unlike the agent's. The restaurant lives at the
 #: real time: the caller asks for the evening the demo suggests, named as a caller would ("{when}").
+#: The Spanish goodbye opens with "Adiós": after "Muchas gracias", speech recognition heard "Muchas gracias a dios" in two
+#: calls of eight, which is no goodbye, and the call failed on a word the restaurant never heard.
+GOODBYE_ES = "Adiós, muchas gracias."
 CALLS: dict[str, tuple[list[str | None], str, str]] = {
     "fr": (
         [
@@ -73,7 +76,7 @@ CALLS: dict[str, tuple[list[str | None], str, str]] = {
             "Buenas noches, quería reservar una mesa para cuatro personas {when} a las nueve y media.",
             "A nombre de Ortega, y nadie tiene alergias.",
             None,
-            "Muchas gracias, adiós.",
+            GOODBYE_ES,
         ],
         "ortega",
         "nestor",
@@ -104,7 +107,7 @@ ON_THE_LINE = len(sys.argv) > 3 and sys.argv[3] == "line"
 #: What that caller says: a question the restaurant answers from its opening hours, then goodbye.
 QUESTIONS: dict[str, list[str | None]] = {
     "fr": ["Bonsoir, quels sont vos horaires d'ouverture le samedi ?", "Merci beaucoup, au revoir."],
-    "es": ["Buenas noches, ¿qué horario tienen los sábados?", "Muchas gracias, adiós."],
+    "es": ["Buenas noches, ¿qué horario tienen los sábados?", GOODBYE_ES],
     "en": ["Good evening, what are your opening hours on Saturdays?", "Thank you very much, goodbye."],
 }
 #: What the environment must name to call the line. The agent has no default: a call to a deployed agent is asked for.
