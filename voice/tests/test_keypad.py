@@ -50,12 +50,19 @@ def test_keeps_at_most_twenty_digits():
 
 
 def at_the_keypad(shown: str) -> tuple[SimpleNamespace, list[str]]:
-    """A call as its keypad sees it: whether the restaurant waits for a number, and the numbers sent to it."""
+    """A call as its keypad sees it: whether the restaurant waits for a number, and the numbers sent to it.
+
+    What the browser is told about its keypad goes into `call.browser`.
+    """
     sent: list[str] = []
-    call = SimpleNamespace(_keypad=Keypad(), _keypad_timer=None, _keypad_shown=shown)
+    call = SimpleNamespace(_keypad=Keypad(), _keypad_timer=None, _keypad_shown=shown, browser=[])
+    room = SimpleNamespace(local_participant=SimpleNamespace(set_attributes=call.browser.append))
+    call._ctx = SimpleNamespace(room=room)
     call._send_number = sent.append
-    call._spawn = lambda number: None
+    call._spawn = lambda work: None
     call._keypad_paused = lambda: None
+    call._number_typed = lambda digits: PhoneCall._number_typed(call, digits)
+    call._show_keypad = lambda keypad: PhoneCall._show_keypad(call, keypad)
     return call, sent
 
 
@@ -73,3 +80,15 @@ async def test_keys_are_a_number_only_while_the_restaurant_waits_for_one():
     call, sent = at_the_keypad("open")
     type_number(call, "0622222222#")
     assert sent == ["0622222222#"]
+
+
+async def test_once_a_number_is_sent_the_keys_wait_for_the_restaurant_to_ask_again():
+    call, sent = at_the_keypad("open")
+    # Typed again before the restaurant has answered: a second number would be refused, and the call ended.
+    type_number(call, "0622222222#0633333333#")
+    assert sent == ["0622222222#"]
+    assert call.browser == [{"maitre.keypad": "closed"}]
+    # A number the restaurant could not read is asked for again: the keys are a number once more.
+    PhoneCall._show_keypad(call, "open")
+    type_number(call, "0644444444#")
+    assert sent == ["0622222222#", "0644444444#"]

@@ -338,21 +338,29 @@ class PhoneCall:
             self._keypad_timer.cancel()
         digits = self._keypad.press(dtmf.digit)
         if digits:
-            self._spawn(self._send_number(digits))
+            self._number_typed(digits)
         elif self._keypad.typing:
             self._keypad_timer = asyncio.get_running_loop().call_later(KEYPAD_PAUSE_SECONDS, self._keypad_paused)
 
     def _keypad_paused(self) -> None:
         digits = self._keypad.flush()
         if digits:
-            self._spawn(self._send_number(digits))
+            self._number_typed(digits)
+
+    def _number_typed(self, digits: str) -> None:
+        # The restaurant waits for no other number until it has answered this one, and asks again only for one it
+        # could not read. Keys typed meanwhile change nothing: a second number would be refused, and the call ended.
+        self._show_keypad("closed")
+        self._spawn(self._send_number(digits))
 
     def _on_answer(self, answer: Answer) -> None:
         if answer.booked:
             logger.info("booked during the call", extra={"bookings": len(answer.booked)})
         self._goodbye.answered(self._state.last_turn, answer.hang_up)
+        self._show_keypad("open" if answer.ask_for_phone else "closed")
+
+    def _show_keypad(self, keypad: str) -> None:
         # A browser shows its keypad when the restaurant asks for a number; a phone has one anyway.
-        keypad = "open" if answer.ask_for_phone else "closed"
         if keypad != self._keypad_shown:
             self._keypad_shown = keypad
             self._spawn(self._ctx.room.local_participant.set_attributes({"maitre.keypad": keypad}))
