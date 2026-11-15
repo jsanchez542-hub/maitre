@@ -56,10 +56,13 @@ from .keypad import Keypad
 from .language import CallerLanguage
 from .line import Answer, Call, EndedBy, Line, LineError, Started, Working, new_turn_id
 from .speech import build_stt, build_tts, ends_turns_itself, switch_voice
+from .teardown import HungUpChannels
 
 load_dotenv(".env.local")
 logger = logging.getLogger("maitre.voice")
 settings = Settings.from_env()
+#: What LiveKit's native SDK logs of the channels a hang-up closes, kept out of the log once the call is over.
+hung_up_channels = HungUpChannels()
 
 
 def call_load(agent: AgentServer) -> float:
@@ -99,6 +102,8 @@ GOODBYE_PAUSE_SECONDS = 1.2
 
 def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = silero.VAD.load()
+    # The SDK logs in the process that takes the call, through the logger of LiveKit's library.
+    logging.getLogger("livekit").addFilter(hung_up_channels)
 
 
 server.setup_fnc = prewarm
@@ -262,6 +267,7 @@ class PhoneCall:
         self._greeting = started.greeting
 
     async def run(self, caller: rtc.RemoteParticipant) -> None:
+        hung_up_channels.call_started(self._ctx.job.id)
         await self.session.start(
             RestaurantLine(self._state, self._tts),
             room=self._ctx.room,
@@ -453,6 +459,8 @@ class PhoneCall:
         if self._ending:
             return
         self._ending = True
+        # Before the room goes: the channels it takes with it are the call's end, not a fault.
+        hung_up_channels.call_over(self._ctx.job.id)
         logger.info("call latencies", extra={"turns": self.latencies(), "endedBy": ended_by})
         try:
             last_words = await self._line.end(ended_by, self.seconds, self.voice_to_voice_ms())
