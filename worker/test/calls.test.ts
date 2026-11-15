@@ -555,6 +555,23 @@ describe('calling the demo restaurant from the browser', () => {
     expect(await ask(second)).toEqual([429, { error: 'line_busy' }]);
   });
 
+  it('lets no call given up for another start later and take a place on the line again', async () => {
+    fakeNetwork();
+    const [first, second, third] = [await openSandbox(), await openSandbox(), await openSandbox()];
+    // The first visitor asks for a call, then for another before anyone answered: the first is given up.
+    const givenUp = await pass(first);
+    const kept = await pass(first);
+    await pass(second);
+    expect(await ask(third)).toEqual([429, { error: 'line_busy' }]);
+
+    // The given-up call is joined all the same: the line is not let in, and the demo still counts two calls.
+    const late = await demoStep(first, givenUp.sessionId, 'start', { language: 'fr' });
+    expect([late.status, await late.json()]).toEqual([400, { status: 'invalid', problems: ['this call was given up for another'] }]);
+    expect(await ask(third)).toEqual([429, { error: 'line_busy' }]);
+    // The call the visitor kept starts as any other.
+    expect((await demoStep(first, kept.sessionId, 'start', { language: 'fr' })).status).toBe(200);
+  });
+
   it('offers no call, and allows none, when nothing says how many the line answers at once', async () => {
     fakeNetwork();
     const sandbox = await openSandbox();

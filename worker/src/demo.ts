@@ -100,11 +100,15 @@ export type DemoChatResponse = ChatResponse | Refusal;
 export type DemoPhoneResponse = PhoneResponse | Invalid | Refusal;
 type Invalid = { status: 'invalid'; problems: string[] };
 
-/** A call this restaurant allowed: when its pass was given, when the line started it, and how many of its seconds the budget has paid for. */
+/**
+ * A call this restaurant allowed: when its pass was given, when the line started it, and how many of its seconds the
+ * budget has paid for. A pass the visitor gave up by asking for another is marked so: it never starts.
+ */
 interface DemoCall {
   issuedAt: number;
   startedAt?: number;
   billedSeconds: number;
+  givenUp?: true;
 }
 
 /** A call allowed, or why not: the restaurant has made its calls, or the line already has all the calls it answers at once. */
@@ -250,9 +254,13 @@ export class DemoRestaurant extends Restaurant {
     const budget = budgetStub(this.env);
     if (!budget || (await budget.allowTurn()) !== 'ok') return { status: 'live_paused' };
     const now = Date.now();
-    // A visitor makes one call at a time: asking for another gives up the one of theirs still ringing.
+    // A visitor makes one call at a time: asking for another gives up the one of theirs still ringing. Given up for
+    // good: its place on the line goes, and it may not start later and take a place again.
     for (const [key, call] of await this.ctx.storage.list<DemoCall>({ prefix: CALL })) {
-      if (call.startedAt === undefined && now - call.issuedAt < JOIN_SECONDS * 1000) await budget.callEnded(key.slice(CALL.length));
+      if (call.startedAt === undefined && !call.givenUp && now - call.issuedAt < JOIN_SECONDS * 1000) {
+        await this.ctx.storage.put(key, { ...call, givenUp: true } satisfies DemoCall);
+        await budget.callEnded(key.slice(CALL.length));
+      }
     }
     const sessionId = `call_${randomToken()}`;
     // Asked last, so that a call refused for another reason holds no place on the line.
@@ -266,6 +274,7 @@ export class DemoRestaurant extends Restaurant {
     if (!this.#open()) return { status: 'not_found' };
     const call = await this.#call(sessionId);
     if (!call) return { status: 'invalid', problems: ['unknown call'] };
+    if (call.givenUp) return { status: 'invalid', problems: ['this call was given up for another'] };
     if (call.startedAt === undefined) {
       await this.ctx.storage.put(`${CALL}${sessionId}`, { ...call, startedAt: Date.now() } satisfies DemoCall);
       await budgetStub(this.env)?.callStarted(sessionId, setting(this.env.DEMO_CALL_SECONDS) ?? 0);
