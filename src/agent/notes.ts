@@ -22,17 +22,33 @@ export type TurnInput = string | { note: keyof typeof NOTES };
  * word "Note": a bracket the guest opens that way becomes a parenthesis. The
  * prompt tells the model that no guest's message holds a note from the system,
  * and this is what makes it true.
+ *
+ * A reader takes more than the ASCII bracket for a square one, and more than
+ * five ASCII letters for the word: full-width forms, the East Asian brackets
+ * drawn alike, characters with no width slipped in between. All of them count.
  */
 export function ownWords(text: string): string {
-  let words = '';
-  for (let index = 0; index < text.length; index += 1) {
-    words += text[index] === '[' && opensNote(text, index + 1) ? '(' : text[index];
-  }
-  return words;
+  const characters = Array.from(text);
+  return characters.map((character, index) => (opensBracket(character) && opensNote(characters, index + 1) ? '(' : character)).join('');
 }
 
-function opensNote(text: string, from: number): boolean {
+/** Brackets drawn like the square one that NFKC does not turn into it. */
+const SQUARE_LOOKING = new Set(['【', '〔', '〖', '〘', '〚', '⟦']);
+/** A character with no width: tested one character at a time. */
+const INVISIBLE = /^\p{Cf}$/u;
+
+function opensBracket(character: string): boolean {
+  return character.normalize('NFKC') === '[' || SQUARE_LOOKING.has(character);
+}
+
+/** Whether "note" comes next: after spaces and characters with no width, in letters of any width or case. */
+function opensNote(characters: readonly string[], from: number): boolean {
   let index = from;
-  while (index < text.length && text[index]?.trim() === '') index += 1;
-  return text.slice(index, index + 4).toLowerCase() === 'note';
+  while (index < characters.length && (characters[index]?.trim() === '' || INVISIBLE.test(characters[index] ?? ''))) index += 1;
+  let word = '';
+  for (; index < characters.length && word.length < 4; index += 1) {
+    const character = characters[index] ?? '';
+    if (!INVISIBLE.test(character)) word += character.normalize('NFKC').toLowerCase();
+  }
+  return word === 'note';
 }
