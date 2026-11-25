@@ -31,7 +31,7 @@ What it found, and what changed:
 - Mistral Medium asked for the same confirmation twice. The prompt's rule on confirming became explicit: one yes, then act.
 - Two mistakes of the evaluation itself: a language detector that counted "la" as French in a Spanish reply, and a pattern that took "I cannot confirm it is safe" for a claim that a dish was safe. Both fixed, each with the real reply as a test.
 
-### Run B: commit c9e5c3e, seven models
+### Run B: commit dfa5a7e, seven models
 
 | Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Provider errors | Cost |
 |---|---|---|---|---|---|---|---|
@@ -48,7 +48,7 @@ What it found, and what changed:
 - **Mistral Small could not be measured.** 98 of 117 turns were refused by the provider (HTTP 429) with prompt collection denied, as in run A. It is left out of the next runs.
 - **Claude Sonnet 5.5 was right every time, and twenty times the cost of Haiku**, at about 4 cents a conversation, with a p95 of 10 s. It is left out of the next runs.
 
-### Run C: commit 732a503, five models
+### Run C: commit 4a1c330, five models
 
 | Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Cost |
 |---|---|---|---|---|---|---|
@@ -62,7 +62,7 @@ What it found, and what changed:
 - **In English, models wrote "the chocolate mousse" for the dish named "Chocolate mousse"**, so the sentence was no longer word for word and the guard put the exact one in front of a reply that already said it: the guest read it twice. English dish names now go in quotation marks, as the French and Spanish ones already did, and when the guard steps in it drops the model's sentences that only restate the sheet.
 - Scored again against a new question (did the assistant ask about allergies before booking?), **only Gemini had asked, in all nine bookings, without being told to.** A good maître d' asks, so the prompt now does too.
 
-### Run D: commit 110e5f3, stopped after four models
+### Run D: commit 3469eb2, stopped after four models
 
 | Model | Runs passed |
 |---|---|
@@ -73,7 +73,7 @@ What it found, and what changed:
 
 **The new rule was wrong.** It asked about allergies in the same message as a question answered with yes or no: "a table for 2 on the 24th, does anyone have an allergy?". A guest answering "Yes, that's right" had answered both, and the models, rightly careful, asked which allergy instead of booking. The question now goes only with the question for the name, which cannot be answered with a yes, and a guest who gives the name without mentioning allergies is booked without being asked twice. Of the four models measured, only Gemini was unaffected by the ambiguous rule.
 
-### Run E: commit ac58952, the final code
+### Run E: commit a2582ec, the final code
 
 | Model | Scenarios passed | Runs passed | Latency p50 | p95 | Guard fired | Cost | Per conversation |
 |---|---|---|---|---|---|---|---|
@@ -89,7 +89,7 @@ What it found, and what changed:
 
 ### Run F: the chosen model on the final code, for the demo
 
-Claude Haiku 5.5 alone, on commit b85dfe6 with the demo restaurant renamed Merrain: the code after the floor plan was added, and the name the demo shows. Right in all 57 conversations again (19/19), with a p50 of 3.0 s, a p95 of 6.6 s, the guard stepping in on 2 turns of 117, and $0.118 spent. The demo's recorded conversations came from this run until run G.
+Claude Haiku 5.5 alone, on commit ae0925d with the demo restaurant renamed Merrain: the code after the floor plan was added, and the name the demo shows. Right in all 57 conversations again (19/19), with a p50 of 3.0 s, a p95 of 6.6 s, the guard stepping in on 2 turns of 117, and $0.118 spent. The demo's recorded conversations came from this run until run G.
 
 ### Run G: the site's chat, and the guest's title (12 October)
 
@@ -136,7 +136,7 @@ The demo's recorded conversations come from this run.
 
 ### Run I: the same conversations on the phone (12 October, night)
 
-The phone needs its own choice: the caller hears every second of silence. `MAITRE_EVAL_SET=voice` plays the eighteen conversations that do not need the web chat on the voice channel, with the number from caller ID, and every reply must also read no booking reference aloud. The summary gains a column: when the model first answers, which on the phone is when the caller hears something, the reply or the short line said while the tools run. Commit e38f58e.
+The phone needs its own choice: the caller hears every second of silence. `MAITRE_EVAL_SET=voice` plays the eighteen conversations that do not need the web chat on the voice channel, with the number from caller ID, and every reply must also read no booking reference aloud. The summary gains a column: when the model first answers, which on the phone is when the caller hears something, the reply or the short line said while the tools run. Commit 8d8e268.
 
 | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
 |---|---|---|---|---|---|---|---|
@@ -149,7 +149,7 @@ The phone needs its own choice: the caller hears every second of silence. `MAITR
 
 - **Routing alone saves a fifth.** The same model sent to whichever of its providers answers fastest at the time starts speaking 0.25 s sooner at the median, with the same answers.
 - **gpt-oss-120b on Groq is three times as fast and unusable.** Some replies were its own reasoning, in English, in the middle of a French call ("We see the assistant responded incorrectly with garbled output…"), or trailed off into "Oops… …".
-- **Mistral Medium 3.1** read booking references aloud inside the confirmation, which the guard then missed (fixed in 5d96f0d: it now takes out the mention and keeps the confirmation; with it, Mistral would have passed 15 of 18). It also lost 9 turns to its provider.
+- **Mistral Medium 3.1** read booking references aloud inside the confirmation, which the guard then missed (fixed in 40d7ae4: it now takes out the mention and keeps the confirmation; with it, Mistral would have passed 15 of 18). It also lost 9 turns to its provider.
 - **Gemini 3.1 Flash Lite** is the fast candidate that stays: one real slip in 54 conversations (it asked about allergies after the guest had given everything, the known slip of run G) and one reply a strict check refused ("My instructions are to assist guests…", which reveals nothing).
 
 The phone keeps Claude Haiku 5.5, routed to its fastest provider: the only model right in every conversation. The rest of the wait is the code's to cut.
@@ -158,9 +158,9 @@ The phone keeps Claude Haiku 5.5, routed to its fastest provider: the only model
 
 Three changes, each found by looking at a run:
 
-- **The rules were never cached.** Every model call sent about five thousand tokens of rules and tools, and Anthropic's models through OpenRouter cache only where they are told. The prompt now marks the stable part and the guest's last message (fd033d9). On the phone set a conversation costs a third of what it did.
-- **A yes that chooses nothing.** The design review found the assistant asking "which of the two?" six times to a guest who kept answering "oui, je confirme", and finally asking for "1". The prompt now says to ask once, as a question answered with yes or no, whether the first time suits them, never to ask for a number and never a third time. New conversation `unclear-choice-fr`, with its phone twin.
-- **A stalled provider.** In the full run below, three model calls took 451 seconds each: the 30-second limit stopped at the response's headers, which OpenRouter sends at once. It now covers the whole answer, and the phone gets 8 seconds and one retry (eefe791).
+- **The rules were never cached.** Every model call sent about five thousand tokens of rules and tools, and Anthropic's models through OpenRouter cache only where they are told. The prompt now marks the stable part and the guest's last message (f69c985). On the phone set a conversation costs a third of what it did.
+- **A yes that chooses nothing.** A test of the demo found the assistant asking "which of the two?" six times to a guest who kept answering "oui, je confirme", and finally asking for "1". The prompt now says to ask once, as a question answered with yes or no, whether the first time suits them, never to ask for a number and never a third time. New conversation `unclear-choice-fr`, with its phone twin.
+- **A stalled provider.** In the full run below, three model calls took 451 seconds each: the 30-second limit stopped at the response's headers, which OpenRouter sends at once. It now covers the whole answer, and the phone gets 8 seconds and one retry (4f76097).
 
 | Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
 |---|---|---|---|---|---|---|---|---|
@@ -173,7 +173,7 @@ Chat and phone now use `anthropic/claude-haiku-5.5@latency` (`worker/wrangler.js
 
 ### Run K: a yes that the rest of the sentence takes back (13 October)
 
-The design review asked "Bonsoir, vous êtes ouverts dimanche soir ?" and got "Oui, nous sommes ouverts dimanche 18 octobre, mais uniquement pour le déjeuner", twice. The "oui" is the answer the guest hears; the evening is closed. `hours-es` let the same thing through in Spanish, because its check looked for a "no" anywhere in the reply. The prompt now says to answer exactly what was asked first, and to start with no when closed at the time asked about. New conversation `closed-evening-fr`, and `hours-es` now refuses a reply that opens with "sí".
+A test of the demo asked "Bonsoir, vous êtes ouverts dimanche soir ?" and got "Oui, nous sommes ouverts dimanche 18 octobre, mais uniquement pour le déjeuner", twice. The "oui" is the answer the guest hears; the evening is closed. `hours-es` let the same thing through in Spanish, because its check looked for a "no" anywhere in the reply. The prompt now says to answer exactly what was asked first, and to start with no when closed at the time asked about. New conversation `closed-evening-fr`, and `hours-es` now refuses a reply that opens with "sí".
 
 | Set | Model | Scenarios passed | Runs passed | Turn p50 | p95 | First answer p50 | p95 | Cost |
 |---|---|---|---|---|---|---|---|---|
@@ -196,7 +196,7 @@ The first full run with no failure at all. On the phone the guard fired on 32 tu
 
 ### Run M: a hello, a promise, a goodbye, and a fallback that did not pass (13 October)
 
-Miguel used the chat in Spanish and found two things; a third came from the fallback test.
+Using the chat in Spanish turned up two things; a third came from the fallback test.
 
 - **A hello alone got the welcome again.** To "Hola", the assistant listed what the welcome had just said. The prompt now says to answer a hello in a few words. New conversations `hello-fr` (and its phone twin) and `web-hello-es`: "¿En qué puedo ayudarle?", "Bonjour, que puis-je faire pour vous ?".
 - **"Buenas noches" in the afternoon.** The demo restaurant lives on its own evening, 20:05, which the chat did not show; it now does. A rule against wishing any time of day was tried and dropped: a person on a restaurant's phone says "bonne soirée" by the restaurant's hour too, and the model did not keep the rule (2 runs of 3 still said "que tenga un buen día"). `web-goodbye-es` now checks what would be wrong: a good night at 10 am, the restaurant's hour in the evaluation.
@@ -283,7 +283,7 @@ The rule:
 
 Haiku, GPT-5.6 Luna and GPT-6 Luna were right in every conversation of runs B, C and E. Haiku and GPT-5.6 Luna were within half a second of each other at the 95th percentile in both runs (5.4 s against 5.2 s, then 5.7 s against 6.1 s), and Haiku scores higher on τ²-Bench. It also held up best of the three under the ambiguous rule of run D. A conversation costs about two tenths of a cent, so about 2 dollars for a thousand.
 
-- **Gemini 3.1 Flash Lite** waits half as long, 2.8 s against 5.7 s at the 95th percentile, and was the only model that asked about allergies unprompted. But in the final run it broke an explicit rule and made up an identifier. It stays the first candidate for the voice channel, where every second counts, and that choice will be made with its own test.
+- **Gemini 3.1 Flash Lite** waits half as long, 2.8 s against 5.7 s at the 95th percentile, and was the only model that asked about allergies unprompted. But in the final run it broke an explicit rule and made up an identifier. It was the first candidate for the voice channel, where every second counts; run I tested it there, and the phone kept Claude Haiku 5.5.
 - **GPT-6 Luna** costs an eighth of Haiku and was right every time, but it is the slowest at the 95th percentile, it sometimes speaks of the restaurant in the third person ("abren", "no aparece servicio por la noche"), and it was the most affected by the ambiguous rule.
 - **Claude Sonnet 5.5** was right every time in run B, at twenty times the cost and with a 95th percentile of 10 s.
 
@@ -294,7 +294,7 @@ The model is set in `worker/wrangler.jsonc`. It can be changed there without tou
 - Forty-nine conversations is a regression suite and a comparison, not a proof. A model that slips once in a hundred conversations still passes all 147 more than one time in five; run G found a slip of about one in ten only by repeating one scenario.
 - Text only. Speech recognition errors are measured apart, with real calls made by a program (`voice/bench/caller.py`).
 - Latency was measured from France through OpenRouter, on an ordinary connection; it will differ in production.
-- Models and prices change. These results are from 10 October 2026.
+- Models and prices change. These results are from 10 October to 14 November 2026.
 - What sixty messages cost was worked out from recorded conversations, not measured. A run with real calls has yet to play a long conversation and check it.
 
 ## Reproducing it
