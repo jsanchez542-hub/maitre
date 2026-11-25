@@ -502,7 +502,7 @@ const ON_CHANNELS: Scenario[] = [
     language: 'fr',
     channel: 'whatsapp',
     phone: '+33611111133',
-    // Found by Miguel on 13 October: to a bare "Hola", the assistant listed again what the welcome had just said.
+    // Found by hand on 13 October: to a bare "Hola", the assistant listed again what the welcome had just said.
     turns: ['Bonjour'],
     expect: [
       { kind: 'no_booking' },
@@ -760,7 +760,7 @@ const ON_THE_SITE: Scenario[] = [
     language: 'es',
     channel: 'web',
     phone: null,
-    // Found by Miguel on 13 October: "buenas noches" in the afternoon in Bordeaux, said by the demo restaurant, whose evening is 20:05.
+    // Found by hand on 13 October: "buenas noches" in the afternoon in Bordeaux, said by the demo restaurant, whose evening is 20:05.
     // A wish follows the restaurant's hour, as a person on its phone would; here it is 10 am there.
     turns: ['¿Abren el sábado a mediodía?', 'Perfecto, gracias. Hasta luego.'],
     expect: [

@@ -1,4 +1,4 @@
-// Written by `npm run eval:export` from evaluation run 2026-10-16T14-26-54-105Z (commit e5375f9 with uncommitted changes), model anthropic/claude-haiku-5.5.
+// Written by `npm run eval:export` from evaluation run 2026-10-16T14-26-54-105Z (commit 870d9ec with uncommitted changes), model anthropic/claude-haiku-5.5.
 // Record again rather than edit by hand: the tests play every conversation back on the engine.
 import type { Recording } from './replay.js';
 

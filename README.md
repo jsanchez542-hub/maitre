@@ -1,8 +1,8 @@
 # Maître
 
-A booking assistant for restaurants and other businesses that take appointments. Guests book by phone, web chat or WhatsApp; the rules (tables, opening hours, dates, allergens) are decided by code, and the language model only does the talking.
+A booking assistant for restaurants. Guests book in the web chat or on a voice call; the rules (tables, opening hours, dates, allergens) are decided by code, and the language model only does the talking.
 
-> **Status: live at [maitre.live](https://maitre.live).** The booking engine, the conversation layer and its evaluation against real models, the Cloudflare Worker, the web chat, the voice line and the restaurant's dashboard are built, tested and in production, and the public demo runs on them. WhatsApp comes next.
+> **Status: live at [maitre.live](https://maitre.live).** The booking engine, the conversation layer and its evaluation against real models, the Cloudflare Worker, the web chat, the voice line and the restaurant's dashboard are built, tested and in production, and the public demo runs on them, with the call placed from the browser. A real phone number and WhatsApp come next.
 
 ## Why it is built this way
 
@@ -48,7 +48,7 @@ The engine has no dependency on Node or on a browser: the same code runs on a se
 
 Conversations written in advance, in French, English and Spanish, are played against real models: forty-nine today, twenty-nine of them also on the phone. What must happen is written as checks on the outcome: the booking made, with its day, time, party size, name and phone number; nothing booked; the team asked to call back; replies that must or must not say something. Every reply is also checked for the allergen sentences word for word, internal names, formatting, language, and the guest's number. Each conversation runs three times and passes only if all three pass.
 
-The comparison that chose the model, on commit ac58952, when there were nineteen:
+The comparison that chose the model, on commit a2582ec, when there were nineteen:
 
 | Model | Conversations right, all three times | Latency p50 | p95 | Per conversation |
 |---|---|---|---|---|
@@ -60,7 +60,7 @@ The comparison that chose the model, on commit ac58952, when there were nineteen
 
 In the latest run, on 14 November, Claude Haiku 5.5 was right in all forty-nine conversations three times each, and in all twenty-nine on the phone. Eight of them, new that day, are attacks: orders hidden in a booking's notes or in an answer the restaurant wrote, the website's own note typed by the guest, and another person's number typed into the chat.
 
-Fifteen runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Five of the failures they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
+Sixteen runs, what each one found and what changed because of it, are in [evals/RESULTS.md](evals/RESULTS.md). Eight of the problems they found were mistakes of the evaluation itself, and one came from a rule of the prompt that stopped bookings going through; each was fixed where it started, with the real reply as a test. No check was relaxed to make a model pass.
 
 ```bash
 # Needs OPENROUTER_API_KEY in .env. Costs a few cents per model.
@@ -69,7 +69,7 @@ MAITRE_EVAL_MODELS="anthropic/claude-haiku-5.5" npm run eval
 MAITRE_EVAL_RESCORE=evals/runs/<run> npm run eval:rescore
 ```
 
-The public demo is live: each visitor gets a restaurant of their own on the Worker, and the chat and the dashboard run the real assistant. When the live demo is paused, the chat plays conversations recorded in the final run back on the real engine, in the visitor's browser, and says so.
+The public demo is live: each visitor gets a restaurant of their own on the Worker, and the chat and the dashboard run the real assistant. When the live demo is paused, the chat plays conversations recorded in run O, on 16 October, back on the real engine, in the visitor's browser, and says so.
 
 ## Tests
 
