@@ -641,7 +641,9 @@ a.chat__primary {
   cursor: pointer;
 }
 
+/* Positioned so the hidden words of its lines (absolutely placed) scroll with them, instead of stretching the chat. */
 .chat__log {
+  position: relative;
   flex: 1;
   padding: 20px;
   overflow-y: auto;
@@ -928,7 +930,9 @@ a.chat__primary {
   padding: 16px 20px 0;
 }
 
+/* Positioned, as the chat's log, so its hidden words stay inside the scroll. */
 .call__screen {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;

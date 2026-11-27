@@ -163,6 +163,25 @@ async function expectAccessible(page: Page): Promise<void> {
   expect(violations.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(' ')).join(', ')}`)).toEqual([]);
 }
 
+/**
+ * The scrolls that words said only to screen readers escape. Placed absolutely, such words are laid out against their
+ * nearest positioned box: a scroll between the two neither moves nor clips them, and they stretch what holds it.
+ */
+function escapedScrolls(root: Element): string[] {
+  const escaped = new Set<string>();
+  for (const hidden of root.querySelectorAll('.sr-only')) {
+    for (let box = hidden.parentElement; box && box !== root; box = box.parentElement) {
+      const style = getComputedStyle(box);
+      if (style.position !== 'static') break;
+      if (['auto', 'scroll'].includes(style.overflowY)) {
+        escaped.add(box.className);
+        break;
+      }
+    }
+  }
+  return [...escaped];
+}
+
 /** WCAG contrast between the menu's lines and what shows around them, read from the screen's own pixels. */
 async function linesContrast(page: Page): Promise<number> {
   const middle = await page.locator('.site__toggle .site__lines').boundingBox();
@@ -287,6 +306,26 @@ test('the live chat says it is live, scrolls as one conversation, and its exampl
   expect(errors).toEqual([]);
 });
 
+test('a conversation longer than the chat scrolls in its log, with the words said only to screen readers', async ({ page }) => {
+  const errors = watchErrors(page);
+  await open(page, '/');
+  await openChat(page);
+  const chat = page.getByRole('dialog');
+  const field = chat.getByRole('textbox', { name: 'Votre message' });
+  const questions = ['Bonsoir.', 'Vous êtes ouverts le dimanche ?', 'Et le lundi midi ?', 'Avez-vous une terrasse ?', 'Les chiens sont-ils acceptés ?', 'Merci beaucoup.'];
+  for (const [asked, question] of questions.entries()) {
+    await field.fill(question);
+    await field.press('Enter');
+    await expect(chat.locator('.chat__line--agent')).toHaveCount(asked + 2);
+  }
+  const log = chat.getByRole('log');
+  expect(await log.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  // Each of the visitor's lines starts with a «Vous» for screen readers: it scrolls with its line, and the chat around
+  // the log has nothing to scroll, no blank band under the message.
+  expect(await chat.evaluate((dialog) => dialog.scrollHeight - dialog.clientHeight)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('the chat greets by the restaurant’s hour, whatever the hour where the visitor is', async ({ page }) => {
   // Friday 16 at 10:00 in Bordeaux: «Bonjour», even where the tests run at night.
   demo = new FakeDemo(new Date('2026-10-16T08:00:00.000Z'));
@@ -347,6 +386,16 @@ test.describe('the call to the restaurant, from the browser', () => {
     await page.keyboard.press('Escape');
     await expect(call).toBeHidden();
     await expect(tabs.first()).toBeFocused();
+  });
+
+  test('keeps the words said only to screen readers inside the screen that scrolls, captions included', async ({ page }) => {
+    await open(page, '/');
+    await page.locator('.site__tabs > *').first().click();
+    const call = page.getByRole('dialog', { name: 'Appeler Merrain' });
+    await expect(call).toBeVisible();
+    // The captions cannot run here, but their «Vous» sits where the call's own status does: once they ran longer than
+    // the screen, a scroll that let them out would leave the call a blank band to scroll into.
+    expect(await call.evaluate(escapedScrolls)).toEqual([]);
   });
 
   test('asks for the microphone on «Appeler», and spends no call when it is refused', async ({ page }) => {
