@@ -44,6 +44,7 @@ export function LiveChat({ language, t, greeting, siteKey, open, prefill, onReco
   const log = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const phoneField = useRef<HTMLInputElement>(null);
+  const foot = useRef<HTMLDivElement>(null);
   const verification = useRef<HTMLDivElement>(null);
   const restaurant = useRef<Promise<StoredSandbox> | null>(null);
   // The restaurant the conversation is kept with, once the chat knows it.
@@ -74,6 +75,12 @@ export function LiveChat({ language, t, greeting, siteKey, open, prefill, onReco
   ];
 
   useNewestInView(log, [lines, busy, phone === null, problem, left]);
+
+  // A phone's keyboard can leave the chat less height than it needs, and then the chat scrolls as a whole: the fields
+  // stay in sight when what opens above them, such as the number's field, pushes them down.
+  useEffect(() => {
+    foot.current?.scrollIntoView({ block: 'nearest' });
+  }, [lines, busy, phone === null, problem, left]);
 
   // The greeting follows the restaurant's hour, known a moment after the page opens: until the visitor writes, it
   // is the first line as the restaurant would say it now.
@@ -184,8 +191,10 @@ export function LiveChat({ language, t, greeting, siteKey, open, prefill, onReco
     field.current?.focus();
   }, [prefill]);
 
+  // With a keyboard at hand the cursor moves on to the number's field. On a touch screen it stays where the visitor
+  // was writing: moved, it would swap their keyboard for the number pad, and they could no longer write.
   useEffect(() => {
-    if (phone && !phone.value) phoneField.current?.focus();
+    if (phone && !phone.value && !matchMedia('(pointer: coarse)').matches) phoneField.current?.focus();
   }, [phone !== null]);
 
   const answer = (sandbox: StoredSandbox, turn: Turn) => {
@@ -293,7 +302,7 @@ export function LiveChat({ language, t, greeting, siteKey, open, prefill, onReco
   return (
     <>
       <ChatLog lines={lines} typing={busy} live t={t.chat} log={log} />
-      <div class="chat__foot">
+      <div class="chat__foot" ref={foot}>
         <div class="chat__verify">
           {verifying && <p class="chat__label">{t.live.verify}</p>}
           <div ref={verification} />

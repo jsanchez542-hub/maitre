@@ -214,7 +214,7 @@ async function linesContrast(page: Page): Promise<number> {
 }
 
 for (const site of SITES) {
-  test(`${site.path} is Merrain’s own site, and its live chat books a table in the visitor’s own restaurant`, async ({ page }) => {
+  test(`${site.path} is Merrain’s own site, and its live chat books a table in the visitor’s own restaurant`, async ({ page, isMobile }) => {
     const errors = watchErrors(page);
     await open(page, site.path);
 
@@ -238,9 +238,13 @@ for (const site of SITES) {
     await field.fill(site.name);
     await field.press('Enter');
 
-    // The number goes in its own field, and the assistant answers it at once.
+    // The number goes in its own field, and the assistant answers it at once. With a keyboard at hand the cursor goes
+    // there, from an effect a frame after the field shows; on a phone it stays in the message, where the visitor was
+    // writing, and past that frame it is not moving.
     const phone = chat.getByRole('textbox', { name: site.phone });
-    await expect(phone).toBeFocused();
+    await expect(phone).toBeVisible();
+    if (isMobile) await page.waitForTimeout(300);
+    await expect(isMobile ? field : phone).toBeFocused();
     await phone.fill(site.number);
     await expectAccessible(page);
     await phone.press('Enter');
@@ -323,6 +327,33 @@ test('a conversation longer than the chat scrolls in its log, with the words sai
   // Each of the visitor's lines starts with a «Vous» for screen readers: it scrolls with its line, and the chat around
   // the log has nothing to scroll, no blank band under the message.
   expect(await chat.evaluate((dialog) => dialog.scrollHeight - dialog.clientHeight)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('on a phone with its keyboard up, an answer that asks for the number leaves the visitor writing, in sight', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'A keyboard at hand takes the cursor to the number’s field.');
+  const errors = watchErrors(page);
+  await open(page, '/');
+  await openChat(page);
+  const chat = page.getByRole('dialog');
+  const field = chat.getByRole('textbox', { name: 'Votre message' });
+  // Where the browser gives the page only the height above the keyboard, the chat is this short.
+  await page.setViewportSize({ width: 412, height: 330 });
+  // A group asks for a number at once and passes the request on: the most the chat opens under the conversation.
+  await field.fill('Nous serons 12 samedi soir.');
+  await field.press('Enter');
+  await expect(chat.locator('.chat__line--agent')).toHaveCount(2);
+
+  const phone = chat.getByRole('textbox', { name: 'Votre numéro de téléphone' });
+  await expect(phone).toBeInViewport({ ratio: 1 });
+  // The keyboard stays a keyboard, and the message in sight: the visitor may answer in words. The cursor would move a
+  // frame after the answer shows; past that, it is not moving.
+  await page.waitForTimeout(300);
+  await expect(field).toBeFocused();
+  await expect(field).toBeInViewport({ ratio: 1 });
+  await field.fill('Et sans numéro, c’est possible ?');
+  await field.press('Enter');
+  await expect(chat.locator('.chat__line--agent')).toHaveCount(3);
   expect(errors).toEqual([]);
 });
 
