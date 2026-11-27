@@ -182,6 +182,25 @@ function escapedScrolls(root: Element): string[] {
   return [...escaped];
 }
 
+/**
+ * Puts a visible area the test moves in place of the browser's, as a phone's keyboard, a browser that leaves the page
+ * shifted, an app's bar that its browser reports, or a pinch would move it. It checks what the page does with what it
+ * is told, not what a phone tells it.
+ */
+async function fakeVisibleArea(page: Page): Promise<(area: { offsetTop: number; height: number; scale?: number }) => Promise<void>> {
+  await page.addInitScript(() => {
+    const seen = Object.assign(new EventTarget(), { offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 0, width: innerWidth, height: innerHeight, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => seen });
+  });
+  return (area) =>
+    page.evaluate(({ offsetTop, height, scale = 1 }) => {
+      const seen = window.visualViewport!;
+      Object.assign(seen, { offsetTop, height, scale });
+      seen.dispatchEvent(new Event('resize'));
+      seen.dispatchEvent(new Event('scroll'));
+    }, area);
+}
+
 /** WCAG contrast between the menu's lines and what shows around them, read from the screen's own pixels. */
 async function linesContrast(page: Page): Promise<number> {
   const middle = await page.locator('.site__toggle .site__lines').boundingBox();
@@ -357,6 +376,52 @@ test('on a phone with its keyboard up, an answer that asks for the number leaves
   expect(errors).toEqual([]);
 });
 
+test('on a phone the chat sits on the part of the page the visitor sees, whatever the browser leaves of it', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'A desk’s browser shows the whole page.');
+  const errors = watchErrors(page);
+  const see = await fakeVisibleArea(page);
+  await open(page, '/');
+  const full = await page.evaluate(() => innerHeight);
+  await see({ offsetTop: 0, height: full });
+  await openChat(page);
+  const chat = page.getByRole('dialog');
+  const field = chat.getByRole('textbox', { name: 'Votre message' });
+  await expect(field).toBeVisible();
+  const places = () =>
+    chat.evaluate((dialog) => {
+      const of = (element: Element) => {
+        const { top, bottom } = element.getBoundingClientRect();
+        return { top: Math.round(top), bottom: Math.round(bottom) };
+      };
+      return { chat: of(dialog), field: of(dialog.querySelector('#chat-message')!) };
+    });
+
+  // The keyboard up, and the page panned only halfway to it: the chat keeps its height and shows its end over the keyboard.
+  await see({ offsetTop: 150, height: 400 });
+  let seen = await places();
+  expect(seen.chat.bottom).toBe(550);
+  expect(seen.field.top).toBeGreaterThanOrEqual(150);
+  expect(seen.field.bottom).toBeLessThanOrEqual(550);
+  // The keyboard closed, and the page left shifted: the chat follows what is seen.
+  await see({ offsetTop: 150, height: full });
+  expect((await places()).chat).toEqual({ top: 150, bottom: 150 + full });
+  // An app's bar over the foot of the page, which its browser reports: the chat ends above it.
+  await see({ offsetTop: 0, height: full - 83 });
+  seen = await places();
+  expect(seen.chat).toEqual({ top: 0, bottom: full - 83 });
+  expect(seen.field.bottom).toBeLessThanOrEqual(full - 83);
+  // Zoomed in by hand, the page is the visitor's to move: the chat keeps to its own rules.
+  await see({ offsetTop: 100, height: 420, scale: 2 });
+  expect(await chat.evaluate((dialog) => dialog.style.cssText)).toBe('');
+  // Back to the whole page, the chat as tall as the screen still takes a message.
+  await see({ offsetTop: 0, height: full });
+  expect((await places()).chat).toEqual({ top: 0, bottom: full });
+  await field.fill('Bonsoir.');
+  await field.press('Enter');
+  await expect(chat.locator('.chat__line--agent')).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
 test('the chat greets by the restaurant’s hour, whatever the hour where the visitor is', async ({ page }) => {
   // Friday 16 at 10:00 in Bordeaux: «Bonjour», even where the tests run at night.
   demo = new FakeDemo(new Date('2026-10-16T08:00:00.000Z'));
@@ -427,6 +492,23 @@ test.describe('the call to the restaurant, from the browser', () => {
     // The captions cannot run here, but their «Vous» sits where the call's own status does: once they ran longer than
     // the screen, a scroll that let them out would leave the call a blank band to scroll into.
     expect(await call.evaluate(escapedScrolls)).toEqual([]);
+  });
+
+  test('on a phone sits on the part of the page the visitor sees, as the chat does, and leaves nothing behind once closed', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'A desk’s browser shows the whole page.');
+    const see = await fakeVisibleArea(page);
+    await open(page, '/');
+    const full = await page.evaluate(() => innerHeight);
+    await see({ offsetTop: 0, height: full });
+    await page.locator('.site__tabs > *').first().click();
+    const call = page.getByRole('dialog', { name: 'Appeler Merrain' });
+    await expect(call).toBeVisible();
+    // A page left shifted once a keyboard has closed: the call, with «Appeler» and the keypad at its foot, follows.
+    await see({ offsetTop: 150, height: full });
+    expect(await call.evaluate((dialog) => Math.round(dialog.getBoundingClientRect().top))).toBe(150);
+    await page.keyboard.press('Escape');
+    await expect(call).toBeHidden();
+    expect(await page.locator('dialog.call').evaluate((dialog) => dialog.style.cssText)).toBe('');
   });
 
   test('asks for the microphone on «Appeler», and spends no call when it is refused', async ({ page }) => {

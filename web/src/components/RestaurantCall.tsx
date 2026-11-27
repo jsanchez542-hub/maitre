@@ -13,6 +13,7 @@ import { clockOf } from '../lib/restaurant';
 import { currentSandbox, forgetSandbox, noteOfCall, recordTurn } from '../lib/sandbox';
 import { demoStatus } from '../lib/status';
 import { typeset } from '../lib/typography';
+import { useOnVisibleArea } from '../lib/viewport';
 import { useNewestInView } from './ChatLog';
 
 type Phase = 'ready' | 'connecting' | 'ringing' | 'live' | 'ended';
@@ -181,6 +182,7 @@ export function RestaurantCall({ language }: { language: Language }) {
       }, ignoreLive);
     }
   }, [open]);
+  useOnVisibleArea(dialog, open);
 
   // Whatever takes this screen away (a page that swaps it, a hot update while developing) takes the call with it: a
   // line left open with no screen on it could not be hung up.

@@ -8,6 +8,7 @@ import type { RestaurantTime } from '../lib/live';
 import { clockOf } from '../lib/restaurant';
 import { demoStatus } from '../lib/status';
 import { typeset } from '../lib/typography';
+import { useOnVisibleArea } from '../lib/viewport';
 import { LiveChat, type ChatStatus } from './LiveChat';
 import { RecordedChat } from './RecordedChat';
 
@@ -64,6 +65,7 @@ export function BookingChat({ language }: { language: Language }) {
     if (open && !element.open) element.showModal();
     if (!open && element.open) element.close();
   }, [open]);
+  useOnVisibleArea(dialog, open);
 
   return (
     <dialog ref={dialog} class="chat" aria-labelledby="chat-title" onClose={() => setOpen(false)}>
