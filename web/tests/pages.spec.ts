@@ -264,6 +264,8 @@ for (const site of SITES) {
     await expect(phone).toBeVisible();
     if (isMobile) await page.waitForTimeout(300);
     await expect(isMobile ? field : phone).toBeFocused();
+    // Under 16 px an iPhone zooms the page into the field it focuses, and leaves it zoomed.
+    for (const input of [field, phone]) expect(await input.evaluate((element) => getComputedStyle(element).fontSize)).toBe(isMobile ? '16px' : '15px');
     await phone.fill(site.number);
     await expectAccessible(page);
     await phone.press('Enter');
@@ -563,7 +565,7 @@ test.describe('the call to the restaurant, from the browser', () => {
       expect(demo.lines).toEqual(['es']);
     });
 
-    test('lets the caller choose the microphone once the browser has allowed one, and calls with that one', async ({ page }) => {
+    test('lets the caller choose the microphone once the browser has allowed one, and calls with that one', async ({ page, isMobile }) => {
       await page.route(/livekit\.cloud/, (route) => route.abort());
       await page.routeWebSocket(/livekit\.cloud/, (socket) => socket.close());
       // A laptop whose default input is «Stereo Mix», which records the speakers and never the caller.
@@ -595,6 +597,8 @@ test.describe('the call to the restaurant, from the browser', () => {
         'Stereo Mix (Realtek(R) Audio)',
         'Microphone Array (Realtek(R) Audio)',
       ]);
+      // Under 16 px an iPhone zooms the page into the list it opens, and leaves it zoomed.
+      expect(await picker.evaluate((element) => getComputedStyle(element).fontSize)).toBe(isMobile ? '16px' : '13px');
       await picker.selectOption({ label: 'Microphone Array (Realtek(R) Audio)' });
       await expectAccessible(page);
       await call.getByRole('button', { name: 'Llamar', exact: true }).click();

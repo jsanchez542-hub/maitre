@@ -1110,6 +1110,17 @@ a.chat__primary {
   }
 }
 
+/*
+ * An iPhone zooms the page into a field or a list whose text is under 16 px, and leaves it zoomed. After the rules of
+ * both, which set their size.
+ */
+@media (pointer: coarse) {
+  .chat__field,
+  .call__device select {
+    font-size: 16px;
+  }
+}
+
 .call__problem {
   justify-items: center;
   width: 100%;
